@@ -261,6 +261,8 @@ Steps:
 
 5. After a while (after all JavaScript and Clojure dependencies are completely downloaded), open localhost:3000 with your web browser.
 
+If you need to just build an Uberjar, you can simply refer to the [build uberjar with a container](build.html) which will use containers to build and export without even need to install anything on your local computer other than docker.
+
 ## Continuous integration
 
 All front-end and back-end linters and tests can be executed with
