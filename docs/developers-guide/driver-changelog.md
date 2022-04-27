@@ -9,6 +9,11 @@
   0.35.0; they are no longer considered deprecated and this designation has been removed. See
   [#22163](https://github.com/metabase/metabase/pull/22163) for motivation behind this change.
 
+- `metabase.driver.sql-jdbc.execute/connection-with-timezone` has been marked deprecated and is scheduled for removal
+  in Metabase 0.47.0. The new method `metabase.driver.sql-jdbc.execute/do-with-connection-with-time-zone` replaces it.
+  Migration to the new method is straightforward. See PR [#22166](https://github.com/metabase/metabase/pull/22166) for
+  more information.
+
 ## Metabase 0.43.0
 
 - The `:expressions` map in an MBQL query now uses strings as keys rather than keywords (see

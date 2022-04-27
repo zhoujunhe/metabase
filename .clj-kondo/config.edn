@@ -69,6 +69,8 @@
                                       {:namespaces ["metabase\\.models.*"]}
                                       metabase.driver.sql.query-processor.deprecated/escape-alias
                                       {:namespaces ["metabase\\.driver.*"]}
+                                      metabase.driver.sql-jdbc.execute/connection-with-timezone
+                                      {:namespaces ["metabase\\.driver.*"]}
                                       metabase.driver.sql-jdbc.sync.interface/syncable-schemas
                                       {:namespaces ["metabase\\.driver.*"]}
                                       schema.core/either
