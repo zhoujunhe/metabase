@@ -85,6 +85,8 @@ export default class FilterPopover extends Component<Props, State> {
   }
 
   setFilter(filter: Filter, hideShortcuts = true) {
+    console.log("🚀", "In setFilter");
+
     this.setState({
       filter,
     });

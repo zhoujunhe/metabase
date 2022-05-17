@@ -174,6 +174,7 @@ export default function DatePickerShortcuts({
           key={displayName}
           primaryColor={primaryColor}
           onClick={() => {
+            console.log("🚀", { displayName, init, filter });
             onCommit(init(filter));
           }}
         >
