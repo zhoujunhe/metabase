@@ -66,7 +66,9 @@ export const RadioContainer = styled.div<RadioContainerProps>`
   &:hover {
     color: ${props =>
       !props.checked && !props.showButtons
-        ? getContrastSchemeColor(props.colorScheme)
+        ? props.variant !== "bubble"
+          ? getSchemeColor(props.colorScheme)
+          : getContrastSchemeColor(props.colorScheme)
         : ""};
   }
 
