@@ -22,7 +22,8 @@ export function getStructuredQueryTable(query: StructuredQuery): Table | null {
 
   // 3. The query's question is a dataset.
   const question = query.question();
-  const isDataset = question?.isDataset() ?? false;
+
+  const isDataset = question?.isDataset() && question?.isSaved();
   if (isDataset) {
     return getDatasetTable(query);
   }
