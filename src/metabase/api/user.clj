@@ -393,7 +393,7 @@
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
 (api/defendpoint DELETE "/:id"
-  "Disable a `User`.  This does not remove the `User` from the DB, but instead disables their account."
+  "Disable a `User`. This does not remove the `User` from the DB, but instead disables their account."
   [id]
   (api/check-superuser)
   (api/check-500 (db/update! User id, :is_active false))
