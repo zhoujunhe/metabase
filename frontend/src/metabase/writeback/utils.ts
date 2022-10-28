@@ -6,9 +6,9 @@ import type {
   WritebackAction,
 } from "metabase-types/api";
 import type { SavedCard } from "metabase-types/types/Card";
-import { TYPE } from "metabase-lib/lib/types/constants";
-import type Database from "metabase-lib/lib/metadata/Database";
-import type Field from "metabase-lib/lib/metadata/Field";
+import { TYPE } from "metabase-lib/types/constants";
+import type Database from "metabase-lib/metadata/Database";
+import type Field from "metabase-lib/metadata/Field";
 
 const DB_WRITEBACK_FEATURE = "actions";
 const DB_WRITEBACK_SETTING = "database-enable-actions";
@@ -85,28 +85,6 @@ export function isMappedExplicitActionButton(
   return (
     isAction && typeof dashCard.visualization_settings.action_slug === "string"
   );
-}
-
-export function isValidImplicitActionClickBehavior(
-  clickBehavior?: ClickBehavior,
-) {
-  if (
-    !clickBehavior ||
-    clickBehavior.type !== "action" ||
-    !("actionType" in clickBehavior)
-  ) {
-    return false;
-  }
-  if (clickBehavior.actionType === "insert") {
-    return clickBehavior.tableId != null;
-  }
-  if (
-    clickBehavior.actionType === "update" ||
-    clickBehavior.actionType === "delete"
-  ) {
-    return typeof clickBehavior.objectDetailDashCardId === "number";
-  }
-  return false;
 }
 
 export function getActionButtonLabel(dashCard: ActionDashboardCard) {

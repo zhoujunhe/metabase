@@ -1,23 +1,24 @@
 (ns metabase.models.database
-  (:require [cheshire.generate :refer [add-encoder encode-map]]
-            [clojure.tools.logging :as log]
-            [medley.core :as m]
-            [metabase.db.util :as mdb.u]
-            [metabase.driver :as driver]
-            [metabase.driver.impl :as driver.impl]
-            [metabase.driver.util :as driver.u]
-            [metabase.models.interface :as mi]
-            [metabase.models.permissions :as perms]
-            [metabase.models.permissions-group :as perms-group]
-            [metabase.models.secret :as secret :refer [Secret]]
-            [metabase.models.serialization.base :as serdes.base]
-            [metabase.models.serialization.hash :as serdes.hash]
-            [metabase.models.serialization.util :as serdes.util]
-            [metabase.plugins.classloader :as classloader]
-            [metabase.util :as u]
-            [metabase.util.i18n :refer [trs]]
-            [toucan.db :as db]
-            [toucan.models :as models]))
+  (:require
+   [cheshire.generate :refer [add-encoder encode-map]]
+   [clojure.tools.logging :as log]
+   [medley.core :as m]
+   [metabase.db.util :as mdb.u]
+   [metabase.driver :as driver]
+   [metabase.driver.impl :as driver.impl]
+   [metabase.driver.util :as driver.u]
+   [metabase.models.interface :as mi]
+   [metabase.models.permissions :as perms]
+   [metabase.models.permissions-group :as perms-group]
+   [metabase.models.secret :as secret :refer [Secret]]
+   [metabase.models.serialization.base :as serdes.base]
+   [metabase.models.serialization.hash :as serdes.hash]
+   [metabase.models.serialization.util :as serdes.util]
+   [metabase.plugins.classloader :as classloader]
+   [metabase.util :as u]
+   [metabase.util.i18n :refer [trs]]
+   [toucan.db :as db]
+   [toucan.models :as models]))
 
 ;;; ----------------------------------------------- Entity & Lifecycle -----------------------------------------------
 
@@ -290,6 +291,7 @@
   ;; There's one optional foreign key: creator_id. Resolve it as an email.
   (cond-> (serdes.base/extract-one-basics "Database" entity)
     true                 (update :creator_id serdes.util/export-user)
+    true                 (dissoc :features) ; This is a synthetic column that isn't in the real schema.
     (= :exclude secrets) (dissoc :details)))
 
 (defmethod serdes.base/serdes-entity-id "Database"

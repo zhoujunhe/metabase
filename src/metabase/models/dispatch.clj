@@ -53,6 +53,10 @@
       :else
       nil))
 
+  clojure.lang.Symbol
+  (model [symb]
+    (db/resolve-model symb))
+
   nil
   (model [_this] nil))
 

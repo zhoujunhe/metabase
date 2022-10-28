@@ -2,7 +2,7 @@
 import React from "react";
 import { t, jt } from "ttag";
 import BreakoutPopover from "metabase/query_builder/components/BreakoutPopover";
-import { pivotByLocationDrill } from "metabase-lib/lib/queries/drills/pivot-drill";
+import { pivotByLocationDrill } from "metabase-lib/queries/drills/pivot-drill";
 
 export default ({ question, clicked }) => {
   const drill = pivotByLocationDrill({ question, clicked });
@@ -17,7 +17,9 @@ export default ({ question, clicked }) => {
       name: "pivot-by-location",
       section: "breakout",
       buttonType: "token",
-      title: (
+      title: clicked ? (
+        t`Location`
+      ) : (
         <span>
           {jt`Break out by ${(
             <span className="text-dark">{t`location`}</span>
