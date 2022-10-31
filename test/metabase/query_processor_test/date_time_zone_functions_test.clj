@@ -425,8 +425,9 @@
                                        [:expression "hour"]]})
                       mt/rows
                       first))))
+
         (testing "convert-timezone nested with date-math, date-extract"
-          (is (= ["2004-03-19T09:19:09Z" "2004-03-19T18:19:09+09:00" "2004-03-19T11:19:09Z" 20]
+          (is (= ["2004-03-19T09:19:09Z" "2004-03-19T18:19:09+09:00" "2004-03-19T20:19:09Z" 20]
                  (->> (mt/run-mbql-query
                         times
                         {:expressions {"converted"  [:convert-timezone $times.dt (offset->zone "+09:00")]
@@ -459,7 +460,8 @@
                  (->> (mt/run-mbql-query
                         times
                         {:expressions {"to-07"       [:convert-timezone $times.dt (offset->zone "+07:00")]
-                                       "to-07-to-09" [:convert-timezone [:expression "to-07"] (offset->zone "+09:00")]}
+                                       "to-07-to-09" [:convert-timezone [:expression "to-07"] (offset->zone "+09:00")
+                                                      (offset->zone "+07:00")]}
                          :filter      [:= $times.index 1]
                          :fields      [$times.dt
                                        [:expression "to-07"]
