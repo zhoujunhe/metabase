@@ -21,6 +21,7 @@ export const ActionCreatorBodyContainer = styled.div`
 `;
 
 export const EditorContainer = styled.div`
+  position: relative;
   margin-left: ${space(2)};
   flex: 1;
   overflow-y: auto;

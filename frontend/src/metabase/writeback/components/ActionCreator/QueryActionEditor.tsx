@@ -5,6 +5,7 @@ import type Query from "metabase-lib/queries/Query";
 
 import type Question from "metabase-lib/Question";
 import { EditorContainer } from "./ActionCreator.styled";
+import { PopoverDataReferenceButton } from "./PopoverDataReference";
 
 export function QueryActionEditor({
   question,
@@ -15,6 +16,7 @@ export function QueryActionEditor({
 }) {
   return (
     <EditorContainer>
+      <PopoverDataReferenceButton />
       <NativeQueryEditor
         query={question.query()}
         viewHeight="full"
@@ -22,7 +24,7 @@ export function QueryActionEditor({
           setQuestion(question.setQuery(newQuery))
         }
         enableRun={false}
-        hasEditingSidebar={false} // TODO: make sidebar components work in popovers
+        hasEditingSidebar={false}
         isNativeEditorOpen
         hasParametersList={false}
         resizable={false}
