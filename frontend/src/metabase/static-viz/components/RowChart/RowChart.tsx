@@ -7,10 +7,7 @@ import {
 } from "metabase/visualizations/shared/types/measure-text";
 import { measureText } from "metabase/static-viz/lib/text";
 import { getStackOffset } from "metabase/visualizations/lib/settings/stacking";
-import {
-  getGroupedDataset,
-  trimData,
-} from "metabase/visualizations/shared/utils/data";
+import { getGroupedDataset } from "metabase/visualizations/shared/utils/data";
 import { getChartGoal } from "metabase/visualizations/lib/settings/goal";
 import { VisualizationSettings } from "metabase-types/api";
 import { ColorGetter } from "metabase/static-viz/lib/colors";
@@ -118,7 +115,6 @@ const StaticRowChart = ({ data, settings, getColor }: StaticRowChartProps) => {
           width={WIDTH}
           height={HEIGHT}
           data={groupedData}
-          trimData={trimData}
           series={series}
           seriesColors={seriesColors}
           goal={goal}

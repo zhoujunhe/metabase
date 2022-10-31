@@ -14,20 +14,8 @@ import {
 } from "metabase/visualizations/shared/types/scale";
 import { ChartFont } from "metabase/visualizations/shared/types/style";
 import { DATA_LABEL_OFFSET } from "../../RowChartView";
-import { Series, YValue } from "../types";
-import { createYDomain } from "./domain";
-
-export const createYScale = <TDatum>(
-  data: TDatum[],
-  series: Series<TDatum>[],
-  chartHeight: number,
-) => {
-  return scaleBand<YValue>({
-    domain: createYDomain(data, series),
-    range: [0, chartHeight],
-    padding: 0.2,
-  });
-};
+import { Series, SeriesData, YValue } from "../types";
+import { createXDomain, createYDomain } from "./domain";
 
 export const createXScale = (
   domain: ContinuousDomain,
@@ -58,6 +46,37 @@ export const createXScale = (
         clamp: true,
       });
   }
+};
+
+export const getChartScales = <TDatum>(
+  seriesData: SeriesData<TDatum>[],
+  innerHeight: number,
+  innerWidth: number,
+  additionalXValues: number[],
+  xScaleType: ContinuousScaleType,
+  isExactRange: boolean,
+) => {
+  const yDomain = createYDomain(seriesData);
+  const yScale = scaleBand<YValue>({
+    domain: yDomain,
+    range: [0, innerHeight],
+    padding: 0.2,
+  });
+
+  const xDomain = createXDomain(seriesData, additionalXValues, xScaleType);
+  const xScale = createXScale(
+    xDomain,
+    [0, innerWidth],
+    xScaleType,
+    isExactRange,
+  );
+
+  return {
+    yDomain,
+    xDomain,
+    yScale,
+    xScale,
+  };
 };
 
 export const addScalePadding = (

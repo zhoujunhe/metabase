@@ -8,8 +8,11 @@ export const getDataLabel = (
   isStacked?: boolean,
   labelledSeries?: string[] | null,
 ) => {
-  const { xStartValue, xEndValue, isNegative } = bar;
-  const value = isNegative ? xStartValue : xEndValue;
+  if (!bar.xValue) {
+    return null;
+  }
+  const { start, end, isNegative } = bar.xValue;
+  const value = isNegative ? start : end;
 
   const [xDomainStart, xDomainEnd] = xScale.domain();
   const isOutOfDomain = value <= xDomainStart || value >= xDomainEnd;
@@ -19,7 +22,8 @@ export const getDataLabel = (
   }
 
   const isLabelVisible =
-    labelledSeries?.includes(seriesKey) && (!isStacked || bar.isBorderValue);
+    labelledSeries?.includes(seriesKey) &&
+    (!isStacked || bar.xValue.isBorderValue);
 
   return isLabelVisible ? value : null;
 };

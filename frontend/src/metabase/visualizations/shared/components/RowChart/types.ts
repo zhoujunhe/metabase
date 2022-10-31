@@ -12,13 +12,16 @@ export type Series<TDatum, TSeriesInfo = unknown> = {
 };
 
 export type BarData<TDatum> = {
-  xStartValue: number;
-  xEndValue: number;
+  xValue: {
+    value: number;
+    start: number;
+    end: number;
+    isNegative: boolean;
+    isBorderValue?: boolean;
+  } | null;
   yValue: YValue;
-  isNegative: boolean;
-  originalDatum: TDatum;
-  datumIndex: number;
-  isBorderValue?: boolean;
+  originalDatum?: TDatum;
+  datumIndex?: number;
 };
 
 export type SeriesData<TDatum> = {

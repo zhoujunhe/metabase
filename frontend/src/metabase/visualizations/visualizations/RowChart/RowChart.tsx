@@ -32,7 +32,6 @@ import {
 import {
   getGroupedDataset,
   getSeries,
-  trimData,
 } from "metabase/visualizations/shared/utils/data";
 import { getChartGoal } from "metabase/visualizations/lib/settings/goal";
 import { getTwoDimensionalChartSeries } from "metabase/visualizations/shared/utils/series";
@@ -286,7 +285,6 @@ const RowChartVisualization = ({
         <RowChartRenderer
           className="flex-full"
           data={groupedData}
-          trimData={trimData}
           series={series}
           seriesColors={seriesColors}
           goal={goal}

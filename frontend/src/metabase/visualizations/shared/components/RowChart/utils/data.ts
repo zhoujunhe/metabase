@@ -1,45 +1,39 @@
-import _ from "underscore";
+import _, { values } from "underscore";
 import { stack, stackOffsetDiverging, stackOffsetExpand } from "d3-shape";
 import type { Series as D3Series } from "d3-shape";
 import d3 from "d3";
 
+import { t } from "ttag";
 import {
   ContinuousScaleType,
   Range,
 } from "metabase/visualizations/shared/types/scale";
 import { isNotNull } from "metabase/core/utils/array";
 import { BarData, Series, SeriesData, StackOffset } from "../types";
-import { createXScale, createYScale } from "./scale";
-import { createStackedXDomain, createXDomain } from "./domain";
 
 export const StackOffsetFn = {
   diverging: stackOffsetDiverging,
   expand: stackOffsetExpand,
 } as const;
 
-type CalculatedStackedChartInput<TDatum> = {
-  data: TDatum[];
-  multipleSeries: Series<TDatum>[];
-  stackOffset: StackOffset;
-  additionalXValues: number[];
-  innerWidth: number;
-  innerHeight: number;
-  seriesColors: Record<string, string>;
-  xScaleType: ContinuousScaleType;
-  xValueRange?: Range;
-};
+const getGroupedDatumYValue = (
+  groupStartingFromIndex: number,
+  datumCount: number,
+) =>
+  groupStartingFromIndex === 0
+    ? t`All values (${datumCount})`
+    : t`Other (${datumCount})`;
 
-export const calculateStackedBars = <TDatum>({
-  data,
-  multipleSeries,
-  stackOffset,
-  additionalXValues,
-  innerWidth,
-  innerHeight,
-  seriesColors,
-  xScaleType,
-  xValueRange,
-}: CalculatedStackedChartInput<TDatum>) => {
+export const calculateStackedBars = <TDatum>(
+  data: TDatum[],
+  multipleSeries: Series<TDatum>[],
+  stackOffset: StackOffset,
+  seriesColors: Record<string, string>,
+  xScaleType: ContinuousScaleType,
+  valuesCountLimit: number,
+) => {
+  const groupStartingFromIndex = valuesCountLimit - 1;
+
   const seriesByKey = multipleSeries.reduce<Record<string, Series<TDatum>>>(
     (acc, series) => {
       acc[series.seriesKey] = series;
@@ -48,32 +42,26 @@ export const calculateStackedBars = <TDatum>({
     {},
   );
 
+  const ungroupedData = data.slice(0, groupStartingFromIndex + 1);
+  const groupedData = data.slice(groupStartingFromIndex);
+  const defaultXValue = xScaleType === "log" ? 1 : 0;
+
   const d3Stack = stack<TDatum>()
     .keys(multipleSeries.map(s => s.seriesKey))
     .value((datum, seriesKey) => seriesByKey[seriesKey].xAccessor(datum) ?? 0)
     .offset(StackOffsetFn[stackOffset ?? "diverging"]);
 
-  const stackedSeries = d3Stack(data);
+  const stackedData = d3Stack(groupedData);
+  const ungroupedStack = d3Stack(ungroupedData);
+  const groupedStack = d3Stack(groupedData);
 
   // For log scale starting value for stack is 1
   // Stacked log charts does not make much sense but we support them, so I replicate the behavior of line/area/bar charts
   if (xScaleType === "log") {
-    stackedSeries[0].forEach((_, index) => {
-      stackedSeries[0][index][0] = 1;
+    stackedData[0].forEach((_, index) => {
+      stackedData[0][index][0] = 1;
     });
   }
-
-  const yScale = createYScale(data, multipleSeries, innerHeight);
-
-  const xDomain =
-    xValueRange ??
-    createStackedXDomain(stackedSeries, additionalXValues, xScaleType);
-  const xScale = createXScale(
-    xDomain,
-    [0, innerWidth],
-    xScaleType,
-    !!xValueRange,
-  );
 
   const getDatumExtent = _.memoize(
     (stackedSeries: D3Series<TDatum, string>[], datumIndex: number) => {
@@ -115,71 +103,96 @@ export const calculateStackedBars = <TDatum>({
     },
   );
 
+  return seriesData;
+};
+
+const getXValue = (value: number | null, defaultXValue: number) => {
+  if (value == null) {
+    return null;
+  }
+
+  const isNegative = value < 0;
+
+  const start = isNegative ? value : defaultXValue;
+  const end = isNegative ? defaultXValue : value;
+
   return {
-    xDomain,
-    xScale,
-    yScale,
-    seriesData,
+    value,
+    start,
+    end,
+    isNegative,
   };
 };
 
-type CalculatedNonStackedChartInput<TDatum> = {
-  data: TDatum[];
-  multipleSeries: Series<TDatum>[];
-  additionalXValues: number[];
-  innerWidth: number;
-  innerHeight: number;
-  seriesColors: Record<string, string>;
-  xScaleType: ContinuousScaleType;
-  xValueRange?: Range;
+export const trimData = <TDatum>(
+  seriesData: SeriesData<TDatum>[],
+  valuesCountLimit: number,
+) => {
+  const dataLength = seriesData[0].bars.length;
+
+  if (dataLength < valuesCountLimit + 1) {
+    return seriesData;
+  }
+
+  const groupStartingFromIndex = valuesCountLimit - 1;
+  return seriesData.map(series => {
+    const ungroupedBars = series.bars.slice(0, groupStartingFromIndex);
+
+    return {
+      ...series,
+    };
+  });
 };
 
-export const calculateNonStackedBars = <TDatum>({
-  data,
-  multipleSeries,
-  additionalXValues,
-  innerWidth,
-  innerHeight,
-  seriesColors,
-  xScaleType,
-  xValueRange,
-}: CalculatedNonStackedChartInput<TDatum>) => {
-  const yScale = createYScale(data, multipleSeries, innerHeight);
-  const xDomain =
-    xValueRange ??
-    createXDomain(data, multipleSeries, additionalXValues, xScaleType);
-  const xScale = createXScale(
-    xDomain,
-    [0, innerWidth],
-    xScaleType,
-    !!xValueRange,
-  );
+export const calculateNonStackedBars = <TDatum>(
+  data: TDatum[],
+  multipleSeries: Series<TDatum>[],
+  seriesColors: Record<string, string>,
+  xScaleType: ContinuousScaleType,
+  valuesCountLimit: number,
+) => {
+  const groupStartingFromIndex = valuesCountLimit - 1;
+
+  const ungroupedData = data.slice(0, groupStartingFromIndex + 1);
+  const groupedData = data.slice(groupStartingFromIndex);
+  const defaultXValue = xScaleType === "log" ? 1 : 0;
 
   const seriesData: SeriesData<TDatum>[] = multipleSeries.map(series => {
-    const bars = data
-      .map<BarData<TDatum> | null>((datum, datumIndex) => {
-        const yValue = series.yAccessor(datum);
-        const xValue = series.xAccessor(datum);
-        const isNegative = xValue != null && xValue < 0;
+    const bars = ungroupedData.map<BarData<TDatum>>((datum, datumIndex) => {
+      const datumYValue = series.yAccessor(datum);
+      const datumXValue = series.xAccessor(datum);
 
-        if (xValue == null) {
-          return null;
-        }
+      const xValue = getXValue(datumXValue, defaultXValue);
 
-        const defaultValue = xScaleType === "log" ? 1 : 0;
-        const xStartValue = isNegative ? xValue : defaultValue;
-        const xEndValue = isNegative ? defaultValue : xValue;
+      return {
+        xValue,
+        yValue: datumYValue,
+        originalDatum: datum,
+        datumIndex,
+      };
+    });
 
-        return {
-          isNegative,
-          xStartValue,
-          xEndValue,
-          yValue,
-          originalDatum: datum,
-          datumIndex,
-        };
-      })
-      .filter(isNotNull);
+    // if (groupedData.length > 0) {
+    //   const groupedDatumXValue = groupedData.reduce<number | null>(
+    //     (groupedDatumX, datum) => {
+    //       const xValue = series.xAccessor(datum);
+    //       return xValue == null ? groupedDatumX : (groupedDatumX ?? 0) + xValue;
+    //     },
+    //     null,
+    //   );
+
+    //   const groupedDatumYValue =
+    //     groupStartingFromIndex === 0
+    //       ? t`All values (${data.length})`
+    //       : t`Other (${data.length})`;
+
+    //   const groupedBar: BarData<TDatum> = {
+    //     yValue: groupedDatumYValue,
+    //     xValue: getXValue(groupedDatumXValue, defaultXValue),
+    //   };
+
+    //   bars.push(groupedBar);
+    // }
 
     return {
       bars,
@@ -188,5 +201,5 @@ export const calculateNonStackedBars = <TDatum>({
     };
   });
 
-  return { xDomain, xScale, yScale, seriesData };
+  return seriesData;
 };

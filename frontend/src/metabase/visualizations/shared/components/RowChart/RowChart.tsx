@@ -17,7 +17,7 @@ import {
 import { getXTicks } from "./utils/ticks";
 import { RowChartTheme, Series, StackOffset } from "./types";
 import { calculateNonStackedBars, calculateStackedBars } from "./utils/data";
-import { addSideSpacingForTicksAndLabels } from "./utils/scale";
+import { addSideSpacingForTicksAndLabels, getChartScales } from "./utils/scale";
 
 const MIN_BAR_HEIGHT = 24;
 
@@ -30,8 +30,6 @@ export interface RowChartProps<TDatum> {
   data: TDatum[];
   series: Series<TDatum>[];
   seriesColors: Record<string, string>;
-
-  trimData?: (data: TDatum[], maxLength: number) => TDatum[];
 
   goal?: ChartGoal | null;
   theme: RowChartTheme;
@@ -64,7 +62,6 @@ export const RowChart = <TDatum,>({
   height,
 
   data,
-  trimData,
   series: multipleSeries,
   seriesColors,
 
@@ -108,15 +105,33 @@ export const RowChart = <TDatum,>({
     [height, multipleSeries.length, stackOffset],
   );
 
-  const trimmedData = trimData?.(data, maxYValues) ?? data;
+  const seriesData = useMemo(
+    () =>
+      stackOffset != null
+        ? calculateStackedBars<TDatum>(
+            data,
+            multipleSeries,
+            stackOffset,
+            seriesColors,
+            xScaleType,
+            maxYValues,
+          )
+        : calculateNonStackedBars<TDatum>(
+            data,
+            multipleSeries,
+            seriesColors,
+            xScaleType,
+            maxYValues,
+          ),
+    [data, maxYValues, multipleSeries, seriesColors, stackOffset, xScaleType],
+  );
 
   const { xTickFormatter, yTickFormatter } = tickFormatters;
 
   const margin = useMemo(
     () =>
       getChartMargin(
-        trimmedData,
-        multipleSeries,
+        seriesData,
         yTickFormatter,
         theme.axis.ticks,
         theme.axis.label,
@@ -128,8 +143,7 @@ export const RowChart = <TDatum,>({
         hasYAxis,
       ),
     [
-      trimmedData,
-      multipleSeries,
+      seriesData,
       yTickFormatter,
       theme.axis.ticks,
       theme.axis.label,
@@ -150,41 +164,17 @@ export const RowChart = <TDatum,>({
     [goal],
   );
 
-  const { xScale, yScale, xDomain, seriesData } = useMemo(
+  const { xScale, yScale, xDomain } = useMemo(
     () =>
-      stackOffset != null
-        ? calculateStackedBars<TDatum>({
-            data: trimmedData,
-            multipleSeries,
-            additionalXValues,
-            stackOffset,
-            innerWidth,
-            innerHeight,
-            seriesColors,
-            xScaleType,
-            xValueRange,
-          })
-        : calculateNonStackedBars<TDatum>({
-            data: trimmedData,
-            multipleSeries,
-            additionalXValues,
-            innerWidth,
-            innerHeight,
-            seriesColors,
-            xScaleType,
-            xValueRange,
-          }),
-    [
-      additionalXValues,
-      innerHeight,
-      innerWidth,
-      multipleSeries,
-      seriesColors,
-      stackOffset,
-      trimmedData,
-      xScaleType,
-      xValueRange,
-    ],
+      getChartScales(
+        seriesData,
+        innerHeight,
+        innerWidth,
+        additionalXValues,
+        xScaleType,
+        false,
+      ),
+    [additionalXValues, innerHeight, innerWidth, seriesData, xScaleType],
   );
 
   const paddedXScale = useMemo(

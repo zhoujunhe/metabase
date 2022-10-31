@@ -112,50 +112,6 @@ export const getGroupedDataset = (
   );
 };
 
-export const trimData = (
-  dataset: GroupedDataset,
-  valuesCountLimit: number,
-): GroupedDataset => {
-  if (dataset.length <= valuesCountLimit) {
-    return dataset;
-  }
-
-  const groupStartingFromIndex = valuesCountLimit - 1;
-  const result = dataset.slice();
-  const dataToGroup = result.splice(groupStartingFromIndex);
-
-  const groupedDatumDimensionValue =
-    dataToGroup.length === dataset.length
-      ? t`All values (${dataToGroup.length})`
-      : t`Other (${dataToGroup.length})`;
-
-  const groupedValuesDatum = dataToGroup.reduce(
-    (groupedValue, currentValue) => {
-      groupedValue.metrics = sumMetrics(
-        groupedValue.metrics,
-        currentValue.metrics,
-      );
-
-      Object.keys(currentValue.breakout ?? {}).map(breakoutName => {
-        groupedValue.breakout ??= {};
-
-        groupedValue.breakout[breakoutName] = sumMetrics(
-          groupedValue.breakout[breakoutName] ?? {},
-          currentValue.breakout?.[breakoutName] ?? {},
-        );
-      });
-
-      return groupedValue;
-    },
-    {
-      dimensionValue: groupedDatumDimensionValue,
-      metrics: {},
-    },
-  );
-
-  return [...result, groupedValuesDatum];
-};
-
 const getBreakoutDistinctValues = (
   data: TwoDimensionalChartData,
   breakout: ColumnDescriptor,

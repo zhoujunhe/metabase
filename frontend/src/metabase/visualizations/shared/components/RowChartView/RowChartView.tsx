@@ -118,19 +118,18 @@ const RowChartView = ({
 
         {seriesData.map((series, seriesIndex) => {
           return series.bars.map(bar => {
-            const { xStartValue, xEndValue, isNegative, yValue, datumIndex } =
-              bar;
+            const { xValue, yValue, datumIndex } = bar;
 
             let y = yScale(yValue);
 
-            if (y == null) {
+            if (y == null || xValue == null) {
               return null;
             }
 
             y += innerBarScale?.(seriesIndex) ?? 0;
 
-            const x = xScale(xStartValue);
-            const width = Math.abs(xScale(xEndValue) - x);
+            const x = xScale(xValue.start);
+            const width = Math.abs(xScale(xValue.end) - x);
 
             const hasSeriesHover = hoveredData != null;
             const isSeriesHovered = hoveredData?.seriesIndex === seriesIndex;
@@ -155,14 +154,13 @@ const RowChartView = ({
             );
 
             const height = innerBarScale?.bandwidth() ?? yScale.bandwidth();
-            const value = isNegative ? xStartValue : xEndValue;
             const barKey = `${seriesIndex}:${datumIndex}`;
             const ariaLabelledBy = `bar-${barKey}-value`;
 
             return (
               <React.Fragment key={barKey}>
                 <Bar
-                  aria-label={String(value)}
+                  aria-label={String(xValue.value)}
                   role="graphics-symbol"
                   aria-roledescription="bar"
                   aria-labelledby={label != null ? ariaLabelledBy : undefined}
@@ -174,9 +172,13 @@ const RowChartView = ({
                   height={height}
                   fill={series.color}
                   opacity={opacity}
-                  onClick={event => handleClick(event, seriesIndex, datumIndex)}
+                  onClick={event =>
+                    bar.datumIndex != null &&
+                    handleClick(event, seriesIndex, bar.datumIndex)
+                  }
                   onMouseEnter={event =>
-                    handleBarMouseEnter(event, seriesIndex, datumIndex)
+                    bar.datumIndex != null &&
+                    handleBarMouseEnter(event, seriesIndex, bar.datumIndex)
                   }
                   onMouseLeave={handleBarMouseLeave}
                 />
@@ -184,16 +186,16 @@ const RowChartView = ({
                   <Text
                     data-testid="data-label"
                     id={ariaLabelledBy}
-                    textAnchor={isNegative ? "end" : "start"}
+                    textAnchor={xValue.isNegative ? "end" : "start"}
                     fontSize={theme.dataLabels.size}
                     fill={theme.dataLabels.color}
                     fontWeight={theme.dataLabels.weight}
-                    dx={(isNegative ? "-" : "") + DATA_LABEL_OFFSET}
-                    x={xScale(value)}
+                    dx={(xValue.isNegative ? "-" : "") + DATA_LABEL_OFFSET}
+                    x={xScale(xValue.value)}
                     y={y + height / 2}
                     verticalAnchor="middle"
                   >
-                    {labelsFormatter(value)}
+                    {labelsFormatter(label)}
                   </Text>
                 )}
               </React.Fragment>
