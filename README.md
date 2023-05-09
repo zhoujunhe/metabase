@@ -1,3 +1,11 @@
+
+针对AnalyticDB for mysql 分析数据库编译的metabase版本，AnalyticDB for mysql 不兼容 mariadb-connector-j 驱动程序，找阿里无解的情况下，修改了mariadb-connector-j驱动，主要是修改了AnalyticDB for mysql 不支持的类型，然后重新编译打包，使用上和官方用法一样。
+
+docker image 地址：https://hub.docker.com/r/zhoujunhe/metabase
+
+打包版本地址：https://github.com/zhoujunhe/metabase/releases
+
+
 # Metabase
 
 [Metabase](https://www.metabase.com) is the easy, open-source way for everyone in your company to ask questions and learn from data.
