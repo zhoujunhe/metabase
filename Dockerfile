@@ -15,6 +15,12 @@ RUN apt-get update && apt-get upgrade -y && apt-get install openjdk-11-jdk curl 
 
 COPY . .
 RUN INTERACTIVE=false CI=true MB_EDITION=$MB_EDITION bin/build.sh
+RUN cd ~/.m2/repository/org/mariadb/jdbc/mariadb-java-client/2.7.6 \
+    && rm -f mariadb-java-client-2.7.6.jar \
+    && apt-get install wget -y \
+    && wget https://github.com/zhoujunhe/mariadb-connector-j/releases/download/tag_AnalyticDB_2.7.6/mariadb-java-client-2.7.6.jar \
+    && sha1sum   mariadb-java-client-2.7.6.jar | awk '{print $1}' > mariadb-java-client-2.7.6.jar.sha1 
+RUN INTERACTIVE=false CI=true MB_EDITION=$MB_EDITION bin/build.sh
 
 # ###################
 # # STAGE 2: runner
