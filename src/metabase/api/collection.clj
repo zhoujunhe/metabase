@@ -35,7 +35,6 @@
    [metabase.util.malli.schema :as ms]
    [metabase.util.schema :as su]
    [schema.core :as s]
-   [toucan.hydrate :refer [hydrate]]
    [toucan2.core :as t2]))
 
 (set! *warn-on-reflection* true)
@@ -91,7 +90,7 @@
         (cond->> collections
           (mi/can-read? root)
           (cons root))))
-    (hydrate collections :can_write)
+    (t2/hydrate collections :can_write)
     ;; remove the :metabase.models.collection.root/is-root? tag since FE doesn't need it
     ;; and for personal collections we translate the name to user's locale
     (for [collection collections]
@@ -147,32 +146,6 @@
         colls-with-details (map collection/personal-collection-with-ui-details colls)]
     (collection/collections->tree coll-type-ids colls-with-details)))
 
-(comment
-  (binding [api/*current-user-permissions-set* (delay #{"/"})
-            api/*current-user-id* 1]
-    (time
-     (let [exclude-archived?               false
-           exclude-other-user-collections? true
-           coll-type-ids                   (reduce (fn [acc {:keys [collection_id dataset] :as _x}]
-                                                     (update acc (if dataset :dataset :card) conj collection_id))
-                                                   {:dataset #{}
-                                                    :card    #{}}
-                                                   (mdb.query/reducible-query {:select-distinct [:collection_id :dataset]
-                                                                               :from            [:report_card]
-                                                                               :where           [:= :archived false]}))
-           colls                           (cond->>
-                                             (t2/select Collection
-                                               {:where [:and
-                                                        (when exclude-archived?
-                                                          [:= :archived false])
-                                                        [:= :namespace nil]
-                                                        (collection/visible-collection-ids->honeysql-filter-clause
-                                                         :id
-                                                         (collection/permissions-set->visible-collection-ids @api/*current-user-permissions-set*))]})
-                                             exclude-other-user-collections?
-                                             (remove-other-users-personal-collections api/*current-user-id*))
-           colls-with-details              (map collection/personal-collection-with-ui-details colls)]
-       (collection/collections->tree coll-type-ids colls-with-details)))))
 
 ;;; --------------------------------- Fetching a single Collection & its 'children' ----------------------------------
 
@@ -698,7 +671,7 @@
   [collection :- collection/CollectionWithLocationAndIDOrRoot]
   (-> collection
       collection/personal-collection-with-ui-details
-      (hydrate :parent_id :effective_location [:effective_ancestors :can_write] :can_write)))
+      (t2/hydrate :parent_id :effective_location [:effective_ancestors :can_write] :can_write)))
 
 (api/defendpoint GET "/:id"
   "Fetch a specific Collection with standard details added"
@@ -930,7 +903,7 @@
     (maybe-send-archived-notificaitons! collection-before-update collection-updates))
   ;; finally, return the updated object
   (-> (t2/select-one Collection :id id)
-      (hydrate :parent_id)))
+      (t2/hydrate :parent_id)))
 
 ;;; ------------------------------------------------ GRAPH ENDPOINTS -------------------------------------------------
 

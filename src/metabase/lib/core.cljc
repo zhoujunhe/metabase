@@ -60,6 +60,7 @@
    aggregations
    aggregations-metadata
    available-aggregation-operators
+   selected-aggregation-operators
    count
    avg
    count-where
@@ -72,7 +73,9 @@
    stddev
    sum
    sum-where
-   var]
+   var
+   cum-count
+   cum-sum]
   [lib.binning
    available-binning-strategies
    binning
@@ -80,7 +83,8 @@
   [lib.breakout
    breakout
    breakoutable-columns
-   breakouts]
+   breakouts
+   breakouts-metadata]
   [lib.column-group
    columns-group-columns
    group-columns]
@@ -88,11 +92,13 @@
    field
    query-for-table-id
    query-for-table-name
-   table]
+   table
+   ref-lookup]
   [lib.expression
    expression
    expressions
    expressions-metadata
+   expressionable-columns
    +
    -
    *
@@ -135,10 +141,14 @@
    lower]
   [lib.field
    fields
-   with-fields]
+   with-fields
+   fieldable-columns]
   [lib.filter
    filter
    filters
+   filterable-columns
+   filterable-column-operators
+   filter-clause
    and
    or
    not
@@ -160,7 +170,13 @@
    join-fields
    joins
    with-join-alias
-   with-join-fields]
+   with-join-fields
+   join-strategy
+   with-join-strategy
+   available-join-strategies
+   join-condition-lhs-columns
+   join-condition-rhs-columns
+   join-condition-operators]
   [lib.limit
    current-limit
    limit]

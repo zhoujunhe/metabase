@@ -1,4 +1,5 @@
 import { RowValue } from "./dataset";
+import { FieldReference } from "./query";
 import { Table, TableId } from "./table";
 
 export type FieldId = number;
@@ -53,7 +54,10 @@ export type FieldValue = [RowValue] | [RowValue, HumanReadableFieldValue];
 
 export type FieldValuesType = "list" | "search" | "none";
 
+export type FieldDimensionType = "internal" | "external";
+
 export type FieldDimension = {
+  type: FieldDimensionType;
   name: string;
   human_readable_field_id?: FieldId;
   human_readable_field?: Field;
@@ -65,10 +69,11 @@ export type FieldDimensionOption = {
   type: string;
 };
 
-export interface ConcreteField {
-  id: FieldId;
+export interface Field {
+  id: FieldId | FieldReference;
   table_id: TableId;
   table?: Table;
+  field_ref?: FieldReference;
 
   name: string;
   display_name: string;
@@ -117,10 +122,6 @@ export interface FieldValues {
   values: FieldValue[];
   has_more_values: boolean;
 }
-
-export type Field = Omit<ConcreteField, "id"> & {
-  id?: FieldId;
-};
 
 export interface FieldFormattingSettings {
   currency?: string;
