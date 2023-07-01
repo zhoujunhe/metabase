@@ -14,6 +14,11 @@ import {
   getDashboardCardMenu,
   addOrUpdateDashboardCard,
   openQuestionsSidebar,
+  describeWithSnowplow,
+  expectNoBadSnowplowEvents,
+  resetSnowplow,
+  enableTracking,
+  expectGoodSnowplowEvent,
 } from "e2e/support/helpers";
 
 import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
@@ -738,6 +743,61 @@ describe("scenarios > dashboard", () => {
   });
 });
 
+describeWithSnowplow("scenarios > dashboard", () => {
+  beforeEach(() => {
+    cy.intercept("GET", "/api/activity/recent_views").as("recentViews");
+    resetSnowplow();
+    restore();
+    cy.signInAsAdmin();
+    enableTracking();
+  });
+
+  afterEach(() => {
+    expectNoBadSnowplowEvents();
+  });
+
+  it("should allow users to add link cards to dashboards", () => {
+    visitDashboard(1);
+    editDashboard();
+    cy.findByTestId("dashboard-header").icon("link").click();
+
+    cy.wait("@recentViews");
+    cy.findByTestId("custom-edit-text-link").click().type("Orders");
+
+    saveDashboard();
+
+    expectGoodSnowplowEvent({
+      event: "new_link_card_created",
+    });
+  });
+
+  it("should track enabling the hide empty cards setting", () => {
+    visitDashboard(1);
+    editDashboard();
+
+    cy.findByTestId("dashboardcard-actions-panel").within(() => {
+      cy.icon("palette").click({ force: true });
+    });
+
+    cy.findByRole("dialog").within(() => {
+      cy.findByRole("switch", {
+        name: "Hide this card if there are no results",
+      })
+        .click() // enable
+        .click() // disable
+        .click(); // enable
+
+      expectGoodSnowplowEvent(
+        {
+          event: "card_set_to_hide_when_no_results",
+          dashboard_id: 1,
+        },
+        2,
+      );
+    });
+  });
+});
+
 function checkOptionsForFilter(filter) {
   cy.findByText("Available filters").parent().contains(filter).click();
   popover()
@@ -746,7 +806,9 @@ function checkOptionsForFilter(filter) {
     .and("not.contain", "Dashboard filters");
 
   // Get rid of the open popover to be able to select another filter
-  cy.findByText("Pick one or more filters to update").click();
+  // Uses force: true because the popover is covering this text. This happens
+  // after we introduce the database prompt banner.
+  cy.findByText("Pick one or more filters to update").click({ force: true });
 }
 
 function assertScrollBarExists() {
