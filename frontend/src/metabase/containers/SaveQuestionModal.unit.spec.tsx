@@ -10,15 +10,17 @@ import {
 } from "__support__/ui";
 import { setupEnterpriseTest } from "__support__/enterprise";
 import { mockSettings } from "__support__/settings";
+import type { CollectionEndpoints } from "__support__/server-mocks";
+import { setupCollectionsEndpoints } from "__support__/server-mocks";
 import {
-  CollectionEndpoints,
-  setupCollectionsEndpoints,
-} from "__support__/server-mocks";
+  createMockQueryBuilderState,
+  createMockState,
+} from "metabase-types/store/mocks";
 
 import { SaveQuestionModal } from "metabase/containers/SaveQuestionModal";
 import { openCollection } from "metabase/containers/ItemPicker/test-utils";
 import { ROOT_COLLECTION } from "metabase/entities/collections";
-import { CollectionId } from "metabase-types/api";
+import type { CollectionId } from "metabase-types/api";
 import { createMockCollection } from "metabase-types/api/mocks";
 import {
   createSampleDatabase,
@@ -26,7 +28,7 @@ import {
   ORDERS_ID,
   ORDERS,
 } from "metabase-types/api/mocks/presets";
-import StructuredQuery from "metabase-lib/queries/StructuredQuery";
+import type StructuredQuery from "metabase-lib/queries/StructuredQuery";
 import Question from "metabase-lib/Question";
 
 const metadata = createMockMetadata({
@@ -80,6 +82,13 @@ const setup = async (
 
   const settings = mockSettings({ "enable-query-caching": isCachingEnabled });
 
+  const state = createMockState({
+    settings,
+    qb: createMockQueryBuilderState({
+      card: question.card(),
+      originalCard: originalQuestion?.card(),
+    }),
+  });
   renderWithProviders(
     <SaveQuestionModal
       question={question}
@@ -89,9 +98,7 @@ const setup = async (
       onClose={onCloseMock}
     />,
     {
-      storeInitialState: {
-        settings,
-      },
+      storeInitialState: state,
     },
   );
   await screen.findByRole("button", { name: "Save" });
@@ -657,7 +664,6 @@ describe("SaveQuestionModal", () => {
   });
 
   describe("new collection modal", () => {
-    const nameField = () => screen.getByRole("textbox", { name: /name/i });
     const collDropdown = () => screen.getByTestId("select-button");
     const newCollBtn = () =>
       screen.getByRole("button", {
@@ -674,16 +680,10 @@ describe("SaveQuestionModal", () => {
       userEvent.click(collDropdown());
       await waitFor(() => expect(newCollBtn()).toBeInTheDocument());
     });
-    it("should not be accessible if the dashboard form is invalid", async () => {
-      await setup(getQuestion());
-      userEvent.clear(nameField());
-      userEvent.click(collDropdown());
-      await waitFor(() => expect(newCollBtn()).toBeDisabled());
-    });
     it("should open new collection modal and return to dashboard modal when clicking close", async () => {
       await setup(getQuestion());
       userEvent.click(collDropdown());
-      await waitFor(() => expect(newCollBtn()).toBeEnabled());
+      await waitFor(() => expect(newCollBtn()).toBeInTheDocument());
       userEvent.click(newCollBtn());
       await waitFor(() => expect(collModalTitle()).toBeInTheDocument());
       userEvent.click(cancelBtn());

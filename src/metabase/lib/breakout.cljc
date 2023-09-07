@@ -69,23 +69,15 @@
 
   ([query        :- ::lib.schema/query
     stage-number :- :int]
-   (let [columns             (let [stage (lib.util/query-stage query stage-number)]
-                               ;; pre-calculate refs for the visible columns so we can use them as keys when
-                               ;; using [[lib.equality/find-closest-matching-ref]] below. We'll remove them before
-                               ;; returning them
-                               (for [col (lib.metadata.calculation/visible-columns query stage-number stage)]
-                                 (assoc col ::ref (lib.ref/ref col))))
-         ref->existing-index (into {}
-                                   (map-indexed (fn [index breakout-ref]
-                                                  (when-let [matching-ref (lib.equality/find-closest-matching-ref
-                                                                           query
-                                                                           breakout-ref
-                                                                           (map ::ref columns))]
-                                                    [matching-ref index])))
-                                   (breakouts query stage-number))]
-     (some->> (not-empty columns)
-              (into [] (map (fn [col]
-                              (let [pos (ref->existing-index (::ref col))]
-                                (cond-> col
-                                  pos  (assoc :breakout-position pos)
-                                  true (dissoc ::ref))))))))))
+   (let [cols (let [stage   (lib.util/query-stage query stage-number)
+                    options {:include-implicitly-joinable-for-source-card? false}]
+                (lib.metadata.calculation/visible-columns query stage-number stage options))]
+     (when (seq cols)
+       (let [matching (lib.equality/closest-matches-in-metadata
+                        query stage-number
+                        (or (breakouts query stage-number) [])
+                        cols {})]
+         (mapv #(let [pos (matching %)]
+                  (cond-> %
+                    pos (assoc :breakout-position pos)))
+               cols))))))

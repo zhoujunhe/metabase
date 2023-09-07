@@ -1,5 +1,5 @@
 import _ from "underscore";
-import {
+import type {
   CardId,
   DatabaseId,
   FieldId,
@@ -63,6 +63,10 @@ class Metadata {
    */
   tablesList(): Table[] {
     return Object.values(this.tables);
+  }
+
+  fieldsList(): Field[] {
+    return Object.values(this.fields);
   }
 
   /**

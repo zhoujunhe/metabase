@@ -118,12 +118,18 @@ class ChartSettings extends Component {
   handleResetSettings = () => {
     MetabaseAnalytics.trackStructEvent("Chart Settings", "Reset Settings");
 
-    const settings = getClickBehaviorSettings(this._getSettings());
-    this.props.onChange(settings);
+    const originalCardSettings =
+      this.props.dashcard.card.visualization_settings;
+    const clickBehaviorSettings = getClickBehaviorSettings(this._getSettings());
+
+    this.props.onChange({ ...originalCardSettings, ...clickBehaviorSettings });
   };
 
-  handleChangeSettings = changedSettings => {
-    this.props.onChange(updateSettings(this._getSettings(), changedSettings));
+  handleChangeSettings = (changedSettings, question) => {
+    this.props.onChange(
+      updateSettings(this._getSettings(), changedSettings),
+      question,
+    );
   };
 
   handleChangeSeriesColor = (seriesKey, color) => {

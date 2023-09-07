@@ -29,14 +29,18 @@
              {}
              impersonations))))
 
-(defenterprise upsert-impersonations!
-  "Create new Connection Impersonation records or update existing ones, if they have an `:id`."
+(defenterprise insert-impersonations!
+  "Create new Connection Impersonation records. Deletes any existing Connection Impersonation records for the same
+  group and database before creating new ones."
   :feature :advanced-permissions
   [impersonations]
   (doall
    (for [impersonation impersonations]
-     (if-let [id (:id impersonation)]
-       (t2/update! :model/ConnectionImpersonation id impersonation)
+
+     (do
+       (t2/delete! :model/ConnectionImpersonation
+                   :group_id (:group_id impersonation)
+                   :db_id (:db_id impersonation))
        (-> (t2/insert-returning-instances! :model/ConnectionImpersonation impersonation)
            first)))))
 
@@ -56,9 +60,10 @@
 (defn- delete-impersonations-for-group! [{:keys [group-id]} changes]
   (log/debugf "Deleting unneeded Connection Impersonation policies for Group %d. Graph changes: %s" group-id (pr-str changes))
   (doseq [database-id (set (keys changes))]
-    (delete-impersonations-for-group-database!
-     {:group-id group-id, :database-id database-id}
-     (get-in changes [database-id :data :schemas]))))
+    (when-let [data-perm-changes (get-in changes [database-id :data :schemas])]
+      (delete-impersonations-for-group-database!
+       {:group-id group-id, :database-id database-id}
+       data-perm-changes))))
 
 (defenterprise delete-impersonations-if-needed-after-permissions-change!
   "For use only inside `metabase.models.permissions`; don't call this elsewhere. Delete Connection Impersonations that

@@ -1,13 +1,21 @@
 import {
-  restore,
-  openPeopleTable,
-  openOrdersTable,
-  openNativeEditor,
-  popover,
   enterCustomColumnDetails,
-  visualize,
+  isScrollableHorizontally,
+  openNativeEditor,
+  openOrdersTable,
+  openPeopleTable,
+  popover,
+  restore,
   summarize,
+  visualize,
+  resetTestTable,
+  resyncDatabase,
+  visitQuestionAdhoc,
+  getTable,
+  leftSidebar,
 } from "e2e/support/helpers";
+
+import { WRITABLE_DB_ID } from "e2e/support/cypress_data";
 
 describe("scenarios > visualizations > table", () => {
   beforeEach(() => {
@@ -49,7 +57,7 @@ describe("scenarios > visualizations > table", () => {
 
   it("should allow you to reorder columns in the table header", () => {
     openNativeEditor().type("select * from orders LIMIT 2");
-    cy.get(".NativeQueryEditor .Icon-play").click();
+    cy.findByTestId("native-query-editor-container").icon("play").click();
 
     cy.findByTestId("viz-settings-button").click();
 
@@ -240,7 +248,7 @@ describe("scenarios > visualizations > table", () => {
 
   it("should show field metadata popovers for native query tables", () => {
     openNativeEditor().type("select * from products");
-    cy.get(".NativeQueryEditor .Icon-play").click();
+    cy.findByTestId("native-query-editor-container").icon("play").click();
 
     cy.get(".cellData").contains("CATEGORY").trigger("mouseenter");
     popover().within(() => {
@@ -271,7 +279,7 @@ describe("scenarios > visualizations > table", () => {
     popover().should("not.exist");
   });
 
-  it("popover should not be horizontally scrollable (metabase#31339)", () => {
+  it("popover should not be scrollable horizontally (metabase#31339)", () => {
     openPeopleTable();
     headerCells().filter(":contains('Password')").click();
 
@@ -281,15 +289,12 @@ describe("scenarios > visualizations > table", () => {
       cy.wait("@findSuggestions");
     });
 
-    popover().then(popoverElement => {
-      expect(
-        popoverElement[0].clientHeight,
-        "horizontal scrollbar is not shown",
-      ).to.eq(popoverElement[0].offsetHeight);
+    popover().then($popover => {
+      expect(isScrollableHorizontally($popover[0])).to.be.false;
     });
   });
 
-  it("default picker container should not be horizontally scrollable", () => {
+  it("default picker container should not be scrollable horizontally", () => {
     openPeopleTable();
     headerCells().filter(":contains('Password')").click();
 
@@ -302,13 +307,75 @@ describe("scenarios > visualizations > table", () => {
       input.type("f");
       cy.wait("@findSuggestions");
 
-      cy.findByTestId("default-picker-container").then(containerElement => {
-        expect(
-          containerElement[0].clientHeight,
-          "horizontal scrollbar is not shown",
-        ).to.eq(containerElement[0].offsetHeight);
+      cy.findByTestId("default-picker-container").then($container => {
+        expect(isScrollableHorizontally($container[0])).to.be.false;
       });
     });
+  });
+});
+
+describe("scenarios > visualizations > table > conditional formatting", () => {
+  beforeEach(() => {
+    resetTestTable({ type: "postgres", table: "many_data_types" });
+    restore(`postgres-writable`);
+    cy.signInAsAdmin();
+    resyncDatabase({
+      dbId: WRITABLE_DB_ID,
+      tableName: "many_data_types",
+    });
+
+    getTable({ name: "many_data_types" }).then(({ id: tableId, fields }) => {
+      const booleanField = fields.find(field => field.name === "boolean");
+      const stringField = fields.find(field => field.name === "string");
+      const idField = fields.find(field => field.name === "id");
+
+      visitQuestionAdhoc({
+        dataset_query: {
+          database: WRITABLE_DB_ID,
+          query: {
+            "source-table": tableId,
+            fields: [
+              ["field", idField.id, { "base-type": idField["base_type"] }],
+              [
+                "field",
+                stringField.id,
+                { "base-type": stringField["base_type"] },
+              ],
+              [
+                "field",
+                booleanField.id,
+                { "base-type": booleanField["base_type"] },
+              ],
+            ],
+          },
+          type: "query",
+        },
+        display: "table",
+      });
+    });
+  });
+
+  it("should work with boolean columns", () => {
+    cy.findByTestId("viz-settings-button").click();
+    leftSidebar().findByText("Conditional Formatting").click();
+    cy.findByRole("button", { name: /add a rule/i }).click();
+
+    popover().findByRole("option", { name: "Boolean" }).click();
+
+    //Dismiss popover
+    leftSidebar().findByText("Which columns should be affected?").click();
+
+    //Check that is-true was applied by default to boolean field rule
+    cy.findByTestId("conditional-formatting-value-operator-button").should(
+      "contain.text",
+      "is true",
+    );
+
+    cy.findByRole("gridcell", { name: "true" }).should(
+      "have.css",
+      "background-color",
+      "rgba(80, 158, 227, 0.65)",
+    );
   });
 });
 

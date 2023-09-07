@@ -1,4 +1,5 @@
-import { useState, ChangeEvent } from "react";
+import type { ChangeEvent } from "react";
+import { useState } from "react";
 import { t } from "ttag";
 
 import type { Collection, CollectionId } from "metabase-types/api";
@@ -93,7 +94,7 @@ const UploadTooltip = ({
         <TooltipTitle>{t`Upload data to ${collection.name}`}</TooltipTitle>
         <TooltipSubtitle>{t`${UPLOAD_FILE_TYPES.join(
           ",",
-        )} (${MAX_UPLOAD_STRING} max)`}</TooltipSubtitle>
+        )} (${MAX_UPLOAD_STRING} MB max)`}</TooltipSubtitle>
       </TooltipContainer>
     }
     placement="bottom"

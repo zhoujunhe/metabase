@@ -5,12 +5,13 @@ import {
   updateDashboardCards,
 } from "e2e/support/helpers";
 import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+import { ORDERS_DASHBOARD_ID } from "e2e/support/cypress_sample_instance_data";
 
 const { ORDERS } = SAMPLE_DATABASE;
 
-// After January 1st, 2020
+// After January 1st, 2026
 const dashboardFilter = {
-  default: "2020-01-01~",
+  default: "2026-01-01~",
   id: "d3b78b27",
   name: "Date Filter",
   slug: "date_filter",
@@ -41,7 +42,7 @@ describe("issue 12720", () => {
     cy.signInAsAdmin();
 
     // In this test we're using already present question ("Orders") and the dashboard with that question ("Orders in a dashboard")
-    cy.request("PUT", "/api/dashboard/1", {
+    cy.request("PUT", `/api/dashboard/${ORDERS_DASHBOARD_ID}`, {
       parameters: [dashboardFilter],
     });
 
@@ -95,9 +96,9 @@ describe("issue 12720", () => {
 });
 
 function clickThrough(title) {
-  visitDashboard(1);
+  visitDashboard(ORDERS_DASHBOARD_ID);
   cy.get(".DashCard").contains(title).click();
 
   cy.location("search").should("contain", dashboardFilter.default);
-  filterWidget().contains("After January 1, 2020");
+  filterWidget().contains("After January 1, 2026");
 }

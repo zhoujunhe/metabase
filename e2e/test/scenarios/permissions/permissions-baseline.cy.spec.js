@@ -7,13 +7,14 @@ import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
 import {
   ORDERS_QUESTION_ID,
   ADMIN_PERSONAL_COLLECTION_ID,
+  ORDERS_DASHBOARD_ID,
 } from "e2e/support/cypress_sample_instance_data";
 
 describe("scenarios > permissions", () => {
   beforeEach(restore);
 
   const PATHS = [
-    "/dashboard/1",
+    `/dashboard/${ORDERS_DASHBOARD_ID}`,
     `/question/${ORDERS_QUESTION_ID}`,
     `/collection/${ADMIN_PERSONAL_COLLECTION_ID}`,
     "/admin",
@@ -59,7 +60,7 @@ describe("scenarios > permissions", () => {
     cy.signIn("nodata");
     visitQuestion(ORDERS_QUESTION_ID);
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.contains("February 11, 2019, 9:40 PM"); // check that the data loads
+    cy.contains("February 11, 2025, 9:40 PM"); // check that the data loads
   });
 });
 

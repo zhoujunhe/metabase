@@ -13,10 +13,18 @@ import {
   setActionsEnabledForDB,
   summarize,
   visitDashboard,
+  visitDashboardAndCreateTab,
   visualize,
+  openQuestionsSidebar,
+  sidebar,
+  saveDashboard,
+  filterWidget,
 } from "e2e/support/helpers";
 import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
-import { ORDERS_QUESTION_ID } from "e2e/support/cypress_sample_instance_data";
+import {
+  ORDERS_QUESTION_ID,
+  ORDERS_DASHBOARD_ID,
+} from "e2e/support/cypress_sample_instance_data";
 import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
 
 const { ORDERS_ID } = SAMPLE_DATABASE;
@@ -43,7 +51,7 @@ describe("scenarios > dashboard > dashboard back navigation", () => {
     const dashboardName = "Orders in a dashboard";
     const backButtonLabel = `Back to ${dashboardName}`;
 
-    visitDashboard(1);
+    visitDashboard(ORDERS_DASHBOARD_ID);
     cy.wait("@dashboard");
     cy.findByTestId("dashcard").findByText("Orders").click();
     cy.wait("@cardQuery");
@@ -87,42 +95,50 @@ describe("scenarios > dashboard > dashboard back navigation", () => {
     cy.findByTestId("native-query-editor").should("not.be.visible");
   });
 
-  it("should display a back to the dashboard button in table x-ray dashboards", () => {
-    const cardTitle = "Sales per state";
-    cy.visit(`/auto/dashboard/table/${ORDERS_ID}`);
-    cy.wait("@dataset");
+  it(
+    "should display a back to the dashboard button in table x-ray dashboards",
+    { tags: "@slow" },
+    () => {
+      const cardTitle = "Sales per state";
+      cy.visit(`/auto/dashboard/table/${ORDERS_ID}`);
+      cy.wait("@dataset");
 
-    getDashboardCards()
-      .filter(`:contains("${cardTitle}")`)
-      .findByText(cardTitle)
-      .click();
-    cy.wait("@dataset");
+      getDashboardCards()
+        .filter(`:contains("${cardTitle}")`)
+        .findByText(cardTitle)
+        .click();
+      cy.wait("@dataset");
 
-    queryBuilderHeader()
-      .findByLabelText(/Back to .*Orders.*/)
-      .click();
+      queryBuilderHeader()
+        .findByLabelText(/Back to .*Orders.*/)
+        .click();
 
-    getDashboardCards().filter(`:contains("${cardTitle}")`).should("exist");
-  });
+      getDashboardCards().filter(`:contains("${cardTitle}")`).should("exist");
+    },
+  );
 
-  it("should display a back to the dashboard button in model x-ray dashboards", () => {
-    const cardTitle = "Orders by Subtotal";
-    cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { dataset: true });
-    cy.visit("/auto/dashboard/model/1");
-    cy.wait("@dataset");
+  it(
+    "should display a back to the dashboard button in model x-ray dashboards",
+    { tags: "@slow" },
+    () => {
+      const cardTitle = "Orders by Subtotal";
+      cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { dataset: true });
+      cy.visit("/auto/dashboard/model/1");
+      cy.wait("@dataset");
 
-    getDashboardCards()
-      .filter(`:contains("${cardTitle}")`)
-      .findByText(cardTitle)
-      .click();
-    cy.wait("@dataset");
+      getDashboardCards()
+        .filter(`:contains("${cardTitle}")`)
+        .findByText(cardTitle)
+        .click();
+      cy.wait("@dataset");
 
-    queryBuilderHeader()
-      .findByLabelText(/Back to .*Orders.*/)
-      .click();
+      queryBuilderHeader()
+        .findByLabelText(/Back to .*Orders.*/)
+        .click();
 
-    getDashboardCards().filter(`:contains("${cardTitle}")`).should("exist");
-  });
+      getDashboardCards().filter(`:contains("${cardTitle}")`).should("exist");
+    },
+  );
 
   it("should preserve query results when navigating between the dashboard and the query builder", () => {
     createDashboardWithCards();
@@ -157,7 +173,7 @@ describe("scenarios > dashboard > dashboard back navigation", () => {
   });
 
   it("should not preserve query results when the question changes during navigation", () => {
-    visitDashboard(1);
+    visitDashboard(ORDERS_DASHBOARD_ID);
     cy.wait("@dashboard");
     cy.wait("@dashcardQuery");
 
@@ -217,6 +233,29 @@ describe("scenarios > dashboard > dashboard back navigation", () => {
     cy.get("@dashboard.all").should("have.length", 1);
     cy.get("@dashcardQuery.all").should("have.length", 1);
   });
+
+  it("should return to dashboard with specific tab selected", () => {
+    visitDashboardAndCreateTab({ dashboardId: 1, save: false });
+
+    // Add card to second tab
+    cy.icon("pencil").click();
+    openQuestionsSidebar();
+    sidebar().within(() => {
+      cy.findByText("Orders, Count").click();
+    });
+    saveDashboard();
+
+    getDashboardCard().within(() => {
+      cy.findByText("Orders, Count").click();
+      cy.wait("@card");
+    });
+
+    queryBuilderHeader()
+      .findByLabelText("Back to Orders in a dashboard")
+      .click();
+
+    cy.findByRole("tab", { selected: true }).should("have.text", "Tab 2");
+  });
 });
 
 describe(
@@ -233,7 +272,52 @@ describe(
       );
     });
 
-    it("should restore a dashboard with loading cards", () => {
+    it("should preserve filter value when navigating between the dashboard and the question without re-fetch", () => {
+      // could be a regular dashboard with card and filters
+      createDashboardWithSlowCard();
+
+      cy.get("@dashboardId").then(dashboardId => {
+        cy.visit(`/dashboard/${dashboardId}`);
+        cy.wait("@dashboard");
+        cy.wait("@dashcardQuery");
+      });
+
+      // initial loading of the dashboard with card
+      cy.get("@dashcardQuery.all").should("have.length", 1);
+
+      filterWidget().findByPlaceholderText("sleep").clear().type("1{enter}");
+
+      cy.wait("@dashcardQuery");
+
+      // we applied filter, so the data is requested again
+      cy.get("@dashcardQuery.all").should("have.length", 2);
+
+      cy.log("drill down to the question");
+      getDashboardCard().within(() => {
+        cy.findByText("Sleep card").click();
+      });
+
+      filterWidget().findByPlaceholderText("sleep").should("have.value", "1");
+      // if we do not wait for this query, it's canceled and re-trigered on dashboard
+      cy.wait("@card");
+
+      cy.log("navigate back to the dashboard");
+      queryBuilderHeader().findByLabelText("Back to Sleep dashboard").click();
+
+      getDashboardCard().within(() => {
+        cy.findByText("Sleep card").should("be.visible");
+      });
+
+      filterWidget().findByPlaceholderText("sleep").should("have.value", "1");
+
+      // cached data is used, no re-fetching should happen
+      cy.get("@dashcardQuery.all").should("have.length", 2);
+    });
+
+    // be careful writing a test after this one. tests order matters.
+    // cypress will not cancel the request with slow response after the test is finished
+    // so it will affect interception of @dashcardQuery and mess up the number of requests
+    it("should restore a dashboard with loading cards and re-fetch query data", () => {
       createDashboardWithSlowCard();
       cy.get("@dashboardId").then(dashboardId => {
         cy.visit({
@@ -251,13 +335,16 @@ describe(
 
       queryBuilderHeader().within(() => {
         cy.findByLabelText("Back to Sleep dashboard").click();
-        cy.get("@dashboard.all").should("have.length", 1);
-        cy.get("@dashcardQuery.all").should("have.length", 2);
       });
 
       getDashboardCard().within(() => {
-        cy.findByText("0").should("be.visible");
+        cy.findByText("Sleep card").should("be.visible");
       });
+
+      // dashboard is taken from the cache, no re-fetch
+      cy.get("@dashboard.all").should("have.length", 1);
+      // the query is triggered second time as first one never loaded - no value in the cache
+      cy.get("@dashcardQuery.all").should("have.length", 2);
     });
   },
 );
@@ -393,6 +480,7 @@ const createDashboardWithSlowCard = () => {
     id: "96917420",
     type: "number/=",
     sectionId: "number",
+    default: 0,
   };
 
   const dashboardDetails = {
