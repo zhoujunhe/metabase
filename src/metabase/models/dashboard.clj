@@ -8,6 +8,7 @@
    [metabase.automagic-dashboards.populate :as populate]
    [metabase.db.query :as mdb.query]
    [metabase.events :as events]
+   [metabase.models.audit-log :as audit-log]
    [metabase.models.card :as card :refer [Card]]
    [metabase.models.collection :as collection :refer [Collection]]
    [metabase.models.dashboard-card
@@ -47,6 +48,21 @@
   (derive ::perms/use-parent-collection-perms)
   (derive :hook/timestamped?)
   (derive :hook/entity-id))
+
+(defmethod mi/can-write? Dashboard
+  ([instance]
+   ;; Dashboards in audit collection should be read only
+   (if (perms/is-parent-collection-audit? instance)
+     false
+     (mi/current-user-has-full-permissions? (perms/perms-objects-set-for-parent-collection instance :write))))
+  ([_ pk]
+   (mi/can-write? (t2/select-one :model/Dashboard :id pk))))
+
+(defmethod mi/can-read? Dashboard
+  ([instance]
+   (perms/can-read-audit-helper :model/Dashboard instance))
+  ([_ pk]
+   (mi/can-read? (t2/select-one :model/Dashboard :id pk))))
 
 (t2/deftransforms :model/Dashboard
   {:parameters       mi/transform-parameters-list
@@ -245,16 +261,27 @@
       (doseq [update-card to-update]
         (dashboard-card/update-dashboard-card! update-card (id->current-card (:id update-card)))))))
 
+(defn- remove-invalid-dashcards
+  "Given a list of dashcards, remove any dashcard that references cards that are either archived or not exist."
+  [dashcards]
+  (let [card-ids          (set (keep :card_id dashcards))
+        active-card-ids   (when-let [card-ids (seq card-ids)]
+                            (t2/select-pks-set :model/Card :id [:in card-ids] :archived false))
+        inactive-card-ids (set/difference card-ids active-card-ids)]
+   (remove #(contains? inactive-card-ids (:card_id %)) dashcards)))
+
 (defmethod revision/revert-to-revision! :model/Dashboard
   [_model dashboard-id _user-id serialized-dashboard]
   ;; Update the dashboard description / name / permissions
   (t2/update! :model/Dashboard dashboard-id (dissoc serialized-dashboard :cards :tabs))
   ;; Now update the tabs and cards as needed
-  (let [serialized-cards          (:cards serialized-dashboard)
+  (let [serialized-dashcards      (:cards serialized-dashboard)
         current-tabs              (t2/select-fn-vec #(dissoc (t2.realize/realize %) :created_at :updated_at :entity_id :dashboard_id)
                                                     :model/DashboardTab :dashboard_id dashboard-id)
         {:keys [old->new-tab-id]} (dashboard-tab/do-update-tabs! dashboard-id current-tabs (:tabs serialized-dashboard))
-        serialized-cards          (cond->> serialized-cards
+        serialized-dashcards      (cond->> serialized-dashcards
+                                    true
+                                    remove-invalid-dashcards
                                     ;; in case reverting result in new tabs being created,
                                     ;; we need to remap the tab-id
                                     (seq old->new-tab-id)
@@ -262,7 +289,7 @@
                                            (if-let [new-tab-id (get old->new-tab-id (:dashboard_tab_id card))]
                                              (assoc card :dashboard_tab_id new-tab-id)
                                              card))))]
-    (revert-dashcards dashboard-id serialized-cards))
+    (revert-dashcards dashboard-id serialized-dashcards))
   serialized-dashboard)
 
 (defmethod revision/diff-strings :model/Dashboard
@@ -631,3 +658,20 @@
       ;; parameter with values_source_type = "card" will depend on a card
      (set (for [card-id (some->> dashboard :parameters (keep (comp :card_id :values_source_config)))]
             ["Card" card-id])))))
+
+
+;;; ------------------------------------------------ Audit Log --------------------------------------------------------
+
+(defmethod audit-log/model-details Dashboard
+  [dashboard event-type]
+  (case event-type
+    (:dashboard-create :dashboard-delete :dashboard-read)
+    (select-keys dashboard [:description :name])
+
+    (:dashboard-add-cards :dashboard-remove-cards)
+    (-> (select-keys dashboard [:description :name :parameters :dashcards])
+        (update :dashcards (fn [dashcards]
+                             (for [{:keys [id card_id]} dashcards]
+                                  (-> (t2/select-one [Card :name :description], :id card_id)
+                                      (assoc :id id)
+                                      (assoc :card_id card_id))))))))
