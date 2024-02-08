@@ -46,7 +46,7 @@
       :or   {host "localhost", port 3306, db ""}
       :as   opts}]
   (merge
-   {:classname   "org.mariadb.jdbc.Driver"
+   {:classname   "com.mysql.jdbc.Driver"
     :subprotocol "mysql"
     :subname     (make-subname host (or port 3306) db)}
    (dissoc opts :host :port :db)))
