@@ -156,7 +156,7 @@
   org.liquibase/liquibase-core              {:mvn/version "4.21.1"              ; migration management (Java lib)
                                              :exclusions  [ch.qos.logback/logback-classic]}
   ;; The 3.X line of development for mariadb-java-client only supports the jdbc:mariadb protocol, so use 2.X for now.
-  org.mariadb.jdbc/mariadb-java-client      {:mvn/version "2.7.10"}             ; MySQL/MariaDB driver
+  org.mariadb.jdbc/mariadb-java-client      {:mvn/version "2.7.6"}             ; MySQL/MariaDB driver
   org.mindrot/jbcrypt                       {:mvn/version "0.4"}                ; Crypto library
   org.postgresql/postgresql                 {:mvn/version "42.6.0"}             ; Postgres driver
   org.quartz-scheduler/quartz               {:mvn/version "2.3.2"}              ; Quartz job scheduler, provided by quartzite but this is a newer version.

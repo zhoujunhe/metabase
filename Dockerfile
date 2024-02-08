@@ -20,11 +20,11 @@ COPY . .
 RUN git config --global --add safe.directory /home/node
 
 RUN INTERACTIVE=false CI=true MB_EDITION=$MB_EDITION bin/build.sh :version ${VERSION}
-RUN cd ~/.m2/repository/org/mariadb/jdbc/mariadb-java-client/2.7.10 \
-    && rm -f mariadb-java-client-2.7.10.jar \
+RUN cd ~/.m2/repository/org/mariadb/jdbc/mariadb-java-client/2.7.6 \
+    && rm -f mariadb-java-client-2.7.6.jar \
     && apt-get install wget -y \
-    && wget https://github.com/zhoujunhe/mariadb-connector-j/releases/download/AnalyticDB_2.7.10/mariadb-java-client-2.7.10.jar \
-    && sha1sum   mariadb-java-client-2.7.10.jar | awk '{print $1}' > mariadb-java-client-2.7.10.jar.sha1 
+    && wget https://github.com/zhoujunhe/mariadb-connector-j/releases/download/tag_AnalyticDB_2.7.6/mariadb-java-client-2.7.6.jar \
+    && sha1sum   mariadb-java-client-2.7.6.jar | awk '{print $1}' > mariadb-java-client-2.7.6.jar.sha1 
 RUN INTERACTIVE=false CI=true MB_EDITION=$MB_EDITION bin/build.sh :version ${VERSION}
 
 # ###################
