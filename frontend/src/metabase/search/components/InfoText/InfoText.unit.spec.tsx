@@ -17,7 +17,7 @@ import {
   createMockTable,
   createMockUser,
 } from "metabase-types/api/mocks";
-import type { IconName } from "metabase/core/components/Icon";
+import type { IconName } from "metabase/ui";
 import type { WrappedResult } from "metabase/search/types";
 import { InfoText } from "./InfoText";
 
@@ -198,7 +198,7 @@ describe("InfoText", () => {
       expect(databaseLink).toBeInTheDocument();
       expect(databaseLink).toHaveAttribute(
         "href",
-        `/browse/${MOCK_DATABASE.id}-database-name`,
+        `/browse/databases/${MOCK_DATABASE.id}-database-name`,
       );
 
       expect(screen.getByTestId("revision-history-button")).toHaveTextContent(

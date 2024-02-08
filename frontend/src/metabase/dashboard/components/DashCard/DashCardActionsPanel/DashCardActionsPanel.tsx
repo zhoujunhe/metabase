@@ -2,7 +2,7 @@ import { t } from "ttag";
 
 import type { MouseEvent } from "react";
 import { useState } from "react";
-import { Icon } from "metabase/core/components/Icon";
+import { Icon } from "metabase/ui";
 
 import { getVisualizationRaw } from "metabase/visualizations";
 
@@ -14,8 +14,9 @@ import type {
 } from "metabase-types/api";
 
 import { isActionDashCard } from "metabase/actions/utils";
-import { isLinkDashCard } from "metabase/dashboard/utils";
+import { isLinkDashCard, isVirtualDashCard } from "metabase/dashboard/utils";
 
+import { useDuplicateDashCard } from "./use-duplicate-dashcard";
 import { ChartSettingsButton } from "./ChartSettingsButton/ChartSettingsButton";
 import { DashCardTabMenu } from "./DashCardTabMenu/DashCardTabMenu";
 import { DashCardActionButton } from "./DashCardActionButton/DashCardActionButton";
@@ -32,11 +33,11 @@ interface Props {
   dashboard: Dashboard;
   dashcard?: DashboardCard;
   isLoading: boolean;
-  isVirtualDashCard: boolean;
   isPreviewing: boolean;
   hasError: boolean;
   onRemove: () => void;
   onAddSeries: () => void;
+  onReplaceCard: () => void;
   onReplaceAllVisualizationSettings: (settings: VisualizationSettings) => void;
   onUpdateVisualizationSettings: (
     settings: Partial<VisualizationSettings>,
@@ -52,11 +53,11 @@ export function DashCardActionsPanel({
   dashboard,
   dashcard,
   isLoading,
-  isVirtualDashCard,
   isPreviewing,
   hasError,
   onRemove,
   onAddSeries,
+  onReplaceCard,
   onReplaceAllVisualizationSettings,
   onUpdateVisualizationSettings,
   showClickBehaviorSidebar,
@@ -71,9 +72,9 @@ export function DashCardActionsPanel({
     disableClickBehavior,
   } = getVisualizationRaw(series) ?? {};
 
-  const [isDashCardTabMenuOpen, setIsDashCardTabMenuOpen] = useState(false);
-
   const buttons = [];
+
+  const [isDashCardTabMenuOpen, setIsDashCardTabMenuOpen] = useState(false);
 
   if (dashcard) {
     buttons.push(
@@ -117,10 +118,11 @@ export function DashCardActionsPanel({
       );
     }
 
-    if (!isVirtualDashCard && !disableClickBehavior) {
+    if (dashcard && !isVirtualDashCard(dashcard) && !disableClickBehavior) {
       buttons.push(
         <DashCardActionButton
           key="click-behavior-tooltip"
+          aria-label={t`Click behavior`}
           tooltip={t`Click behavior`}
           analyticsEvent="Dashboard;Open Click Behavior Sidebar"
           onClick={showClickBehaviorSidebar}
@@ -129,7 +131,36 @@ export function DashCardActionsPanel({
         </DashCardActionButton>,
       );
     }
+  }
 
+  if (!isLoading && dashcard && !isVirtualDashCard(dashcard)) {
+    buttons.push(
+      <DashCardActionButton
+        key="replace-question"
+        aria-label={t`Replace`}
+        tooltip={t`Replace`}
+        onClick={onReplaceCard}
+      >
+        <Icon name="refresh_downstream" />
+      </DashCardActionButton>,
+    );
+  }
+
+  const duplicateDashcard = useDuplicateDashCard({ dashboard, dashcard });
+  if (!isLoading && dashcard) {
+    buttons.push(
+      <DashCardActionButton
+        key="duplicate-question"
+        aria-label={t`Duplicate`}
+        tooltip={t`Duplicate`}
+        onClick={duplicateDashcard}
+      >
+        <Icon name="copy" />
+      </DashCardActionButton>,
+    );
+  }
+
+  if (!isLoading && !hasError) {
     if (supportsSeries) {
       buttons.push(
         <AddSeriesButton

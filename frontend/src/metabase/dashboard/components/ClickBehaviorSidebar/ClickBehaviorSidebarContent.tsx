@@ -3,7 +3,7 @@ import { getIn } from "icepick";
 
 import type {
   Dashboard,
-  DashboardCard,
+  QuestionDashboardCard,
   DashCardId,
   CardId,
   ClickBehavior,
@@ -21,7 +21,7 @@ import { SidebarContent } from "./ClickBehaviorSidebar.styled";
 
 interface Props {
   dashboard: Dashboard;
-  dashcard: DashboardCard;
+  dashcard: QuestionDashboardCard;
   dashcardData: Record<DashCardId, Record<CardId, DatasetData>>;
   parameters: UiParameter[];
   clickBehavior?: ClickBehavior;
@@ -48,6 +48,7 @@ export function ClickBehaviorSidebarContent({
     if (clickBehavior) {
       return clickBehavior;
     }
+    // drill-through menu
     return { type: "actionMenu" };
   }, [clickBehavior]);
 
@@ -65,7 +66,7 @@ export function ClickBehaviorSidebarContent({
     );
   }
 
-  if (isTypeSelectorVisible) {
+  if (isTypeSelectorVisible || finalClickBehavior.type === "actionMenu") {
     return (
       <SidebarContent>
         <TypeSelector

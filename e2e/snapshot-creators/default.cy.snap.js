@@ -214,7 +214,7 @@ describe("snapshots", () => {
     cy.createQuestion({
       name: "Orders Model",
       query: { "source-table": ORDERS_ID },
-      dataset: true,
+      type: "model",
     });
   }
 
@@ -305,6 +305,10 @@ function getDefaultInstanceData() {
 
   cy.request("/api/database").then(({ body: { data: databases } }) => {
     instanceData.databases = databases;
+  });
+
+  cy.request("/api/permissions/group").then(({ body: groups }) => {
+    instanceData.groups = groups;
   });
 
   cy.request("/api/collection").then(({ body: collections }) => {

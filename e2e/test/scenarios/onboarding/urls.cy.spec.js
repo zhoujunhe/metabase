@@ -24,20 +24,21 @@ describe("URLs", () => {
   });
 
   describe("browse databases", () => {
-    it(`should slugify database name when opening it from /browse"`, () => {
-      cy.visit("/browse");
+    it(`should slugify database name when opening it from /browse/databases"`, () => {
+      cy.visit("/browse/databases");
+      cy.findByRole("tab", { name: "Databases" }).click();
       cy.findByTextEnsureVisible("Sample Database").click();
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Sample Database");
       cy.location("pathname").should(
         "eq",
-        `/browse/${SAMPLE_DB_ID}-sample-database`,
+        `/browse/databases/${SAMPLE_DB_ID}-sample-database`,
       );
     });
 
     [
-      `/browse/${SAVED_QUESTIONS_VIRTUAL_DB_ID}`,
-      `/browse/${SAVED_QUESTIONS_VIRTUAL_DB_ID}-saved-questions`,
+      `/browse/databases/${SAVED_QUESTIONS_VIRTUAL_DB_ID}`,
+      `/browse/databases/${SAVED_QUESTIONS_VIRTUAL_DB_ID}-saved-questions`,
     ].forEach(url => {
       it("should open 'Saved Questions' database correctly", () => {
         cy.visit(url);
@@ -104,18 +105,6 @@ describe("URLs", () => {
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("All personal collections");
       cy.location("pathname").should("eq", "/collection/users");
-    });
-
-    it("should slugify users' personal collection URLs", () => {
-      cy.visit("/collection/users");
-      // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-      cy.findByText(getFullName(normal)).click();
-      cy.location("pathname").should(
-        "eq",
-        `/collection/${NORMAL_PERSONAL_COLLECTION_ID}-${getUsersPersonalCollectionSlug(
-          normal,
-        )}`,
-      );
     });
 
     it("should open slugified URLs correctly", () => {

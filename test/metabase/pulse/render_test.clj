@@ -75,7 +75,7 @@
                                            {}
                                            {:cols [{:base_type :type/Number}]
                                             :rows [[6]]})))
-    (is (= :smartscalar
+    (is (= :javascript_visualization
            (render/detect-pulse-chart-type {:display :smartscalar}
                                            {}
                                            {:cols     [{:base_type :type/Temporal
@@ -162,7 +162,7 @@
 
 (deftest table-rendering-of-percent-types-test
   (testing "If a column is marked as a :type/Percentage semantic type it should render as a percent"
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (mt/with-temp [Card {base-card-id :id} {:dataset_query {:database (mt/id)
                                                               :type     :query
                                                               :query    {:source-table (mt/id :orders)
@@ -195,18 +195,15 @@
                            :as            question-card} {:dataset_query {:type     :query
                                                                           :database (mt/id)
                                                                           :query    {:source-table (format "card__%s" model-card-id)}}}]
-        ;; NOTE -- The logic in metabase.pulse.render.common/number-formatter renders values between 1 and 100 as an
+        ;; NOTE -- The logic in metabase.formatter/number-formatter renders values between 1 and 100 as an
         ;; integer value. IDK if this is what we want long term, but this captures the current logic. If we do extend
         ;; the significant digits in the formatter, we'll need to modify this test as well.
         (letfn [(create-comparison-results [query-results card]
                   (let [expected      (mapv (fn [row]
-                                              (format "%s%%" (Math/round ^float (* 100 (peek row)))))
+                                              (format "%.2f%%" (* 100 (peek row))))
                                             (get-in query-results [:data :rows]))
                         rendered-card (render/render-pulse-card :inline (pulse/defaulted-timezone card) card nil query-results)
-                        table         (-> rendered-card
-                                          (get-in [:content 1 2 4 2])
-                                          first
-                                          second)
+                        table         (get-in rendered-card [:content 1 2 4 2 1])
                         tax-col       (->>
                                         (rest (get-in table [2 1]))
                                         (map-indexed (fn [i v] [i (last v)]))
@@ -228,7 +225,7 @@
   (testing "the title of the card should be an <a> tag so you can click on title using old outlook clients (#12901)"
     (mt/with-temp [Card card {:name          "A Card"
                               :dataset_query (mt/mbql-query venues {:limit 1})}]
-      (mt/with-temp-env-var-value [mb-site-url "https://mb.com"]
+      (mt/with-temp-env-var-value! [mb-site-url "https://mb.com"]
         (let [rendered-card-content (:content (binding [render/*include-title* true]
                                                 (render/render-pulse-card :inline (pulse/defaulted-timezone card) card nil (qp/process-query (:dataset_query card)))))]
           (is (some? (mbql.u/match-one rendered-card-content

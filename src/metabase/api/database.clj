@@ -5,7 +5,6 @@
    [compojure.core :refer [DELETE GET POST PUT]]
    [medley.core :as m]
    [metabase.analytics.snowplow :as snowplow]
-   [metabase.api.card :as api.card]
    [metabase.api.common :as api]
    [metabase.api.table :as api.table]
    [metabase.config :as config]
@@ -40,6 +39,7 @@
    [metabase.sync.sync-metadata :as sync-metadata]
    [metabase.sync.util :as sync-util]
    [metabase.task.persist-refresh :as task.persist-refresh]
+   [metabase.upload :as upload]
    [metabase.util :as u]
    [metabase.util.cron :as u.cron]
    [metabase.util.honey-sql-2 :as h2x]
@@ -239,7 +239,7 @@
   (let [uploads-db-id (public-settings/uploads-database-id)]
     (for [db dbs]
       (assoc db :can_upload (and (= (:id db) uploads-db-id)
-                                 (api.card/can-upload? db (public-settings/uploads-schema-name)))))))
+                                 (upload/can-create-upload? db (public-settings/uploads-schema-name)))))))
 
 (defn- dbs-list
   [& {:keys [include-tables?
@@ -336,7 +336,7 @@
   "Add an entry about whether the user can upload to this DB."
   [db]
   (assoc db :can_upload (and (= (u/the-id db) (public-settings/uploads-database-id))
-                             (api.card/can-upload? db (public-settings/uploads-schema-name)))))
+                             (upload/can-create-upload? db (public-settings/uploads-schema-name)))))
 
 (api/defendpoint GET "/:id"
   "Get a single Database with `id`. Optionally pass `?include=tables` or `?include=tables.fields` to include the Tables
@@ -546,15 +546,21 @@
                 :limit    50})))
 
 (defn- autocomplete-fields [db-id search-string limit]
+  ;; NOTE: measuring showed that this query performance is improved ~4x when adding trgm index in pgsql and ~10x when
+  ;; adding a index on `lower(metabase_field.name)` for ordering (trgm index having on impact on queries with index).
+  ;; Pgsql now has an index on that (see migration `v49.2023-01-24T12:00:00`) as other dbms do not support indexes on
+  ;; expressions.
   (t2/select [Field :name :base_type :semantic_type :id :table_id [:table.name :table_name]]
              :metabase_field.active          true
              :%lower.metabase_field/name     [:like (u/lower-case-en search-string)]
              :metabase_field.visibility_type [:not-in ["sensitive" "retired"]]
              :table.db_id                    db-id
-             {:order-by  [[[:lower :metabase_field.name] :asc]
-                          [[:lower :table.name] :asc]]
-              :left-join [[:metabase_table :table] [:= :table.id :metabase_field.table_id]]
-              :limit     limit}))
+             {:order-by   [[[:lower :metabase_field.name] :asc]
+                           [[:lower :table.name] :asc]]
+              ;; checking for table.active in join makes query faster when there are a lot of inactive tables
+              :inner-join [[:metabase_table :table] [:and :table.active
+                                                     [:= :table.id :metabase_field.table_id]]]
+              :limit      limit}))
 
 (defn- autocomplete-results [tables fields limit]
   (let [tbl-count   (count tables)
@@ -590,6 +596,7 @@
          "Larger instances can have performance issues matching using substring, so can use prefix matching, "
          " or turn autocompletions off."))
   :visibility :public
+  :export?    true
   :type       :keyword
   :default    :substring
   :audit      :raw-value
@@ -619,11 +626,16 @@
   (when (and (str/blank? prefix) (str/blank? substring))
     (throw (ex-info (tru "Must include prefix or search") {:status-code 400})))
   (try
-    (cond
-      substring
-      (autocomplete-suggestions id (str "%" substring "%"))
-      prefix
-      (autocomplete-suggestions id (str prefix "%")))
+    {:status  200
+     ;; Presumably user will repeat same prefixes many times writing the query,
+     ;; so let them cache response to make autocomplete feel fast. 60 seconds
+     ;; is not enough to be a nuisance when schema or permissions change. Cache
+     ;; is user-specific since we're checking for permissions.
+     :headers {"Cache-Control" "public, max-age=60"
+               "Vary"          "Cookie"}
+     :body    (cond
+                substring (autocomplete-suggestions id (str "%" substring "%"))
+                prefix    (autocomplete-suggestions id (str prefix "%")))}
     (catch Throwable e
       (log/warn e (trs "Error with autocomplete: {0}" (ex-message e))))))
 

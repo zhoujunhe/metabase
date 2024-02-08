@@ -13,6 +13,7 @@
    [metabase.lib.schema :as lib.schema]
    [metabase.lib.schema.aggregation :as lib.schema.aggregation]
    [metabase.lib.schema.common :as lib.schema.common]
+   [metabase.lib.schema.metadata :as lib.schema.metadata]
    [metabase.lib.temporal-bucket :as lib.temporal-bucket]
    [metabase.lib.types.isa :as lib.types.isa]
    [metabase.lib.util :as lib.util]
@@ -23,8 +24,9 @@
 (mu/defn column-metadata->aggregation-ref :- :mbql.clause/aggregation
   "Given `:metadata/column` column metadata for an aggregation, construct an `:aggregation` reference."
   [metadata :- lib.metadata/ColumnMetadata]
-  (let [options {:lib/uuid       (str (random-uuid))
-                 :effective-type ((some-fn :effective-type :base-type) metadata)}
+  (let [options {:lib/uuid        (str (random-uuid))
+                 :effective-type  ((some-fn :effective-type :base-type) metadata)
+                 :lib/source-name (:name metadata)}
         ag-uuid (:lib/source-uuid metadata)]
     (assert ag-uuid "Metadata for an aggregation reference should include :lib/source-uuid")
     [:aggregation options ag-uuid]))
@@ -358,16 +360,18 @@
                 (= (:short agg-op) op)
                 (-> (assoc :selected? true)
                     (m/update-existing
-                     :columns
-                     (fn [cols]
-                       (let [cols (lib.equality/mark-selected-columns
-                                   cols
-                                   [(lib.options/update-options agg-col dissoc :temporal-unit)])]
-                         (mapv (fn [c]
-                                 (cond-> c
-                                   (some? agg-temporal-unit)
-                                   (lib.temporal-bucket/with-temporal-bucket agg-temporal-unit)))
-                               cols)))))))
+                      :columns
+                      (fn [cols]
+                        (if (lib.util/ref-clause? agg-col)
+                          (let [cols (lib.equality/mark-selected-columns
+                                       cols
+                                       [(lib.options/update-options agg-col dissoc :temporal-unit)])]
+                            (mapv (fn [c]
+                                    (cond-> c
+                                      (some? agg-temporal-unit)
+                                      (lib.temporal-bucket/with-temporal-bucket agg-temporal-unit)))
+                                  cols))
+                          cols))))))
             agg-operators))))
 
 (mu/defn aggregation-ref :- :mbql.clause/aggregation
@@ -401,3 +405,15 @@
   (let [ags (aggregations query stage-number)]
     (when (> (clojure.core/count ags) index)
       (nth ags index))))
+
+(mu/defn aggregation-column :- [:maybe ::lib.schema.metadata/column]
+  "Returns the column consumed by this aggregation, eg. the column being summed.
+
+  Returns nil for aggregations like `[:count]` that don't specify a column."
+  [query                                         :- ::lib.schema/query
+   stage-number                                  :- :int
+   [_operator _opts column-ref :as _aggregation] :- ::lib.schema.aggregation/aggregation]
+  (when column-ref
+    (->> (lib.util/query-stage query stage-number)
+         (lib.metadata.calculation/visible-columns query stage-number)
+         (lib.equality/find-matching-column column-ref))))

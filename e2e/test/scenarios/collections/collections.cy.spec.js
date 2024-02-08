@@ -202,7 +202,7 @@ describe("scenarios > collection defaults", () => {
         });
     });
 
-    popover().within(() => {
+    cy.findByRole("tooltip").within(() => {
       cy.findByRole("link").should("include.text", "link");
       cy.findByRole("link").should("not.include.text", "[link]");
     });
@@ -583,7 +583,7 @@ describe("scenarios > collection defaults", () => {
     });
 
     it("should allow to x-ray models from collection views", () => {
-      cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { dataset: true });
+      cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { type: "model" });
       cy.visit("/collection/root");
 
       openEllipsisMenuFor("Orders");

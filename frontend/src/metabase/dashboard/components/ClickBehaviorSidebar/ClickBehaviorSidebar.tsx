@@ -8,7 +8,7 @@ import { Sidebar } from "metabase/dashboard/components/Sidebar";
 
 import type {
   Dashboard,
-  DashboardCard,
+  QuestionDashboardCard,
   DashCardId,
   CardId,
   ClickBehavior,
@@ -35,7 +35,7 @@ type VizSettings = Record<string, unknown>;
 
 interface Props {
   dashboard: Dashboard;
-  dashcard: DashboardCard;
+  dashcard: QuestionDashboardCard;
   dashcardData: Record<DashCardId, Record<CardId, DatasetData>>;
   parameters: UiParameter[];
   hideClickBehaviorSidebar: () => void;
@@ -125,7 +125,10 @@ export function ClickBehaviorSidebar({
         });
       }
 
-      const changedType = nextClickBehavior.type !== clickBehavior?.type;
+      // nextClickBehavior is `undefined` for drill-through menu
+      const changedType =
+        !!nextClickBehavior && nextClickBehavior.type !== clickBehavior?.type;
+
       if (changedType) {
         // move to next screen
         setTypeSelectorVisible(false);

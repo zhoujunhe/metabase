@@ -64,14 +64,14 @@ describe("NativeQuery", () => {
         expect(Array.isArray(query.tables()[0].fields)).toBe(true);
       });
     });
-    describe("databaseId()", () => {
+    describe("_databaseId()", () => {
       it("returns the Database ID of the wrapped query", () => {
-        expect(query.databaseId()).toBe(SAMPLE_DB_ID);
+        expect(query._databaseId()).toBe(SAMPLE_DB_ID);
       });
     });
-    describe("database()", () => {
+    describe("_database()", () => {
       it("returns a dictionary with the underlying database of the wrapped query", () => {
-        expect(query.database().id).toBe(SAMPLE_DB_ID);
+        expect(query._database().id).toBe(SAMPLE_DB_ID);
       });
     });
 
@@ -134,21 +134,7 @@ describe("NativeQuery", () => {
       });
     });
   });
-  describe("clean", () => {
-    it("should add template-tags: {} if there are none", () => {
-      const cleanedQuery = native =>
-        new NativeQuery(sampleDatabase.question(), {
-          type: "native",
-          database: SAMPLE_DB_ID,
-          native,
-        })
-          .clean()
-          .datasetQuery();
-      const q1 = cleanedQuery({ query: "select 1" });
-      const q2 = cleanedQuery({ query: "select 1", "template-tags": {} });
-      expect(q1).toEqual(q2);
-    });
-  });
+
   describe("Accessing the underlying native query", () => {
     test("You can access the actual native query via queryText()", () => {
       expect(makeQuery("SELECT * FROM ORDERS").queryText()).toEqual(

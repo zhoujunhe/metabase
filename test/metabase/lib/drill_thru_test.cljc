@@ -44,7 +44,7 @@
             [:created-at "2018-05-15T08:04:04.58Z"]
             [:quantity   3]]))
 
- (def ^:private products-query
+(def ^:private products-query
   (lib/query meta/metadata-provider (meta/table-metadata :products)))
 
 (def ^:private products-row
@@ -57,6 +57,18 @@
             [:price      38.42]
             [:rating     3.5]
             [:created-at "2016-10-19T12:34:56.789Z"]]))
+
+(def ^:private reviews-query
+  (lib/query meta/metadata-provider (meta/table-metadata :reviews)))
+
+(def ^:private reviews-row
+  (row-for :reviews
+           [[:id         4]
+            [:product-id 1]
+            [:reviewer   "barbara-shields"]
+            [:rating     4]
+            [:body       "lorem ipsum"]
+            [:created-at "2023-11-13T10:29:43.394Z"]]))
 
 (defn- drill-thru-test-args [drill]
   (case (:type drill)
@@ -92,16 +104,13 @@
          :drill-thru/pivot
          (log/warn "drill-thru-method is not yet implemented for :drill-thru/pivot (#33559)")
 
-         :drill-thru/underlying-records
-         (log/warn "drill-thru-method is not yet implemented for :drill-thru/underlying-records (#34233)")
-
          (testing (str "\nquery =\n" (u/pprint-to-str query)
                        "\ndrill =\n" (u/pprint-to-str drill)
                        "\nargs =\n" (u/pprint-to-str args))
            (try
              (let [query' (apply lib/drill-thru query -1 drill args)]
                (is (not (me/humanize (mc/validate ::lib.schema/query query'))))
-               (when (< depth test-drill-applications-max-depth)
+               (when (< (inc depth) test-drill-applications-max-depth)
                  (testing (str "\n\nDEPTH = " (inc depth) "\n\nquery =\n" (u/pprint-to-str query'))
                    (test-drill-applications query' context (inc depth)))))
              (catch #?(:clj Throwable :cljs :default) e
@@ -130,13 +139,13 @@
   (testing "column headers: click on"
     (testing "foreign key - distribution, column filter (default: Is), sort, summarize (distinct only)"
       (let [context (basic-context (meta/field-metadata :orders :user-id) nil)]
-        (is (=? [{:lib/type :metabase.lib.drill-thru/drill-thru
-                  :type     :drill-thru/distribution
-                  :column   (meta/field-metadata :orders :user-id)}
-                 {:lib/type   :metabase.lib.drill-thru/drill-thru
+        (is (=? [{:lib/type   :metabase.lib.drill-thru/drill-thru
                   :type       :drill-thru/column-filter
                   :column     (meta/field-metadata :orders :user-id)
                   :initial-op {:short := :display-name-variant :default}}
+                 {:lib/type :metabase.lib.drill-thru/drill-thru
+                  :type     :drill-thru/distribution
+                  :column   (meta/field-metadata :orders :user-id)}
                  {:lib/type        :metabase.lib.drill-thru/drill-thru
                   :type            :drill-thru/sort
                   :column          (meta/field-metadata :orders :user-id)
@@ -152,13 +161,13 @@
   (testing "column headers: click on"
     (testing "numeric column - distribution, column filter (default: Equal To), sort, summarize (all 3), summarize by time"
       (let [context (basic-context (meta/field-metadata :orders :subtotal) nil)]
-        (is (=? [{:lib/type :metabase.lib.drill-thru/drill-thru
-                  :type     :drill-thru/distribution
-                  :column   (meta/field-metadata :orders :subtotal)}
-                 {:lib/type   :metabase.lib.drill-thru/drill-thru
+        (is (=? [{:lib/type   :metabase.lib.drill-thru/drill-thru
                   :type       :drill-thru/column-filter
                   :column     (meta/field-metadata :orders :subtotal)
                   :initial-op {:short := :display-name-variant :equal-to}}
+                 {:lib/type :metabase.lib.drill-thru/drill-thru
+                  :type     :drill-thru/distribution
+                  :column   (meta/field-metadata :orders :subtotal)}
                  {:lib/type        :metabase.lib.drill-thru/drill-thru
                   :type            :drill-thru/sort
                   :column          (meta/field-metadata :orders :subtotal)
@@ -179,13 +188,13 @@
   (testing "column headers: click on"
     (testing "date column - distribution, column filter (no default), sort, summarize (distinct only)"
       (let [context (basic-context (meta/field-metadata :orders :created-at) nil)]
-        (is (=? [{:lib/type :metabase.lib.drill-thru/drill-thru
-                  :type     :drill-thru/distribution
-                  :column   (meta/field-metadata :orders :created-at)}
-                 {:lib/type   :metabase.lib.drill-thru/drill-thru
+        (is (=? [{:lib/type   :metabase.lib.drill-thru/drill-thru
                   :type       :drill-thru/column-filter
                   :column     (meta/field-metadata :orders :created-at)
                   :initial-op nil}
+                 {:lib/type :metabase.lib.drill-thru/drill-thru
+                  :type     :drill-thru/distribution
+                  :column   (meta/field-metadata :orders :created-at)}
                  {:lib/type        :metabase.lib.drill-thru/drill-thru
                   :type            :drill-thru/sort
                   :column          (meta/field-metadata :orders :created-at)
@@ -200,13 +209,13 @@
 (deftest ^:parallel table-view-available-drill-thrus-headers-sorted-column-test
   (testing "column headers: click on"
     (testing "a sorted column"
-      (let [expected [{:lib/type :metabase.lib.drill-thru/drill-thru
-                       :type     :drill-thru/distribution
-                       :column   (meta/field-metadata :orders :subtotal)}
-                      {:lib/type   :metabase.lib.drill-thru/drill-thru
+      (let [expected [{:lib/type   :metabase.lib.drill-thru/drill-thru
                        :type       :drill-thru/column-filter
                        :column     (meta/field-metadata :orders :subtotal)
                        :initial-op {:short := :display-name-variant :equal-to}}
+                      {:lib/type :metabase.lib.drill-thru/drill-thru
+                       :type     :drill-thru/distribution
+                       :column   (meta/field-metadata :orders :subtotal)}
                       {:lib/type        :metabase.lib.drill-thru/drill-thru
                        :type            :drill-thru/sort
                        :column          (meta/field-metadata :orders :subtotal)
@@ -313,6 +322,27 @@
                 (lib/available-drill-thrus products-query -1 context)))
         (test-drill-applications products-query context)))))
 
+(deftest ^:parallel table-view-available-drill-thrus-description-value-test
+  (testing "table values: click on"
+    (testing "description value - filter contains, does-not-contain, and object details *for the PK column*"
+      (let [context (merge (basic-context (meta/field-metadata :reviews :body) "lorem ipsum")
+                           {:row reviews-row})]
+        (is (=? [{:lib/type  :metabase.lib.drill-thru/drill-thru
+                  :type      :drill-thru/zoom
+                  :column    (meta/field-metadata :reviews :id) ; It should correctly find the PK column
+                  :object-id (-> reviews-row first :value)      ; And its value
+                  :many-pks? false}
+                 {:lib/type  :metabase.lib.drill-thru/drill-thru
+                  :type      :drill-thru/quick-filter
+                  :operators (for [[op label] [[:contains "contains"]
+                                               [:does-not-contain "does-not-contain"]]]
+                               {:name   label
+                                :filter [op {:lib/uuid string?}
+                                         [:field {:lib/uuid string?} (meta/id :reviews :body)]
+                                         "lorem ipsum"]})}]
+                (lib/available-drill-thrus reviews-query -1 context)))
+        (test-drill-applications reviews-query context)))))
+
 (deftest ^:parallel table-view-available-drill-thrus-null-value-test
   (testing "table values: click on"
     (testing "NULL value - basic quick filters and object details *for the PK column*"
@@ -374,7 +404,14 @@
             _                 (assert created-at-column)
             row               [(basic-context created-at-column "2018-05-01T00:00:00Z")
                                (basic-context count-column 457)]
-            expected-drills   {:quick-filter       {:lib/type  :metabase.lib.drill-thru/drill-thru
+            expected-drills   {:automatic-insights {:lib/type   :metabase.lib.drill-thru/drill-thru
+                                                    :type       :drill-thru/automatic-insights
+                                                    :column-ref some?
+                                                    :dimensions [{:column     {:name                     "CREATED_AT"
+                                                                               ::lib.field/temporal-unit :month}
+                                                                  :column-ref some?
+                                                                  :value      "2018-05-01T00:00:00Z"}]}
+                               :quick-filter       {:lib/type  :metabase.lib.drill-thru/drill-thru
                                                     :type      :drill-thru/quick-filter
                                                     :operators [{:name "<"}
                                                                 {:name ">"}
@@ -408,7 +445,8 @@
                                {:row        row
                                 :dimensions [(basic-context created-at-column "2018-05-01T00:00:00Z")]})]
             (testing (str "\ncontext =\n" (u/pprint-to-str context))
-              (is (=? (map expected-drills [:pivot :quick-filter :underlying-records :zoom-in.timeseries])
+              (is (=? (map expected-drills [:automatic-insights :pivot :quick-filter :underlying-records
+                                            :zoom-in.timeseries])
                       (lib/available-drill-thrus query -1 context)))
               (test-drill-applications query context))))))))
 
@@ -419,7 +457,7 @@
             column  (m/find-first #(= (:name %) "count")
                                   (lib/returned-columns orders-count-aggregation-breakout-on-created-at-by-month-query))
             _       (assert column)
-            context (merge (basic-context column "2018-05")
+            context (merge (basic-context column 10)
                            {:row [(basic-context (meta/field-metadata :orders :created-at) "2018-05")
                                   (basic-context column 10)]})]
         (testing (str "\ncontext =\n" (u/pprint-to-str context))
@@ -504,6 +542,10 @@
                                 {:row   [breakout-dim sum-dim]
                                  :dimensions [breakout-dim]})]
         (is (=? [{:lib/type   :metabase.lib.drill-thru/drill-thru
+                  :type       :drill-thru/automatic-insights
+                  :dimensions [breakout-dim]
+                  :column-ref (:column-ref sum-dim)}
+                 {:lib/type   :metabase.lib.drill-thru/drill-thru
                   :type       :drill-thru/pivot
                   :pivots     {:category (repeat 5 {})
                                :location (repeat 3 {})}}
@@ -635,8 +677,8 @@
    {:click-type  :header
     :query-type  :unaggregated
     :column-name "PRODUCT_ID"
-    :expected    [{:type :drill-thru/distribution}
-                  {:type :drill-thru/column-filter, :initial-op {:short :=}}
+    :expected    [{:type :drill-thru/column-filter, :initial-op {:short :=}}
+                  {:type :drill-thru/distribution}
                   {:type :drill-thru/sort, :sort-directions [:asc :desc]}
                   {:type :drill-thru/summarize-column, :aggregations [:distinct]}]}))
 
@@ -645,8 +687,8 @@
    {:click-type  :header
     :query-type  :unaggregated
     :column-name "SUBTOTAL"
-    :expected    [{:type :drill-thru/distribution}
-                  {:type :drill-thru/column-filter, :initial-op {:short :=}}
+    :expected    [{:type :drill-thru/column-filter, :initial-op {:short :=}}
+                  {:type :drill-thru/distribution}
                   {:type :drill-thru/sort, :sort-directions [:asc :desc]}
                   {:type :drill-thru/summarize-column, :aggregations [:distinct :sum :avg]}
                   {:type :drill-thru/summarize-column-by-time}]}))
@@ -656,8 +698,8 @@
    {:click-type  :header
     :query-type  :unaggregated
     :column-name "CREATED_AT"
-    :expected    [{:type :drill-thru/distribution}
-                  {:type :drill-thru/column-filter, :initial-op nil}
+    :expected    [{:type :drill-thru/column-filter, :initial-op nil}
+                  {:type :drill-thru/distribution}
                   {:type :drill-thru/sort, :sort-directions [:asc :desc]}
                   {:type :drill-thru/summarize-column, :aggregations [:distinct]}]}))
 
@@ -669,7 +711,10 @@
    {:click-type  :cell
     :query-type  :aggregated
     :column-name "count"
-    :expected    [{:type      :drill-thru/quick-filter
+    :expected    [{:type :drill-thru/automatic-insights
+                   :dimensions [{:column {:name "PRODUCT_ID"}}
+                                {:column {:name "CREATED_AT"}}]}
+                  {:type      :drill-thru/quick-filter
                    :operators [{:name "<"}
                                {:name ">"}
                                {:name "="}
@@ -688,7 +733,10 @@
      {:click-type  :cell
       :query-type  :aggregated
       :column-name "max"
-      :expected    [{:type :drill-thru/quick-filter, :operators [{:name "="}
+      :expected    [{:type :drill-thru/automatic-insights
+                     :dimensions [{:column {:name "PRODUCT_ID"}}
+                                  {:column {:name "CREATED_AT"}}]}
+                    {:type :drill-thru/quick-filter, :operators [{:name "="}
                                                                  {:name "≠"}]}
                     {:type :drill-thru/underlying-records, :row-count 2, :table-name "Orders"}
                     {:type :drill-thru/zoom-in.timeseries, :display-name "See this month by week"}]})))

@@ -1,5 +1,4 @@
 import { withRouter } from "react-router";
-import type { Location } from "history";
 import type { Collection, CollectionId } from "metabase-types/api";
 
 import { isInstanceAnalyticsCollection } from "metabase/collections/utils";
@@ -15,21 +14,25 @@ import { CollectionPermissions } from "./CollectionPermissions";
 
 export interface CollectionHeaderProps {
   collection: Collection;
-  location: Location;
   isAdmin: boolean;
   isBookmarked: boolean;
   isPersonalCollectionChild: boolean;
   onUpdateCollection: (entity: Collection, values: Partial<Collection>) => void;
   onCreateBookmark: (collection: Collection) => void;
   onDeleteBookmark: (collection: Collection) => void;
-  onUpload: (file: File, collectionId: CollectionId) => void;
+  onUpload: ({
+    file,
+    collectionId,
+  }: {
+    file: File;
+    collectionId: CollectionId;
+  }) => void;
   canUpload: boolean;
   uploadsEnabled: boolean;
 }
 
 const CollectionHeader = ({
   collection,
-  location,
   isAdmin,
   isBookmarked,
   isPersonalCollectionChild,

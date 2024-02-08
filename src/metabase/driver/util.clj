@@ -118,11 +118,12 @@
   "Consider [[metabase.driver/can-connect?]] / [[can-connect-with-details?]] to have failed if they were not able to
   successfully connect after this many milliseconds. By default, this is 10 seconds."
   :visibility :internal
+  :export?    false
   :type       :integer
   ;; for TESTS use a timeout time of 3 seconds. This is because we have some tests that check whether
   ;; [[driver/can-connect?]] is failing when it should, and we don't want them waiting 10 seconds to fail.
   ;;
-  ;; Don't set the timeout too low -- I've have Circle fail when the timeout was 1000ms on *one* occasion.
+  ;; Don't set the timeout too low -- I've had Circle fail when the timeout was 1000ms on *one* occasion.
   :default    (if config/is-test?
                 3000
                 10000))
@@ -596,15 +597,20 @@
     (.init trust-manager-factory trust-store)
     (.getTrustManagers trust-manager-factory)))
 
-(defn ssl-socket-factory
-  "Generates an `SocketFactory` with the custom certificates added"
-  ^SocketFactory [& {:keys [private-key own-cert trust-cert]}]
+(defn ssl-context
+  "Generates a `SSLContext` with the custom certificates added."
+  ^javax.net.ssl.SSLContext [& {:keys [private-key own-cert trust-cert]}]
   (let [ssl-context (SSLContext/getInstance "TLS")]
     (.init ssl-context
            (when (and private-key own-cert) (key-managers private-key (str (random-uuid)) own-cert))
            (when trust-cert (trust-managers trust-cert))
            nil)
-    (.getSocketFactory ssl-context)))
+    ssl-context))
+
+(defn ssl-socket-factory
+  "Generates a `SocketFactory` with the custom certificates added."
+  ^SocketFactory [& {:keys [_private-key _own-cert _trust-cert] :as args}]
+    (.getSocketFactory (ssl-context args)))
 
 (def default-sensitive-fields
   "Set of fields that should always be obfuscated in API responses, as they contain sensitive data."

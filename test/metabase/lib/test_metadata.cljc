@@ -2058,7 +2058,7 @@
   [_table-name _field-name]
   {:description                nil
    :database-type              "CHARACTER VARYING"
-   :semantic-type              nil
+   :semantic-type              :type/Description
    :table-id                   (id :reviews)
    :coercion-strategy          nil
    :name                       "BODY"
@@ -2245,7 +2245,7 @@
    :coercion-strategy          nil
    :name                       "id"
    :fingerprint-version        5
-   :has-field-values           "auto-list"
+   :has-field-values           :auto-list
    :settings                   nil
    :caveats                    nil
    :fk-target-field-id         nil
@@ -2279,7 +2279,7 @@
    :coercion-strategy          nil
    :name                       "created_by"
    :fingerprint-version        5
-   :has-field-values           "auto-list"
+   :has-field-values           :auto-list
    :settings                   nil
    :caveats                    nil
    :fk-target-field-id         (id :ic/accounts :id)
@@ -2311,7 +2311,7 @@
    :coercion-strategy          nil
    :name                       "updated_by"
    :fingerprint-version        5
-   :has-field-values           "auto-list"
+   :has-field-values           :auto-list
    :settings                   nil
    :caveats                    nil
    :fk-target-field-id         (id :ic/accounts :id)
@@ -2391,7 +2391,8 @@
    :metadata-sync-schedule      "0 50 * * * ? *"
    :name                        "test-data"
    :settings                    {:breakout-bin-width 10.0
-                                 :breakout-bins-num  8}
+                                 :breakout-bins-num  8
+                                 :enable-xrays       true}
    :caveats                     nil
    :tables                      [(table-metadata-method :categories)
                                  (table-metadata-method :checkins)
@@ -2412,6 +2413,7 @@
    :options                     nil
    :engine                      :h2
    :initial-sync-status         "complete"
+   :native-permissions          :write
    :dbms-version                {:flavor "H2", :version "2.1.212 (2022-04-09)", :semantic-version [2 1]}
    :refingerprint               nil
    :points-of-interest          nil
@@ -2425,6 +2427,12 @@
 (def metadata-provider
   "[[metabase.lib.metadata.protocols/MetadataProvider]] using the test [[metadata]]."
   (meta.graph-provider/->SimpleGraphMetadataProvider metadata))
+
+(defn updated-metadata-provider
+  "[[metabase.lib.metadata.protocols/MetadataProvider]] using the test [[metadata]] after it has been adjusted by
+  the provided function, called like [[update]], that is `(f metadata args...)`."
+  [f & args]
+  (meta.graph-provider/->SimpleGraphMetadataProvider (apply f metadata args)))
 
 (mu/defn tables :- [:set :keyword]
   "Set of valid table names."

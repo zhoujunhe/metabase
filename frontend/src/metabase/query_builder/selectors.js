@@ -5,8 +5,9 @@ import { createSelector } from "@reduxjs/toolkit";
 import _ from "underscore";
 import { getIn, merge, updateIn } from "icepick";
 
+import * as Lib from "metabase-lib";
+
 // Needed due to wrong dependency resolution order
-import { Mode } from "metabase/visualizations/click-actions/Mode";
 import {
   extractRemappings,
   getVisualizationTransformed,
@@ -29,17 +30,14 @@ import {
   getXValues,
   isTimeseries,
 } from "metabase/visualizations/lib/renderer_utils";
-import { ObjectMode } from "metabase/visualizations/click-actions/modes/ObjectMode";
 
 import { LOAD_COMPLETE_FAVICON } from "metabase/hoc/Favicon";
-import * as ML from "metabase-lib/v2";
 import { getCardUiParameters } from "metabase-lib/parameters/utils/cards";
 import {
   normalizeParameters,
   normalizeParameterValue,
 } from "metabase-lib/parameters/utils/parameter-values";
 import { getIsPKFromTablePredicate } from "metabase-lib/types/utils/isa";
-import NativeQuery from "metabase-lib/queries/NativeQuery";
 import Question from "metabase-lib/Question";
 import { isAdHocModelQuestion } from "metabase-lib/metadata/utils/models";
 
@@ -351,12 +349,8 @@ export const getQuestion = createSelector(
   },
 );
 
-function isQuestionEditable(question) {
-  return !question?.query().readOnly();
-}
-
 function areLegacyQueriesEqual(queryA, queryB, tableMetadata) {
-  return ML.areLegacyQueriesEqual(
+  return Lib.areLegacyQueriesEqual(
     queryA,
     queryB,
     tableMetadata?.fields.map(({ id }) => id),
@@ -448,10 +442,12 @@ export const getIsResultDirty = createSelector(
     tableMetadata,
   ) => {
     const haveParametersChanged = !_.isEqual(lastParameters, nextParameters);
+    const isEditable =
+      question && Lib.queryDisplayInfo(question.query()).isEditable;
 
     return (
       haveParametersChanged ||
-      (isQuestionEditable(question) &&
+      (isEditable &&
         !areQueriesEquivalent({
           originalQuestion,
           lastRunQuestion,
@@ -534,11 +530,8 @@ const isZoomingRow = createSelector(
 );
 
 export const getMode = createSelector(
-  [getLastRunQuestion, isZoomingRow],
-  (question, isZoomingRow) =>
-    isZoomingRow
-      ? new Mode(question, ObjectMode)
-      : question && getQuestionMode(question),
+  [getLastRunQuestion],
+  question => question && getQuestionMode(question),
 );
 
 export const getIsObjectDetail = createSelector(
@@ -575,11 +568,6 @@ export const getIsSavedQuestionChanged = createSelector(
   },
 );
 
-export const getQuery = createSelector(
-  [getQuestion],
-  question => question && question.query(),
-);
-
 export const getIsRunnable = createSelector(
   [getQuestion, getIsDirty],
   (question, isDirty) => {
@@ -587,7 +575,8 @@ export const getIsRunnable = createSelector(
       return false;
     }
     if (!question.isSaved() || isDirty) {
-      return question.canRun() && !question.query().readOnly();
+      const { isEditable } = Lib.queryDisplayInfo(question.query());
+      return question.canRun() && isEditable;
     }
     return question.canRun();
   },
@@ -637,7 +626,10 @@ export const getShouldShowUnsavedChangesWarning = createSelector(
       return isDirty || isMetadataDirty;
     }
 
-    if (question?.isNative()) {
+    const isNative =
+      question && Lib.queryDisplayInfo(question.query()).isNative;
+
+    if (isNative) {
       const isNewQuestion = !originalQuestion;
 
       if (isNewQuestion) {
@@ -647,7 +639,11 @@ export const getShouldShowUnsavedChangesWarning = createSelector(
       return isSavedQuestionChanged;
     }
 
-    if (originalQuestion?.isStructured()) {
+    const isOriginalQuestionNative =
+      originalQuestion &&
+      Lib.queryDisplayInfo(originalQuestion.query()).isNative;
+
+    if (!isOriginalQuestionNative) {
       return uiControls.isModifiedFromNotebook;
     }
 
@@ -720,7 +716,7 @@ export const getVisualizationSettings = createSelector(
  */
 export const getIsNative = createSelector(
   [getQuestion],
-  question => question && question.query() instanceof NativeQuery,
+  question => question && Lib.queryDisplayInfo(question.query()).isNative,
 );
 
 /**
@@ -998,3 +994,33 @@ export const getIsEditingInDashboard = state => {
 export const getDashboard = state => {
   return getDashboardById(state, getDashboardId(state));
 };
+
+export const canUploadToQuestion = question => state => {
+  const uploadsEnabled = getSetting(state, "uploads-enabled");
+  if (!uploadsEnabled) {
+    return false;
+  }
+  const uploadsDbId = getSetting(state, "uploads-database-id");
+  const canUploadToDb =
+    uploadsDbId === question.databaseId() &&
+    Databases.selectors
+      .getObject(state, {
+        entityId: uploadsDbId,
+      })
+      ?.canUpload();
+  return canUploadToDb;
+};
+
+export const getTemplateTags = createSelector([getCard], card =>
+  getIn(card, ["dataset_query", "native", "template-tags"]),
+);
+
+export const getRequiredTemplateTags = createSelector(
+  [getTemplateTags],
+  templateTags =>
+    templateTags
+      ? Object.keys(templateTags)
+          .filter(key => templateTags[key].required)
+          .map(key => templateTags[key])
+      : [],
+);

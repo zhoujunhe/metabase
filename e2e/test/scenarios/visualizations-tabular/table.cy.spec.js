@@ -5,6 +5,7 @@ import {
   openOrdersTable,
   openPeopleTable,
   popover,
+  hovercard,
   restore,
   summarize,
   visualize,
@@ -119,7 +120,7 @@ describe("scenarios > visualizations > table", () => {
     );
   });
 
-  it("should show field metadata in a popover when hovering over a table column header", () => {
+  it("should show field metadata in a hovercard when hovering over a table column header", () => {
     const ccName = "Foo";
 
     openPeopleTable({ mode: "notebook", limit: 2 });
@@ -186,7 +187,7 @@ describe("scenarios > visualizations > table", () => {
           // semantic type
           cy.contains("No special type");
           // fingerprint
-          cy.findByText(/-0\d:00/);
+          cy.findByText("Timezone");
           cy.findByText("April 26, 1958, 12:00 AM");
           cy.findByText("April 3, 2000, 12:00 AM");
         },
@@ -212,7 +213,10 @@ describe("scenarios > visualizations > table", () => {
         },
       ],
     ].forEach(([column, test]) => {
-      cy.get(".cellData").contains(column).trigger("mouseenter");
+      cy.get(".cellData").contains(column).realHover();
+
+      // Add a delay here because there can be two popovers active for a very short time.
+      cy.wait(100);
 
       popover().within(() => {
         test();
@@ -227,11 +231,15 @@ describe("scenarios > visualizations > table", () => {
 
     cy.wait("@dataset");
 
-    cy.get(".Visualization").within(() => {
-      // Make sure new table results loaded with Custom column and Count columns
-      cy.contains(ccName);
-      cy.contains("Count").trigger("mouseenter");
+    cy.get(".cellData").contains("Count").realHover();
+    hovercard().within(() => {
+      cy.contains("Quantity");
+      cy.findByText("No description");
     });
+
+    // Make sure new table results loaded with Custom column and Count columns
+    cy.get(".cellData").contains(ccName).realHover();
+    cy.wait(100);
 
     popover().within(() => {
       cy.contains("No special type");
@@ -242,21 +250,21 @@ describe("scenarios > visualizations > table", () => {
   it("should show the field metadata popover for a foreign key field (metabase#19577)", () => {
     openOrdersTable({ limit: 2 });
 
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("Product ID").trigger("mouseenter");
+    cy.get(".cellData").contains("Product ID").realHover();
 
-    popover().within(() => {
+    hovercard().within(() => {
       cy.contains("Foreign Key");
       cy.contains("The product ID.");
     });
   });
 
-  it("should show field metadata popovers for native query tables", () => {
+  it("should show field metadata hovercards for native query tables", () => {
     openNativeEditor().type("select * from products");
     cy.findByTestId("native-query-editor-container").icon("play").click();
 
-    cy.get(".cellData").contains("CATEGORY").trigger("mouseenter");
-    popover().within(() => {
+    cy.get(".cellData").contains("CATEGORY").realHover();
+
+    hovercard().within(() => {
       cy.contains("No special type");
       cy.findByText("No description");
     });
@@ -296,25 +304,6 @@ describe("scenarios > visualizations > table", () => {
 
     popover().then($popover => {
       expect(isScrollableHorizontally($popover[0])).to.be.false;
-    });
-  });
-
-  it("default picker container should not be scrollable horizontally", () => {
-    openPeopleTable();
-    headerCells().filter(":contains('Password')").click();
-
-    popover().within(() => {
-      cy.findByText("Filter by this column").click();
-
-      const input = cy.findByPlaceholderText("Search by Password");
-      input.type("e").blur();
-      cy.wait("@findSuggestions");
-      input.type("f");
-      cy.wait("@findSuggestions");
-
-      cy.findByTestId("default-picker-container").then($container => {
-        expect(isScrollableHorizontally($container[0])).to.be.false;
-      });
     });
   });
 });
@@ -381,6 +370,58 @@ describe("scenarios > visualizations > table > conditional formatting", () => {
       "background-color",
       "rgba(80, 158, 227, 0.65)",
     );
+  });
+});
+
+describe("scenarios > visualizations > table > time formatting (#11398)", () => {
+  const singleTimeQuery = `
+      WITH t1 AS (SELECT TIMESTAMP '2023-01-01 18:34:00' AS time_value),
+           t2 AS (SELECT CAST(time_value AS TIME) AS creation_time
+                  FROM t1)
+      SELECT *
+      FROM t2;
+  `;
+
+  beforeEach(() => {
+    restore();
+    cy.signInAsNormalUser();
+  });
+
+  it("should work with time columns", { tags: ["@external"] }, () => {
+    cy.createNativeQuestion(
+      {
+        name: "11398",
+        native: {
+          query: singleTimeQuery,
+        },
+      },
+      { visitQuestion: true },
+    );
+
+    // Open the formatting menu
+    cy.findByTestId("field-info-popover").click();
+
+    cy.findByTestId("drill-through-section").within(() => {
+      cy.icon("gear").click();
+    });
+
+    cy.findByTestId("column-formatting-settings").within(() => {
+      // Set to hours, minutes, seconds, 24-hour clock
+      cy.findByText("HH:MM:SS").click();
+      cy.findByText("17:24 (24-hour clock)").click();
+    });
+
+    // And you should find the result
+    cy.findByRole("gridcell").findByText("18:34:00");
+
+    cy.findByTestId("column-formatting-settings").within(() => {
+      // Add millisecond display and change back to 12 hours
+      cy.findByText("HH:MM:SS.MS").click();
+      cy.findByText("5:24 PM (12-hour clock)").click();
+    });
+
+    // And you should find the result
+    cy.findByRole("gridcell").findByText("6:34:00.000 PM");
   });
 });
 

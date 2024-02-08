@@ -283,7 +283,7 @@ describe("scenarios > question > settings", () => {
       const questionDetails = {
         dataset_query: {
           database: SAMPLE_DB_ID,
-          query: { "source-table": 2 },
+          query: { "source-table": ORDERS_ID },
           type: "query",
         },
         display: "table",
@@ -469,6 +469,7 @@ describe("scenarios > question > settings", () => {
       // create a new question to see if the "add to a dashboard" modal is still there
       openNavigationSidebar();
       browse().click();
+      cy.findByRole("tab", { name: "Databases" }).click();
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.contains("Sample Database").click();
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage

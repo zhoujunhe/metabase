@@ -4,7 +4,7 @@ import { t } from "ttag";
 import { connect } from "react-redux";
 import type { LocationDescriptor } from "history";
 
-import type { IconName, IconProps } from "metabase/core/components/Icon";
+import type { IconName, IconProps } from "metabase/ui";
 
 import Visualization from "metabase/visualizations/components/Visualization";
 import { WithVizSettingsData } from "metabase/dashboard/hoc/WithVizSettingsData";
@@ -17,7 +17,6 @@ import {
 
 import type {
   Dashboard,
-  DashboardCard,
   DashCardId,
   Dataset,
   Series,
@@ -25,6 +24,7 @@ import type {
   ParameterValueOrArray,
   VirtualCardDisplay,
   VisualizationSettings,
+  DashboardCard,
 } from "metabase-types/api";
 import type { Dispatch } from "metabase-types/store";
 
@@ -226,9 +226,6 @@ export function DashCardVisualization({
 
   return (
     <WrappedVisualization
-      // Visualization has to be converted to TypeScript before we can remove the ts-ignore
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
       className={cx("flex-full overflow-hidden", {
         "pointer-events-none": isEditingDashboardLayout,
       })}

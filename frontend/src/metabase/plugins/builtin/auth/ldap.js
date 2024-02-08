@@ -6,7 +6,7 @@ import {
   PLUGIN_IS_PASSWORD_USER,
 } from "metabase/plugins";
 
-import SettingsLdapForm from "metabase/admin/settings/components/SettingsLdapForm";
+import { SettingsLdapForm } from "metabase/admin/settings/components/SettingsLdapForm";
 import LdapAuthCard from "metabase/admin/settings/auth/containers/LdapAuthCard";
 import GroupMappingsWidget from "metabase/admin/settings/containers/GroupMappingsWidget";
 
@@ -19,6 +19,7 @@ PLUGIN_ADMIN_SETTINGS_UPDATES.push(
         description: null,
         noHeader: true,
         widget: LdapAuthCard,
+        forceRenderWidget: true,
       },
     ]),
   sections => ({

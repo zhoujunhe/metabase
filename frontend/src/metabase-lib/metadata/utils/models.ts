@@ -8,12 +8,13 @@ import type {
   StructuredDatasetQuery,
   FieldId,
 } from "metabase-types/api";
+import * as Lib from "metabase-lib";
 import { getQuestionVirtualTableId } from "metabase-lib/metadata/utils/saved-questions";
 import type Database from "metabase-lib/metadata/Database";
 import type Question from "metabase-lib/Question";
 import type NativeQuery from "metabase-lib/queries/NativeQuery";
 import { isSameField } from "metabase-lib/queries/utils/field-ref";
-import { isStructured } from "metabase-lib/queries/utils";
+import { isNative } from "metabase-lib/queries/utils/card";
 
 type FieldMetadata = {
   id?: FieldId | FieldReference;
@@ -97,23 +98,23 @@ export function checkDatabaseCanPersistDatasets(database?: Database | null) {
 }
 
 export function checkCanBeModel(question: Question) {
-  const query = question.query();
-
-  if (!checkDatabaseSupportsModels(query.database())) {
+  if (!checkDatabaseSupportsModels(question.database())) {
     return false;
   }
 
-  if (!question.isNative()) {
+  const { isNative } = Lib.queryDisplayInfo(question.query());
+
+  if (!isNative) {
     return true;
   }
 
-  return (query as NativeQuery)
+  return (question.legacyQuery() as NativeQuery)
     .templateTags()
     .every(isSupportedTemplateTagForModel);
 }
 
 export function isAdHocModelQuestionCard(card: Card, originalCard?: Card) {
-  if (!originalCard || !isStructured(card.dataset_query)) {
+  if (!originalCard || isNative(card)) {
     return false;
   }
 

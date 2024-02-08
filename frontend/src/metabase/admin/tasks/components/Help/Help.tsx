@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { useState } from "react";
 import { useMount } from "react-use";
 import { t } from "ttag";
@@ -6,7 +5,7 @@ import _ from "underscore";
 
 import AdminHeader from "metabase/components/AdminHeader";
 import Code from "metabase/components/Code";
-import CopyButton from "metabase/components/CopyButton";
+import { CopyButton } from "metabase/components/CopyButton";
 
 import { UtilApi } from "metabase/services";
 import { useSelector } from "metabase/lib/redux";
@@ -78,7 +77,7 @@ const HelpLink = ({ title, description, link }: HelpLinkProps) => (
 );
 
 interface InfoBlockProps {
-  children?: ReactNode;
+  children: string;
 }
 
 const InfoBlock = ({ children }: InfoBlockProps) => (
@@ -93,7 +92,7 @@ const InfoBlock = ({ children }: InfoBlockProps) => (
 export const Help = () => {
   const [details, setDetails] = useState({ "browser-info": navigatorInfo() });
   const { tag } = useSelector(state => getSetting(state, "version"));
-  const isPainPlan = useSelector(getIsPaidPlan);
+  const isPaidPlan = useSelector(getIsPaidPlan);
 
   useMount(async () => {
     const newDetails = await UtilApi.bug_report_details();
@@ -112,7 +111,7 @@ export const Help = () => {
             title={t`Get Help`}
             description={t`Resources and support`}
             link={
-              isPainPlan
+              isPaidPlan
                 ? `https://www.metabase.com/help-premium?utm_source=in-product&utm_medium=troubleshooting&utm_campaign=help&instance_version=${tag}&diag=${compactDetailStringForUrl}`
                 : `https://www.metabase.com/help?utm_source=in-product&utm_medium=troubleshooting&utm_campaign=help&instance_version=${tag}`
             }

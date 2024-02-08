@@ -3,6 +3,7 @@
   (:require
    [cheshire.core :as json]
    [clojure.java.jdbc :as jdbc]
+   [clojure.string :as str]
    [java-time.api :as t]
    [metabase.driver :as driver]
    [metabase.driver.sql-jdbc.common :as sql-jdbc.common]
@@ -17,9 +18,8 @@
    [metabase.mbql.util :as mbql.u]
    [metabase.public-settings :as public-settings]
    [metabase.query-processor.store :as qp.store]
-   [metabase.query-processor.timezone :as qp.timezone]
    [metabase.query-processor.util :as qp.util]
-   [metabase.util.date-2 :as u.date]
+   [metabase.upload :as upload]
    [metabase.util.honey-sql-2 :as h2x]
    [metabase.util.i18n :refer [trs]]
    [metabase.util.log :as log])
@@ -210,32 +210,6 @@
         y (h2x/->timestamp y)]
     (sql.qp/datetime-diff driver unit x y)))
 
-(defn- use-server-side-relative-datetime?
-  "Server side generated timestamp in :relative-datetime should be used with following units. Units gt or eq to :day."
-  [unit]
-  (contains? #{:day :week :month :quarter :year} unit))
-
-(defn- server-side-relative-datetime-honeysql-form
-  "Compute `:relative-datetime` clause value server-side. Value is sql formatted (and not passed as date time) to avoid
-   jdbc driver's timezone adjustments. Use of `qp.timezone/now` ensures correct timezone is used for the calculation.
-   For details see the [[metabase.driver.redshift-test/server-side-relative-datetime-truncation-test]]."
-  [amount unit]
-  [:cast
-   (-> (qp.timezone/now)
-       (u.date/truncate unit)
-       (u.date/add unit amount)
-       (u.date/format-sql))
-   :timestamp])
-
-(defmethod sql.qp/->honeysql [:redshift :relative-datetime]
-  [driver [_ amount unit]]
-  (if (use-server-side-relative-datetime? unit)
-    (server-side-relative-datetime-honeysql-form amount unit)
-    (let [now-hsql (sql.qp/current-datetime-honeysql-form driver)]
-      (sql.qp/date driver unit (if (zero? amount)
-                                 now-hsql
-                                 (sql.qp/add-interval-honeysql-form driver now-hsql amount unit))))))
-
 (defmethod sql.qp/datetime-diff [:redshift :year]
   [driver _unit x y]
   (h2x// (sql.qp/datetime-diff driver :month x y) 12))
@@ -390,8 +364,62 @@
            (into
             #{}
             (sql-jdbc.describe-table/describe-table-fields-xf driver table)
-            (sql-jdbc.describe-table/fallback-fields-metadata-from-select-query driver conn schema table-name))))))
+            (sql-jdbc.describe-table/fallback-fields-metadata-from-select-query driver conn db-name-or-nil schema table-name))))))
 
 (defmethod sql-jdbc.execute/set-parameter [:redshift java.time.ZonedDateTime]
   [driver ps i t]
   (sql-jdbc.execute/set-parameter driver ps i (t/sql-timestamp (t/with-zone-same-instant t (t/zone-id "UTC")))))
+
+(defmethod driver/upload-type->database-type :redshift
+  [_driver upload-type]
+  (case upload-type
+    ::upload/varchar-255              [[:varchar 255]]
+    ::upload/text                     [:text]
+    ::upload/int                      [:bigint]
+    ;; identity(1, 1) defines an auto-increment column starting from 1
+    ::upload/auto-incrementing-int-pk [:bigint [:identity 1 1]]
+    ::upload/float                    [:float]
+    ::upload/boolean                  [:boolean]
+    ::upload/date                     [:date]
+    ::upload/datetime                 [:timestamp]
+    ::upload/offset-datetime          [:timestamp-with-time-zone]))
+
+(defmethod driver/table-name-length-limit :redshift
+  [_driver]
+  ;; https://docs.aws.amazon.com/redshift/latest/dg/r_names.html
+  127)
+
+(defmethod driver/insert-into! :redshift
+  [driver db-id table-name column-names values]
+  ((get-method driver/insert-into! :sql-jdbc) driver db-id table-name column-names values))
+
+(defmethod driver/current-user-table-privileges :redshift
+  [_driver database]
+  (let [conn-spec (sql-jdbc.conn/db->pooled-connection-spec database)]
+    ;; KNOWN LIMITATION: this won't return privileges for external tables, calling has_table_privilege on an external table
+    ;; result in an operation not supported error
+    (->> (jdbc/query
+          conn-spec
+          (str/join
+           "\n"
+           ["with table_privileges as ("
+            " select"
+            "   NULL as role,"
+            "   t.schemaname as schema,"
+            "   t.objectname as table,"
+            "   pg_catalog.has_table_privilege(current_user, '\"' || t.schemaname || '\"' || '.' || '\"' || t.objectname || '\"',  'UPDATE') as update,"
+            "   pg_catalog.has_table_privilege(current_user, '\"' || t.schemaname || '\"' || '.' || '\"' || t.objectname || '\"',  'SELECT') as select,"
+            "   pg_catalog.has_table_privilege(current_user, '\"' || t.schemaname || '\"' || '.' || '\"' || t.objectname || '\"',  'INSERT') as insert,"
+            "   pg_catalog.has_table_privilege(current_user, '\"' || t.schemaname || '\"' || '.' || '\"' || t.objectname || '\"',  'DELETE') as delete"
+            " from ("
+            "   select schemaname, tablename as objectname from pg_catalog.pg_tables"
+            "   union"
+            "   select schemaname, viewname as objectname from pg_views"
+            " ) t"
+            " where t.schemaname !~ '^pg_'"
+            "   and t.schemaname <> 'information_schema'"
+            "   and pg_catalog.has_schema_privilege(current_user, t.schemaname, 'USAGE')"
+            ")"
+            "select t.*"
+            "from table_privileges t"]))
+         (filter #(or (:select %) (:update %) (:delete %) (:update %))))))

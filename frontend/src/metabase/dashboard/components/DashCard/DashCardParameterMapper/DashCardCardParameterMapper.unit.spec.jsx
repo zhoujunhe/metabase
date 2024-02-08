@@ -1,5 +1,4 @@
-import { render, screen } from "@testing-library/react";
-import { getIcon } from "__support__/ui";
+import { getIcon, renderWithProviders, screen } from "__support__/ui";
 
 import {
   createMockCard,
@@ -19,6 +18,7 @@ import { createSampleDatabase } from "metabase-types/api/mocks/presets";
 import { createMockState } from "metabase-types/store/mocks";
 import { createMockEntitiesState } from "__support__/store";
 
+import Question from "metabase-lib/Question";
 import { DashCardCardParameterMapper } from "./DashCardCardParameterMapper";
 
 const QUESTION_ID = 1;
@@ -33,12 +33,14 @@ const state = createMockState({
 const metadata = getMetadata(state); // metabase-lib Metadata instance
 
 const setup = options => {
-  render(
+  const card = options.card ?? createMockCard();
+
+  renderWithProviders(
     <DashCardCardParameterMapper
-      card={createMockCard()}
-      dashcard={createMockDashboardCard()}
-      editingParameter={{}}
-      target={null}
+      card={card}
+      dashcard={createMockDashboardCard({ card })}
+      question={new Question(card, metadata)}
+      editingParameter={createMockParameter()}
       mappingOptions={[]}
       metadata={metadata}
       setParameterMapping={jest.fn()}
@@ -50,7 +52,11 @@ const setup = options => {
 
 describe("DashCardParameterMapper", () => {
   it("should render an unauthorized state for a card with no dataset query", () => {
-    setup();
+    const card = createMockCard({
+      dataset_query: createMockStructuredDatasetQuery({ query: {} }),
+    });
+    setup({ card });
+
     expect(getIcon("key")).toBeInTheDocument();
     expect(
       screen.getByLabelText(/permission to see this question/i),
@@ -120,11 +126,13 @@ describe("DashCardParameterMapper", () => {
         card: textCard,
         size_y: 3,
         visualization_settings: {
+          text: "{{foo}} {{bar}}",
           virtual_card: textCard,
         },
       }),
       mappingOptions: ["foo", "bar"],
     });
+
     expect(screen.getByText(/Variable to map to/i)).toBeInTheDocument();
   });
 

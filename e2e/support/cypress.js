@@ -1,6 +1,3 @@
-// Cypress analytics and the alternative to Cypress dashboard
-// Needs to sit at the top of this file to catch all exceptions!
-import "@deploysentinel/cypress-debugger/support";
 import registerCypressGrep from "@cypress/grep";
 registerCypressGrep();
 
@@ -20,6 +17,18 @@ if (runWithReplay) {
 require("cy-verify-downloads").addCustomCommand();
 
 Cypress.on("uncaught:exception", (err, runnable) => false);
+
+Cypress.on("test:before:run", () => {
+  // Check wether FE is running in dev mode
+  const feHealthcheck = Cypress.env().feHealthcheck;
+  if (feHealthcheck?.enabled) {
+    fetch(feHealthcheck.url).catch(() =>
+      alert(
+        `⛔️ ${feHealthcheck.url} is not available.\n\nIs dev server running?`,
+      ),
+    );
+  }
+});
 
 Cypress.on("test:after:run", (test, runnable) => {
   if (test.state === "failed") {
@@ -44,4 +53,25 @@ Cypress.on("test:after:run", (test, runnable) => {
       { title: "Video", value: `../../videos/${Cypress.spec.name}.mp4` },
     );
   }
+});
+
+/**
+ * Our app registers beforeunload event listener e.g. when editing a native SQL question.
+ * Cypress does not automatically close the browser prompt and does not allow manually
+ * interacting with it (unlike with window.confirm). The test will hang forever with
+ * the prompt displayed and will eventually time out. We need to work around this by
+ * monkey-patching window.addEventListener to ignore beforeunload event handlers.
+ *
+ * @see https://github.com/cypress-io/cypress/issues/2118
+ */
+Cypress.on("window:load", window => {
+  const addEventListener = window.addEventListener;
+
+  window.addEventListener = function (event) {
+    if (event === "beforeunload") {
+      return;
+    }
+
+    return addEventListener.apply(this, arguments);
+  };
 });

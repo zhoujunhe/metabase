@@ -19,7 +19,10 @@ export const trackExportDashboardToPDF = (dashboardId: DashboardId) => {
 
 type CardTypes = "text" | "heading" | "link" | "action";
 
-export const trackCardCreated = (type: CardTypes, dashboard_id: number) => {
+export const trackCardCreated = (
+  type: CardTypes,
+  dashboard_id: DashboardId,
+) => {
   if (!type) {
     return;
   }
@@ -46,6 +49,27 @@ export const trackDashboardSaved = ({
 export const trackCardMoved = (dashboardId: DashboardId) => {
   trackSchemaEvent("dashboard", DASHBOARD_SCHEMA_VERSION, {
     event: `card_moved_to_tab`,
+    dashboard_id: dashboardId,
+  });
+};
+
+export const trackQuestionReplaced = (dashboardId: DashboardId) => {
+  trackSchemaEvent("dashboard", DASHBOARD_SCHEMA_VERSION, {
+    event: "dashboard_card_replaced",
+    dashboard_id: dashboardId,
+  });
+};
+
+export const trackDashcardDuplicated = (dashboardId: DashboardId) => {
+  trackSchemaEvent("dashboard", DASHBOARD_SCHEMA_VERSION, {
+    event: "dashboard_card_duplicated",
+    dashboard_id: dashboardId,
+  });
+};
+
+export const trackTabDuplicated = (dashboardId: DashboardId) => {
+  trackSchemaEvent("dashboard", DASHBOARD_SCHEMA_VERSION, {
+    event: "dashboard_tab_duplicated",
     dashboard_id: dashboardId,
   });
 };

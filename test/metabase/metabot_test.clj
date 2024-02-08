@@ -53,8 +53,8 @@
 
 (deftest infer-sql-test
   (testing "Test the 'plumbing' of the infer-sql function. The actual invocation of the remote bot is dynamically rebound."
-    (mt/with-temp-env-var-value [mb-is-metabot-enabled true]
-      (mt/dataset sample-dataset
+    (mt/with-temp-env-var-value! [mb-is-metabot-enabled true]
+      (mt/dataset test-data
         (t2.with-temp/with-temp
           [Card model {:dataset_query
                        {:database (mt/id)
@@ -79,8 +79,8 @@
 
 (deftest infer-model-test
   (testing "Test the 'plumbing' of the infer-model function. The actual invocation of the remote bot is dynamically rebound."
-    (mt/with-temp-env-var-value [mb-is-metabot-enabled true]
-      (mt/dataset sample-dataset
+    (mt/with-temp-env-var-value! [mb-is-metabot-enabled true]
+      (mt/dataset test-data
         (t2.with-temp/with-temp
           [Card orders-model {:name    "Orders Model"
                               :dataset_query
@@ -127,8 +127,8 @@
 
 (deftest infer-native-sql-test
   (testing "Test the 'plumbing' of the infer-native-sql function. The actual invocation of the remote bot is dynamically rebound."
-    (mt/with-temp-env-var-value [mb-is-metabot-enabled true]
-      (mt/dataset sample-dataset
+    (mt/with-temp-env-var-value! [mb-is-metabot-enabled true]
+      (mt/dataset test-data
         (let [user_prompt "Show me all of my reviews data"
               context     {:database    (metabot-util/denormalize-database (mt/db))
                            :user_prompt user_prompt

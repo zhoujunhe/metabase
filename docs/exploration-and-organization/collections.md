@@ -24,9 +24,15 @@ They're like file-system folders. You can put stuff in them.
 
 ![Official collections](./images/official-collection.png)
 
-Metabase admins can designate collections as "official". These collections have a yellow badge to let people know that the items in the collection are the ones people should be looking at (or whatever "official" means to you). Questions and dashboards in official collections are also more likely to show up at the top of search results. Pairing Official badges with [verified items](./exploration.md#verified-items) can help everyone in your Metabase sort out which questions people can trust.
+Metabase admins can designate collections as "official" with the following effects:
 
-To add an official badge to a collection, an admin can visit the collection and click on the dot dot dot menu (**...**) and select **Make collection official**. Admins can also remove an official badge in the same menu. Admins can also mark a collection as official or not when they first create the collection.
+- These collections have a yellow badge to let people know that the items in the collection are the ones people should be looking at (or whatever "official" means to you).
+- Questions in Official collections added to Dashboards that are not in Official collections will show an Official badge next to their name on the Dashboard.
+- Questions and dashboards in Official collections are also more likely to show up at the top of search results.
+
+Pairing Official badges with [verified items](./exploration.md#verified-items) can help everyone in your Metabase sort out which questions people can trust.
+
+To add an Official badge to a collection, an admin can visit the collection and click on the dot dot dot menu (**...**) and select **Make collection official**. Admins can also remove an Official badge in the same menu. Admins can also mark a collection as Official or not when they first create the collection.
 
 ## Collection permissions
 
@@ -56,7 +62,7 @@ If you just want to organize _your_ favorite items, you should [bookmark them](.
 
 ## Moving items from collection to collection
 
-To move a question, dashboard, or pulse into a collection, or from one collection to another, just click and drag it onto the collection where you want it to go. You can also click on the `…` menu to the right of the question and pick the Move action. If you're trying to move several things at once, click on the items' icons to select them, then click the Move action that pops up at the bottom of the screen.
+To move an item from one collection to another, just click and drag it onto the collection where you want it to go. You can also click on the `…` menu to the right of the item and pick the **Move** action. If you're trying to move several things at once, click on the items' icons to select them, then click the Move action that pops up at the bottom of the screen.
 
 ![Selecting questions](./images/question-checkbox.png)
 

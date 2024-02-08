@@ -7,7 +7,8 @@
    [metabase-enterprise.serialization.v2.ingest :as serdes.ingest]
    [metabase.models.serialization :as serdes]
    [metabase.util.i18n :refer [trs]]
-   [metabase.util.log :as log]))
+   [metabase.util.log :as log]
+   [toucan2.core :as t2]))
 
 (declare load-one!)
 
@@ -82,19 +83,23 @@
 
 (defn load-metabase!
   "Loads in a database export from an ingestion source, which is any Ingestable instance."
-  [ingestion & {:keys [abort-on-error] :or {abort-on-error true}}]
-  ;; We proceed in the arbitrary order of ingest-list, deserializing all the files. Their declared dependencies guide
-  ;; the import, and make sure all containers are imported before contents, etc.
-  (serdes.backfill/backfill-ids!)
-  (let [contents (serdes.ingest/ingest-list ingestion)
-        ctx      {:expanding #{}
-                  :seen      #{}
-                  :ingestion ingestion
-                  :from-ids  (m/index-by :id contents)
-                  :errors    []}
-        result   (reduce (if abort-on-error load-one! try-load-one!) ctx contents)]
-    (when-let [errors (seq (:errors result))]
-      (log/error (trs "Errors were encountered during import."))
-      (doseq [e errors]
-        (log/error e "Import error details:")))
-    result))
+  [ingestion & {:keys [abort-on-error backfill?]
+                :or {abort-on-error true
+                     backfill? true}}]
+  (t2/with-transaction [_tx]
+    ;; We proceed in the arbitrary order of ingest-list, deserializing all the files. Their declared dependencies
+    ;; guide the import, and make sure all containers are imported before contents, etc.
+    (when backfill?
+      (serdes.backfill/backfill-ids!))
+    (let [contents (serdes.ingest/ingest-list ingestion)
+          ctx      {:expanding #{}
+                    :seen      #{}
+                    :ingestion ingestion
+                    :from-ids  (m/index-by :id contents)
+                    :errors    []}
+          result   (reduce (if abort-on-error load-one! try-load-one!) ctx contents)]
+      (when-let [errors (seq (:errors result))]
+        (log/error (trs "Errors were encountered during import."))
+        (doseq [e errors]
+          (log/error e "Import error details:")))
+      result)))

@@ -7,12 +7,20 @@ export function selectDashboardFilter(selection, filterName) {
   popover().contains(filterName).click({ force: true });
 }
 
+export function disconnectDashboardFilter(selection) {
+  selection.findByLabelText("Disconnect").click();
+}
+
 export function getDashboardCards() {
   return cy.get(".DashCard");
 }
 
 export function getDashboardCard(index = 0) {
   return getDashboardCards().eq(index);
+}
+
+export function ensureDashboardCardHasText(text, index = 0) {
+  cy.get(".Card").eq(index).should("contain", text);
 }
 
 function getDashboardApiUrl(dashId) {
@@ -65,6 +73,19 @@ export function showDashboardCardActions(index = 0) {
   getDashboardCard(index).realHover({ scrollBehavior: "bottom" });
 }
 
+/**
+ * Given a dashcard HTML element, will return the element for the action icon
+ * with the given label text (e.g. "Click behavior", "Replace", "Duplicate", etc)
+ *
+ * @param {Cypress.Chainable<JQuery<HTMLElement>>} dashcardElement
+ * @param {string} labelText
+ *
+ * @returns {Cypress.Chainable<JQuery<HTMLElement>>}
+ */
+export function findDashCardAction(dashcardElement, labelText) {
+  return dashcardElement.realHover().findByLabelText(labelText);
+}
+
 export function removeDashboardCard(index = 0) {
   getDashboardCard(index)
     .realHover({ scrollBehavior: "bottom" })
@@ -90,10 +111,11 @@ export function editDashboard() {
 export function saveDashboard({
   buttonLabel = "Save",
   editBarText = "You're editing this dashboard.",
+  waitMs = 1,
 } = {}) {
-  cy.findByText(buttonLabel).click();
+  cy.button(buttonLabel).click();
   cy.findByText(editBarText).should("not.exist");
-  cy.wait(1); // this is stupid but necessary to due to the dashboard resizing and detaching elements
+  cy.wait(waitMs); // this is stupid but necessary to due to the dashboard resizing and detaching elements
 }
 
 export function checkFilterLabelAndValue(label, value) {
@@ -114,6 +136,10 @@ export function setFilter(type, subType) {
       cy.findByText(subType).click();
     }
   });
+}
+
+export function toggleRequiredParameter() {
+  cy.findByLabelText("Always require a value").click();
 }
 
 export function createEmptyTextBox() {
@@ -167,6 +193,13 @@ export function deleteTab(tabName) {
   });
 }
 
+export function duplicateTab(tabName) {
+  cy.findByRole("tab", { name: tabName }).findByRole("button").click();
+  popover().within(() => {
+    cy.findByText("Duplicate").click();
+  });
+}
+
 export function goToTab(tabName) {
   cy.findByRole("tab", { name: tabName }).click();
 }
@@ -213,6 +246,10 @@ export const dashboardHeader = () => {
 export const dashboardGrid = () => {
   return cy.findByTestId("dashboard-grid");
 };
+
+export function dashboardSaveButton() {
+  return cy.findByTestId("edit-bar").findByRole("button", { name: "Save" });
+}
 
 /**
  * @param {Object=} option

@@ -37,10 +37,13 @@
   (:require
    [clojure.core.async :as a]
    [clojure.string :as str]
+   [clojure.test]
    [dev.debug-qp :as debug-qp]
-   [dev.model-tracking :as model-tracking]
    [dev.explain :as dev.explain]
-   [honeysql.core :as hsql]
+   [dev.model-tracking :as model-tracking]
+   [hashp.core :as hashp]
+   [honey.sql :as sql]
+   [java-time :as t]
    [malli.dev :as malli-dev]
    [metabase.api.common :as api]
    [metabase.config :as config]
@@ -58,6 +61,7 @@
    [metabase.server.handler :as handler]
    [metabase.sync :as sync]
    [metabase.test :as mt]
+   [metabase.test-runner]
    [metabase.test.data.impl :as data.impl]
    [metabase.util :as u]
    [metabase.util.log :as log]
@@ -73,6 +77,7 @@
   debug-qp/keep-me
   model-tracking/keep-me)
 
+#_:clj-kondo/ignore
 (defn tap>-spy [x]
   (doto x tap>))
 
@@ -87,15 +92,26 @@
   untrack!
   untrack-all!
   reset-changes!
-  changes])
+  changes]
+ [mt
+  set-ns-log-level!])
 
 (def initialized?
+  "Was Metabase already initialized? Used in `init!` to prevent calling `core/init!`
+   more than once (during `start!`, for example)."
   (atom nil))
 
 (defn init!
+  "Trigger general initialization, but only once."
   []
-  (mbc/init!)
-  (reset! initialized? true))
+  (when-not @initialized?
+    (mbc/init!)
+    (reset! initialized? true)))
+
+(defn migration-timestamp
+  "Returns a UTC timestamp in format `yyyy-MM-dd'T'HH:mm:ss` that you can used to postfix for migration ID."
+  []
+  (t/format (t/formatter "yyyy-MM-dd'T'HH:mm:ss") (t/zoned-date-time (t/zone-id "UTC"))))
 
 (defn deleted-inmem-databases
   "Finds in-memory Databases for which the underlying in-mem h2 db no longer exists."
@@ -103,6 +119,7 @@
   (let [h2-dbs (t2/select :model/Database :engine :h2)
         in-memory? (fn [db] (some-> db :details :db (str/starts-with? "mem:")))
         can-connect? (fn [db]
+                       #_:clj-kondo/ignore
                        (binding [metabase.driver.h2/*allow-testing-h2-connections* true]
                          (try
                            (driver/can-connect? :h2 (:details db))
@@ -122,20 +139,22 @@
     (t2/delete! :model/Database :id [:in outdated-ids])))
 
 (defn start!
+  "Start Metabase"
   []
   (server/start-web-server! #'handler/app)
-  (when-not @initialized?
-    (init!))
+  (init!)
   (when config/is-dev?
     (prune-deleted-inmem-databases!)
     (with-out-str (malli-dev/start!))))
 
 (defn stop!
+  "Stop Metabase"
   []
   (malli-dev/stop!)
   (server/stop-web-server!))
 
 (defn restart!
+  "Restart Metabase"
   []
   (stop!)
   (start!))
@@ -201,7 +220,7 @@
   [driver-or-driver+dataset sql-args]
   (let [[driver dataset] (u/one-or-many driver-or-driver+dataset)
         [sql & params]   (if (map? sql-args)
-                           (hsql/format sql-args)
+                           (sql/format sql-args)
                            (u/one-or-many sql-args))
         canceled-chan    (a/promise-chan)]
     (try
@@ -283,6 +302,7 @@
   []
   (binding [t2.connection/*current-connectable* nil]
     (or (t2/select-one Database :name "Application Database")
+        #_:clj-kondo/ignore
         (let [details (#'metabase.db.env/broken-out-details
                        (mdb.connection/db-type)
                        @#'metabase.db.env/env)
@@ -301,3 +321,31 @@
      (mt/with-driver (:engine db#)
        (mt/with-db db#
          ~@body))))
+
+(defmacro p
+  "#p, but to use in pipelines like `(-> 1 inc dev/p inc)`.
+
+  See https://github.com/weavejester/hashp"
+  [form]
+  (hashp/p* form))
+
+(defn find-root-test-failure!
+  "Sometimes tests fail due to another test not cleaning up after itself properly (e.g. leaving permissions in a dirty
+  state). This is a common cause of tests failing in CI, or when run via `find-and-run-tests`, but not when run alone.
+
+  This helper allows you to pass in a test var for a test that fails only after other tests run. It finds and runs all
+  tests, running your passed test after each.
+
+  When the passed test starts failing, it throws an exception notifying you of the test that caused it to start
+  failing. At that point, you can start investigating what pleasant surprises that test is leaving behind in the
+  database."
+  [failing-test-var]
+  (let [failed? (fn []
+                  (not= [0 0] ((juxt :fail :error) (clojure.test/run-test-var failing-test-var))))]
+    (when (failed?)
+      (throw (ex-info "Test is already failing! Better go fix it." {:failed-test failing-test-var})))
+    (doseq [test (metabase.test-runner/find-tests)]
+      (clojure.test/run-test-var test)
+      (when (failed?)
+        (throw (ex-info (format "Test failed after running: `%s`" test)
+                        {:test test}))))))

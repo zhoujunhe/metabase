@@ -28,8 +28,13 @@ export function getDefaultValuePopulatedParameters(
   });
 }
 
-export function hasDefaultParameterValue(parameter) {
-  return parameter.default != null;
+// Needed because parameter values might be arrays
+// in which case order of elements isn't guaranteed
+export function areParameterValuesIdentical(a, b) {
+  return _.isEqual(
+    Array.isArray(a) ? a.slice().sort() : a,
+    Array.isArray(b) ? b.slice().sort() : b,
+  );
 }
 
 export function normalizeParameter(parameter) {

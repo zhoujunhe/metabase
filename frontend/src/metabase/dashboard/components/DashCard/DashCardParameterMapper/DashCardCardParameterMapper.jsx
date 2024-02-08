@@ -9,16 +9,14 @@ import {
   MOBILE_DEFAULT_CARD_HEIGHT,
 } from "metabase/visualizations/shared/utils/sizes";
 
-import { Icon } from "metabase/core/components/Icon";
+import { Icon } from "metabase/ui";
 import Tooltip from "metabase/core/components/Tooltip";
 import TippyPopover from "metabase/components/Popover/TippyPopover";
 
-import MetabaseSettings from "metabase/lib/settings";
 import { getMetadata } from "metabase/selectors/metadata";
 
 import ParameterTargetList from "metabase/parameters/components/ParameterTargetList";
 import {
-  getNativeDashCardEmptyMappingText,
   isNativeDashCard,
   isVirtualDashCard,
   getVirtualCardType,
@@ -27,15 +25,16 @@ import {
 
 import { isActionDashCard } from "metabase/actions/utils";
 import { Ellipsified } from "metabase/core/components/Ellipsified";
-import Question from "metabase-lib/Question";
+import * as Lib from "metabase-lib";
 import { isVariableTarget } from "metabase-lib/parameters/utils/targets";
 import { isDateParameter } from "metabase-lib/parameters/utils/parameter-type";
 
 import { normalize } from "metabase-lib/queries/utils/normalize";
 import {
   getEditingParameter,
+  getDashcardParameterMappingOptions,
   getParameterTarget,
-  getParameterMappingOptions,
+  getQuestionByCard,
 } from "../../../selectors";
 import { setParameterMapping } from "../../../actions";
 
@@ -50,11 +49,8 @@ import {
   ChevrondownIcon,
   KeyIcon,
   Warning,
-  NativeCardDefault,
-  NativeCardIcon,
-  NativeCardText,
-  NativeCardLink,
 } from "./DashCardCardParameterMapper.styled";
+import { DisabledNativeCardHelpText } from "./DisabledNativeCardHelpText";
 
 function formatSelected({ name, sectionName }) {
   if (sectionName == null) {
@@ -67,8 +63,9 @@ function formatSelected({ name, sectionName }) {
 const mapStateToProps = (state, props) => ({
   editingParameter: getEditingParameter(state, props),
   target: getParameterTarget(state, props),
-  mappingOptions: getParameterMappingOptions(state, props),
   metadata: getMetadata(state),
+  question: getQuestionByCard(state, props),
+  mappingOptions: getDashcardParameterMappingOptions(state, props),
 });
 
 const mapDispatchToProps = {
@@ -79,11 +76,12 @@ DashCardCardParameterMapper.propTypes = {
   card: PropTypes.object.isRequired,
   dashcard: PropTypes.object.isRequired,
   editingParameter: PropTypes.object.isRequired,
-  target: PropTypes.object,
+  target: PropTypes.array,
   mappingOptions: PropTypes.array.isRequired,
   metadata: PropTypes.object.isRequired,
   setParameterMapping: PropTypes.func.isRequired,
   isMobile: PropTypes.bool,
+  question: PropTypes.object,
 };
 
 export function DashCardCardParameterMapper({
@@ -91,10 +89,10 @@ export function DashCardCardParameterMapper({
   dashcard,
   editingParameter,
   target,
-  mappingOptions,
-  metadata,
   setParameterMapping,
   isMobile,
+  question,
+  mappingOptions,
 }) {
   const [isDropdownVisible, setIsDropdownVisible] = useState(false);
 
@@ -124,9 +122,9 @@ export function DashCardCardParameterMapper({
       return false;
     }
 
-    const question = new Question(card, metadata);
-    return question.query().isEditable();
-  }, [card, metadata, isVirtual]);
+    const { isEditable } = Lib.queryDisplayInfo(question.query());
+    return isEditable;
+  }, [isVirtual, card.dataset_query, question]);
 
   const { buttonVariant, buttonTooltip, buttonText, buttonIcon } =
     useMemo(() => {
@@ -151,6 +149,8 @@ export function DashCardCardParameterMapper({
           buttonText: formatSelected(selectedMappingOption),
           buttonIcon: (
             <CloseIconButton
+              role="button"
+              aria-label={t`Disconnect`}
               onClick={e => {
                 handleChangeTarget(null);
                 e.stopPropagation();
@@ -232,17 +232,7 @@ export function DashCardCardParameterMapper({
           </TextCardDefault>
         )
       ) : isNative && isDisabled ? (
-        <NativeCardDefault>
-          <NativeCardIcon name="info" />
-          <NativeCardText>
-            {getNativeDashCardEmptyMappingText(editingParameter)}
-          </NativeCardText>
-          <NativeCardLink
-            href={MetabaseSettings.docsUrl(
-              "questions/native-editor/sql-parameters",
-            )}
-          >{t`Learn how`}</NativeCardLink>
-        </NativeCardDefault>
+        <DisabledNativeCardHelpText parameter={editingParameter} />
       ) : (
         <>
           {headerContent && (
