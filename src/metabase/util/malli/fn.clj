@@ -5,7 +5,9 @@
    [malli.core :as mc]
    [malli.destructure :as md]
    [malli.error :as me]
+   [metabase.config :as config]
    [metabase.shared.util.i18n :as i18n]
+   [metabase.util.log :as log]
    [metabase.util.malli.humanize :as mu.humanize]
    [metabase.util.malli.registry :as mr]))
 
@@ -148,17 +150,31 @@
 (defn- validate [error-context schema value error-type]
   (when *enforce*
     (when-let [error (mr/explain schema value)]
-      (let [humanized (me/humanize error)]
-        (throw (ex-info (case error-type
-                          ::invalid-input  (i18n/tru "Invalid input: {0}" (pr-str humanized))
-                          ::invalid-output (i18n/tru "Invalid output: {0}" (pr-str humanized)))
-                        (merge
-                         {:type      error-type
-                          :error     error
-                          :humanized humanized
-                          :schema    schema
-                          :value     value}
-                         error-context)))))))
+      (let [humanized (me/humanize error {:wrap (core/fn humanize-include-value
+                                                  [{:keys [value message]}]
+                                                  (str message ", got: " (pr-str value)))})
+            details   (merge
+                        {:type      error-type
+                         :error     error
+                         :humanized humanized
+                         :schema    schema
+                         :value     value}
+                        error-context)]
+        (if (or config/is-dev?
+              config/is-test?)
+          ;; In dev and test, throw an exception.
+          (throw (ex-info (case error-type
+                            ::invalid-input  (i18n/tru "Invalid input: {0}" (pr-str humanized))
+                            ::invalid-output (i18n/tru "Invalid output: {0}" (pr-str humanized)))
+                          details))
+          ;; In prod, log a warning.
+          (log/warn
+            (case error-type
+              ::invalid-input  (i18n/tru "Invalid input - Please report this as an issue on Github: {0}"
+                                         (pr-str humanized))
+              ::invalid-output (i18n/tru "Invalid output - Please report this as an issue on Github: {0}"
+                                         (pr-str humanized)))
+            details))))))
 
 (defn validate-input
   "Impl for [[metabase.util.malli.fn/fn]]; validates an input argument with `value` against `schema` using a cached
@@ -281,8 +297,19 @@
   `(let [~'&f ~(deparameterized-fn-form parsed)]
      (core/fn ~@(instrumented-fn-tail error-context (fn-schema parsed)))))
 
+;; ------------------------------ Skipping Namespace Enforcement in prod ------------------------------
+
+(defn instrument-ns?
+  "Returns true if mu.fn/fn and mu/defn in a namespace should be instrumented with malli schema validation."
+  [namespace]
+  (or (true? (:instrument/always (meta namespace)))
+      config/is-dev?
+      config/is-test?))
+
 (defmacro fn
-  "Malli version of [[schema.core/fn]]. A form like
+  "Malli version of [[schema.core/fn]].
+
+  Unless it's in a skipped namespace during prod, a form like:
 
     (fn :- :int [x :- :int] (inc x))
 
@@ -301,6 +328,8 @@
   for [[metabase.util.malli/defmethod]] it will be something like
 
     {:fn-name 'whatever/my-multimethod, :dispatch-value :field}
+
+  If compiled in a namespace in [[namespaces-toskip]], during `config/is-prod?`, it will be emitted as a vanilla clojure.core/fn form.
 
   Known issue: this version of `fn` does not capture the optional function name and make it available, e.g. you can't
   do
@@ -330,7 +359,11 @@
   problem for another day. The passed function name comes back from [[mc/parse]] as `:name` if we want to attempt to
   fix this later."
   [& fn-tail]
-  (let [error-context (if (symbol? (first fn-tail))
-                        {:fn-name (list 'quote (first fn-tail))}
-                        {})]
-    (instrumented-fn-form error-context (parse-fn-tail fn-tail))))
+  (let [parsed (parse-fn-tail fn-tail)
+        instrument? (instrument-ns? *ns*)]
+    (if-not instrument?
+      (deparameterized-fn-form parsed)
+      (let [error-context (if (symbol? (first fn-tail))
+                            ;; We want the quoted symbol of first fn-tail:
+                            {:fn-name (list 'quote (first fn-tail))} {})]
+        (instrumented-fn-form error-context parsed)))))

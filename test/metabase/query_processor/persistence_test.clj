@@ -10,6 +10,7 @@
    [metabase.public-settings :as public-settings]
    [metabase.query-processor :as qp]
    [metabase.query-processor.async :as qp.async]
+   [metabase.query-processor.compile :as qp.compile]
    [metabase.query-processor.interface :as qp.i]
    [metabase.query-processor.middleware.fix-bad-references
     :as fix-bad-refs]
@@ -95,10 +96,10 @@
 (deftest persisted-models-complex-queries-test
   (testing "Can use aggregations and custom columns with persisted models (#28679)"
     (mt/test-drivers (mt/normal-drivers-with-feature :persist-models)
-      (mt/dataset sample-dataset
+      (mt/dataset test-data
         (doseq [[query-type query] [[:query (mt/mbql-query products)]
                                     [:native (mt/native-query
-                                              (mt/compile
+                                              (qp.compile/compile
                                                (mt/mbql-query products)))]]]
           (mt/with-persistence-enabled [persist-models!]
             (mt/with-temp [Card model {:dataset true
@@ -140,7 +141,7 @@
 
   (testing "Can use joins with persisted models (#28902)"
     (mt/test-drivers (mt/normal-drivers-with-feature :persist-models)
-      (mt/dataset sample-dataset
+      (mt/dataset test-data
         (mt/with-persistence-enabled [persist-models!]
           (mt/with-temp [Card model {:dataset true
                                      :database_id (mt/id)

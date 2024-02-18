@@ -2,12 +2,11 @@
 import { t } from "ttag";
 import cx from "classnames";
 
+import * as Lib from "metabase-lib";
 import ButtonBar from "metabase/components/ButtonBar";
 
 import QueryDownloadWidget from "metabase/query_builder/components/QueryDownloadWidget";
-import QuestionEmbedWidget, {
-  QuestionEmbedWidgetTrigger,
-} from "metabase/query_builder/components/QuestionEmbedWidget";
+import { EmbedMenu } from "metabase/dashboard/components/EmbedMenu";
 import ViewButton from "./ViewButton";
 
 import QuestionAlertWidget from "./QuestionAlertWidget";
@@ -34,9 +33,7 @@ const ViewFooter = ({
   isObjectDetail,
   questionAlerts,
   visualizationSettings,
-  isAdmin,
   canManageSubscriptions,
-  isResultDirty,
   isVisualized,
   isTimeseries,
   isShowingTimelineSidebar,
@@ -47,7 +44,8 @@ const ViewFooter = ({
     return null;
   }
 
-  const hasDataPermission = question.query().isEditable();
+  const { isEditable } = Lib.queryDisplayInfo(question.query());
+  const hasDataPermission = isEditable;
   const hideChartSettings = result.error && !hasDataPermission;
 
   return (
@@ -107,18 +105,18 @@ const ViewFooter = ({
           QuestionRowCount.shouldRender({
             result,
             isObjectDetail,
-          }) && <QuestionRowCount key="row_count" className="mx1" />,
+          }) && <QuestionRowCount key="row_count" />,
           QuestionLastUpdated.shouldRender({ result }) && (
             <QuestionLastUpdated
               key="last-updated"
-              className="mx1 hide sm-show"
+              className="hide sm-show"
               result={result}
             />
           ),
-          QueryDownloadWidget.shouldRender({ result, isResultDirty }) && (
+          QueryDownloadWidget.shouldRender({ result }) && (
             <QueryDownloadWidget
               key="download"
-              className="mx1 hide sm-show"
+              className="hide sm-show"
               question={question}
               result={result}
               visualizationSettings={visualizationSettings}
@@ -132,7 +130,7 @@ const ViewFooter = ({
           }) && (
             <QuestionAlertWidget
               key="alerts"
-              className="mx1 hide sm-show"
+              className="hide sm-show"
               canManageSubscriptions={canManageSubscriptions}
               question={question}
               questionAlerts={questionAlerts}
@@ -143,10 +141,13 @@ const ViewFooter = ({
               }
             />
           ),
-          QuestionEmbedWidget.shouldRender({ question, isAdmin }) && (
-            <QuestionEmbedWidgetTrigger
-              key="embeds"
-              onClick={() =>
+          !question.isDataset() && (
+            <EmbedMenu
+              key="embed"
+              resource={question}
+              resourceType="question"
+              hasPublicLink={!!question.publicUUID()}
+              onModalOpen={() =>
                 question.isSaved()
                   ? onOpenModal("embed")
                   : onOpenModal("save-question-before-embed")
@@ -156,7 +157,7 @@ const ViewFooter = ({
           QuestionTimelineWidget.shouldRender({ isTimeseries }) && (
             <QuestionTimelineWidget
               key="timelines"
-              className="mx1 hide sm-show"
+              className="hide sm-show"
               isShowingTimelineSidebar={isShowingTimelineSidebar}
               onOpenTimelines={onOpenTimelines}
               onCloseTimelines={onCloseTimelines}

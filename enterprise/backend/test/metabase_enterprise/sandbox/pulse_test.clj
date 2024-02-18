@@ -12,7 +12,6 @@
     :refer [Card Pulse PulseCard PulseChannel PulseChannelRecipient]]
    [metabase.models.pulse :as pulse]
    [metabase.public-settings.premium-features :as premium-features]
-   [metabase.public-settings.premium-features-test :as premium-features-test]
    [metabase.pulse]
    [metabase.pulse.test-util :as pulse.test-util]
    [metabase.query-processor :as qp]
@@ -73,7 +72,7 @@
                                             :user_id          (mt/user->id :rasta)}]
       (mt/with-temporary-setting-values [email-from-address "metamailman@metabase.com"]
         (mt/with-fake-inbox
-          (with-redefs [messages/render-pulse-email  (fn [_ _ _ [{:keys [result]}] _]
+          (with-redefs [messages/render-pulse-email  (fn [_timezone _pulse _dashboard [{:keys [result]}, :as _parts] _non-user-email]
                                                        [{:result result}])
                         email/bcc-enabled? (constantly false)]
             (mt/with-test-user nil
@@ -87,7 +86,7 @@
 
 (deftest pulse-send-event-test
   (testing "When we send a pulse, we also log the event:"
-    (premium-features-test/with-premium-features #{:audit-app}
+    (mt/with-premium-features #{:audit-app}
       (t2.with-temp/with-temp [Card                  pulse-card {}
                                Pulse                 pulse {:creator_id (mt/user->id :crowberto)
                                                             :name "Test Pulse"}
@@ -114,7 +113,7 @@
 
 (deftest alert-send-event-test
   (testing "When we send a pulse, we also log the event:"
-    (premium-features-test/with-premium-features #{:audit-app}
+    (mt/with-premium-features #{:audit-app}
       (t2.with-temp/with-temp [Card                  pulse-card {:dataset_query (mt/mbql-query venues)}
                                Pulse                 pulse {:creator_id (mt/user->id :crowberto)
                                                             :name "Test Pulse"
@@ -226,7 +225,8 @@
                                                               :skip_if_empty false}
                          PulseCard             _             {:pulse_id pulse-id
                                                               :card_id  card-id
-                                                              :position 0}
+                                                              :position 0
+                                                              :include_csv true}
                          PulseChannel          {pc-id :id}   {:pulse_id pulse-id}
                          PulseChannelRecipient _             {:user_id          (mt/user->id :rasta)
                                                               :pulse_channel_id pc-id}]

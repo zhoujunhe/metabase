@@ -3,7 +3,7 @@
   each user."
   (:require
     #_{:clj-kondo/ignore [:deprecated-namespace]}
-   [java-time :as t]
+   [java-time.api :as t]
    [metabase.util :as u]
    [metabase.util.honey-sql-2 :as h2x]
    [metabase.util.malli :as mu]
@@ -47,7 +47,7 @@
 
 (mu/defn update-users-recent-views!
   "Updates the RecentViews table for a given user with a new view, and prunes old views."
-  [user-id  :- ms/PositiveInt
+  [user-id  :- [:maybe ms/PositiveInt]
    model    :- [:or
                 [:enum :model/Card :model/Table :model/Dashboard]
                 :string]

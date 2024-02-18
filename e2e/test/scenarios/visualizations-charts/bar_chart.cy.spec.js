@@ -186,7 +186,7 @@ describe("scenarios > visualizations > bar chart", () => {
       cy.findAllByTestId("legend-item").contains("Gadget").click();
       popover().findByText("See these Orders").click();
       cy.findByTestId("qb-filters-panel")
-        .findByText("Category is Gadget")
+        .findByText("Product → Category is Gadget")
         .should("exist");
     });
 
@@ -204,20 +204,20 @@ describe("scenarios > visualizations > bar chart", () => {
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Product").click();
 
-      cy.findByTestId("filter-field-Category").within(() => {
-        cy.findByTestId("operator-select").click();
+      cy.findByTestId("filter-column-Category").within(() => {
+        cy.findByLabelText("Filter operator").click();
       });
 
       popover().within(() => {
         cy.findByText("Is not").click();
       });
 
-      cy.findByTestId("filter-field-Category").within(() => {
+      cy.findByTestId("filter-column-Category").within(() => {
         cy.findByText("Gadget").click();
       });
 
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-      cy.findByText("Apply Filters").click();
+      cy.findByText("Apply filters").click();
 
       getDraggableElements().should("have.length", 3);
 
@@ -290,6 +290,29 @@ describe("scenarios > visualizations > bar chart", () => {
       });
 
       cy.get("g.axis.yr").should("not.exist");
+    });
+
+    it("should not split the y-axis on native queries with two numeric columns", () => {
+      visitQuestionAdhoc({
+        display: "bar",
+        dataset_query: {
+          type: "native",
+          native: {
+            query:
+              `SELECT products.category AS "x", COUNT(*) AS "m1", AVG(orders.discount) AS "m2" ` +
+              "FROM orders " +
+              "JOIN products ON orders.product_id = products.id " +
+              "GROUP BY products.category",
+          },
+          database: SAMPLE_DB_ID,
+        },
+        visualization_settings: {
+          "graph.dimensions": ["x"],
+          "graph.metrics": ["m1", "m2"],
+        },
+      });
+
+      cy.get("g.axis.yr").should("be.visible");
     });
   });
 
@@ -481,7 +504,7 @@ describe("scenarios > visualizations > bar chart", () => {
             cy.createQuestionAndAddToDashboard(breakoutQuestion, dashboard.id, {
               col: 0,
               row: 9,
-              size_x: 15,
+              size_x: 20,
             }),
           ]).then(() => {
             visitDashboard(dashboard.id);

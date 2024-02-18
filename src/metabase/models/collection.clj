@@ -15,6 +15,7 @@
    [metabase.models.interface :as mi]
    [metabase.models.permissions :as perms :refer [Permissions]]
    [metabase.models.serialization :as serdes]
+   [metabase.permissions.util :as perms.u]
    [metabase.public-settings.premium-features :as premium-features]
    [metabase.util :as u]
    [metabase.util.honey-sql-2 :as h2x]
@@ -557,7 +558,7 @@
 ;;; |                                    Recursive Operations: Moving & Archiving                                    |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-(mu/defn perms-for-archiving :- [:set perms/PathSchema]
+(mu/defn perms-for-archiving :- [:set perms.u/PathSchema]
   "Return the set of Permissions needed to archive or unarchive a `collection`. Since archiving a Collection is
   *recursive* (i.e., it applies to all the descendant Collections of that Collection), we require write ('curate')
   permissions for the Collection itself and all its descendants, but not for its parent Collection.
@@ -589,7 +590,7 @@
                             (t2/select-pks-set Collection :location [:like (str (children-location collection) "%")])))]
      (perms/collection-readwrite-path collection-or-id))))
 
-(mu/defn perms-for-moving :- [:set perms/PathSchema]
+(mu/defn perms-for-moving :- [:set perms.u/PathSchema]
   "Return the set of Permissions needed to move a `collection`. Like archiving, moving is recursive, so we require
   perms for both the Collection and its descendants; we additionally require permissions for its new parent Collection.
 
@@ -942,10 +943,12 @@
 (defn- parent-identity-hash [coll]
   (let [parent-id (-> coll
                       (t2/hydrate :parent_id)
-                      :parent_id)]
-    (if parent-id
-      (serdes/identity-hash (t2/select-one Collection :id parent-id))
-      "ROOT")))
+                      :parent_id)
+        parent    (when parent-id (t2/select-one Collection :id parent-id))]
+    (cond
+      (not parent-id) "ROOT"
+      (not parent)    (throw (ex-info (format "Collection %s is an orphan" (:id coll)) {:parent-id parent-id}))
+      :else           (serdes/identity-hash parent))))
 
 (defmethod serdes/hash-fields Collection
   [_collection]

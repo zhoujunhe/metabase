@@ -10,7 +10,7 @@
    [metabase.lib.metadata.jvm :as lib.metadata.jvm]
    [metabase.models.interface :as mi]
    [metabase.models.setting :as setting]
-   [metabase.query-processor.context.default :as context.default]
+   [metabase.query-processor.pipeline :as qp.pipeline]
    [metabase.query-processor.store :as qp.store]
    [metabase.util :as u]
    [metabase.util.i18n :refer [trs tru]]
@@ -90,12 +90,12 @@
   "Kill connections if they are unreturned after this amount of time. In theory this should not be needed because the QP
   will kill connections that time out, but in practice it seems that connections disappear into the ether every once
   in a while; rather than exhaust the connection pool, let's be extra safe. This should be the same as the query
-  timeout in [[metabase.query-processor.context.default/query-timeout-ms]] by default."
+  timeout in [[metabase.query-processor.context/query-timeout-ms]] by default."
   :visibility :internal
   :type       :integer
   :getter     (fn []
                 (or (setting/get-value-of-type :integer :jdbc-data-warehouse-unreturned-connection-timeout-seconds)
-                    (long (/ context.default/query-timeout-ms 1000))))
+                    (long (/ qp.pipeline/*query-timeout-ms* 1000))))
   :setter     :none)
 
 (defmethod data-warehouse-connection-pool-properties :default
@@ -214,13 +214,6 @@
   "Invalidates the connection pool for the given database by closing it and removing it from the cache."
   [database]
   (set-pool! (u/the-id database) nil nil))
-
-(defn notify-database-updated
-  "Default implementation of [[driver/notify-database-updated]] for JDBC SQL drivers. We are being informed that a
-  `database` has been updated, so lets shut down the connection pool (if it exists) under the assumption that the
-  connection details have changed."
-  [database]
-  (invalidate-pool-for-db! database))
 
 (defn- log-ssh-tunnel-reconnect-msg! [db-id]
   (log/warn (u/format-color 'red (trs "ssh tunnel for database {0} looks closed; marking pool invalid to reopen it"

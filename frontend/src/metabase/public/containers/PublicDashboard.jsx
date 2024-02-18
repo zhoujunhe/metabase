@@ -29,19 +29,15 @@ import {
 } from "metabase/dashboard/selectors";
 
 import * as dashboardActions from "metabase/dashboard/actions";
+import { DashboardTabs } from "metabase/dashboard/components/DashboardTabs";
 
 import {
   setPublicDashboardEndpoints,
   setEmbedDashboardEndpoints,
 } from "metabase/services";
-import { DashboardTabs } from "metabase/dashboard/components/DashboardTabs";
 import EmbedFrame from "../components/EmbedFrame";
 
-import {
-  DashboardContainer,
-  DashboardGridContainer,
-  Separator,
-} from "./PublicDashboard.styled";
+import { DashboardContainer } from "./PublicDashboard.styled";
 
 const mapStateToProps = (state, props) => {
   return {
@@ -64,7 +60,6 @@ const mapDispatchToProps = {
   onChangeLocation: push,
 };
 
-// NOTE: this should use DashboardData HoC
 class PublicDashboard extends Component {
   _initialize = async () => {
     const {
@@ -127,6 +122,31 @@ class PublicDashboard extends Component {
     }
   }
 
+  getCurrentTabDashcards = () => {
+    const { dashboard, selectedTabId } = this.props;
+    if (!Array.isArray(dashboard?.dashcards)) {
+      return [];
+    }
+    if (!selectedTabId) {
+      return dashboard.dashcards;
+    }
+    return dashboard.dashcards.filter(
+      dashcard => dashcard.dashboard_tab_id === selectedTabId,
+    );
+  };
+
+  getHiddenParameterSlugs = () => {
+    const { parameters } = this.props;
+    const currentTabParameterIds = this.getCurrentTabDashcards().flatMap(
+      dashcard =>
+        dashcard.parameter_mappings?.map(mapping => mapping.parameter_id) ?? [],
+    );
+    const hiddenParameters = parameters.filter(
+      parameter => !currentTabParameterIds.includes(parameter.id),
+    );
+    return hiddenParameters.map(parameter => parameter.slug).join(",");
+  };
+
   render() {
     const {
       dashboard,
@@ -135,6 +155,7 @@ class PublicDashboard extends Component {
       draftParameterValues,
       isFullscreen,
       isNightMode,
+      setParameterValueToDefault,
     } = this.props;
 
     const buttons = !isWithinIframe()
@@ -149,10 +170,14 @@ class PublicDashboard extends Component {
         parameters={parameters}
         parameterValues={parameterValues}
         draftParameterValues={draftParameterValues}
+        hiddenParameterSlugs={this.getHiddenParameterSlugs()}
         setParameterValue={this.props.setParameterValue}
+        setParameterValueToDefault={setParameterValueToDefault}
+        enableParameterRequiredBehavior
         actionButtons={
           buttons.length > 0 && <div className="flex">{buttons}</div>
         }
+        dashboardTabs={<DashboardTabs location={this.props.location} />}
       >
         <LoadingAndErrorWrapper
           className={cx({
@@ -163,18 +188,14 @@ class PublicDashboard extends Component {
         >
           {() => (
             <DashboardContainer>
-              <DashboardTabs location={this.props.location} />
-              <Separator />
-              <DashboardGridContainer>
-                <DashboardGridConnected
-                  {...this.props}
-                  isPublic
-                  className="spread"
-                  mode={PublicMode}
-                  metadata={this.props.metadata}
-                  navigateToNewCardFromDashboard={() => {}}
-                />
-              </DashboardGridContainer>
+              <DashboardGridConnected
+                {...this.props}
+                isPublic
+                className="spread"
+                mode={PublicMode}
+                metadata={this.props.metadata}
+                navigateToNewCardFromDashboard={() => {}}
+              />
             </DashboardContainer>
           )}
         </LoadingAndErrorWrapper>

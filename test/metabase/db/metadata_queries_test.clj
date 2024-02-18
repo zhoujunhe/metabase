@@ -33,19 +33,19 @@
            (map (comp int first) (metadata-queries/field-distinct-values (t2/select-one Field :id (mt/id :checkins :user_id))))))))
 
 (deftest table-rows-sample-test
-  (let [expected [["20th Century Cafe"]
-                  ["25°"]
-                  ["33 Taps"]
-                  ["800 Degrees Neapolitan Pizzeria"]
-                  ["BCD Tofu House"]]
-        table    (t2/select-one Table :id (mt/id :venues))
-        fields   [(t2/select-one Field :id (mt/id :venues :name))]
-        fetch!   #(->> (metadata-queries/table-rows-sample table fields (constantly conj) (when % {:truncation-size %}))
-                       ;; since order is not guaranteed do some sorting here so we always get the same results
-                       (sort-by first)
-                       (take 5))]
-    (is (= :type/Text (-> fields first :base_type)))
-    (mt/test-drivers (sql-jdbc.tu/sql-jdbc-drivers)
+  (mt/test-drivers (sql-jdbc.tu/sql-jdbc-drivers)
+    (let [expected [["20th Century Cafe"]
+                    ["25°"]
+                    ["33 Taps"]
+                    ["800 Degrees Neapolitan Pizzeria"]
+                    ["BCD Tofu House"]]
+          table    (t2/select-one Table :id (mt/id :venues))
+          fields   [(t2/select-one Field :id (mt/id :venues :name))]
+          fetch!   #(->> (metadata-queries/table-rows-sample table fields (constantly conj) (when % {:truncation-size %}))
+                         ;; since order is not guaranteed do some sorting here so we always get the same results
+                         (sort-by first)
+                         (take 5))]
+      (is (= :type/Text (-> fields first :base_type)))
       (is (= expected (fetch! nil)))
       (testing "truncates text fields (see #13288)"
         (doseq [size [1 4 80]]
@@ -73,6 +73,21 @@
           (with-redefs [driver/database-supports? (constantly true)]
             (let [query (#'metadata-queries/table-rows-sample-query table fields {:truncation-size 4})]
               (is (empty? (get-in query [:query :expressions]))))))))))
+
+(deftest mbql-on-table-requires-filter-will-include-the-filter-test
+  (mt/with-temp
+    [:model/Database db     {}
+     :model/Table    table  {:database_require_filter true :db_id (:id db)}
+     :model/Field    field1 {:name "name" :table_id (:id table) :base_type :type/Text}
+     :model/Field    field2 {:name "group_id" :table_id (:id table) :database_partitioned true :base_type :type/Integer}]
+    (testing "the sample rows query on a table that requires a filter will include a filter"
+      ;; currently only applied for bigquery tables in which a table can have a required partition filter
+      (is (=? [:> [:field (:id field2) {:base-type :type/Integer}] (mt/malli=? int?)]
+              (get-in (#'metadata-queries/table-rows-sample-query table [field1] {}) [:query :filter]))))
+    (testing "the field mbql on a table that requires a filter will include a filter"
+      ;; currently only applied for bigquery tables in which a table can have a required partition filter
+      (is (=? [:> [:field (:id field2) {:base-type :type/Integer}] (mt/malli=? int?)]
+              (get (#'metadata-queries/field-mbql-query table {}) :filter))))))
 
 (deftest text-field?-test
   (testing "recognizes fields suitable for fingerprinting"

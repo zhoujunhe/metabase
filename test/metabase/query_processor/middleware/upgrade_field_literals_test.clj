@@ -2,11 +2,11 @@
   (:require
    [clojure.test :refer :all]
    [medley.core :as m]
-   [metabase.query-processor :as qp]
    [metabase.query-processor.middleware.add-source-metadata
     :as add-source-metadata]
    [metabase.query-processor.middleware.upgrade-field-literals
     :as upgrade-field-literals]
+   [metabase.query-processor.preprocess :as qp.preprocess]
    [metabase.test :as mt]))
 
 (defn- upgrade-field-literals [query]
@@ -18,13 +18,13 @@
     (let [source-query    (mt/mbql-query checkins
                             {:aggregation [[:count]]
                              :breakout    [$checkins.venue_id]})
-          source-metadata (qp/query->expected-cols source-query)
+          source-metadata (qp.preprocess/query->expected-cols source-query)
           query           (mt/mbql-query venues
                             {:source-query    (:query source-query)
                              :source-metadata source-metadata
                              :joins           [(let [source-query    (mt/mbql-query venues
                                                                        {:breakout [$category_id]})
-                                                     source-metadata (qp/query->expected-cols source-query)]
+                                                     source-metadata (qp.preprocess/query->expected-cols source-query)]
                                                  {:fields          :all
                                                   :alias           "venues"
                                                   :strategy        :inner-join
@@ -39,7 +39,7 @@
 (deftest upgrade-to-valid-clauses-test
   (testing "Make sure upgrades don't result in weird clauses like nested `datetime-field` clauses")
   (let [source-query    (mt/mbql-query checkins)
-        source-metadata (qp/query->expected-cols source-query)]
+        source-metadata (qp.preprocess/query->expected-cols source-query)]
     (is (= (mt/mbql-query checkins
              {:aggregation     [[:count]]
               :breakout        [!week.date]
@@ -56,14 +56,14 @@
 
 (deftest support-legacy-filter-clauses-test
   (testing "We should handle legacy usage of `:field` w/ name inside filter clauses"
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (testing "against explicit joins (#14809)"
         (let [source-query    (mt/mbql-query orders
                                 {:joins [{:fields       :all
                                           :source-table $$products
                                           :condition    [:= $product_id &Products.products.id]
                                           :alias        "Products"}]})
-              source-metadata (qp/query->expected-cols source-query)]
+              source-metadata (qp.preprocess/query->expected-cols source-query)]
           (is (= (mt/mbql-query orders
                    {:source-query    (:query source-query)
                     :source-metadata source-metadata
@@ -78,7 +78,7 @@
         (let [source-query    (mt/mbql-query orders
                                 {:aggregation [[:sum $product_id->products.price]]
                                  :breakout    [$product_id->products.category]})
-              source-metadata (qp/query->expected-cols source-query)]
+              source-metadata (qp.preprocess/query->expected-cols source-query)]
           (is (= (mt/mbql-query orders
                    {:source-query    (:query source-query)
                     :source-metadata source-metadata
@@ -92,7 +92,7 @@
 
 (deftest attempt-case-insensitive-match-test
   (testing "Attempt to fix things even if the name used is the wrong case (#16389)"
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (mt/with-metadata-provider (mt/id)
         (is (query= (mt/mbql-query orders
                       {:source-query {:source-table $$orders

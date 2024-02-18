@@ -1,8 +1,9 @@
 import { createSelector } from "@reduxjs/toolkit";
 import { getMetadata } from "metabase/selectors/metadata";
 import type { State } from "metabase-types/store";
+import * as Lib from "metabase-lib";
 import Question from "metabase-lib/Question";
-import NativeQuery from "metabase-lib/queries/NativeQuery";
+import type NativeQuery from "metabase-lib/queries/NativeQuery";
 import { DEFAULT_TABLE_SETTINGS } from "./constants";
 
 export const getEntityId = (state: State) => {
@@ -57,8 +58,9 @@ export const getFeedbackType = (state: State) => {
 };
 
 export const getNativeQueryText = createSelector([getQuestion], question => {
-  const query = question?.query();
-  return query instanceof NativeQuery ? query.queryText() : undefined;
+  return question && Lib.queryDisplayInfo(question.query()).isNative
+    ? (question.legacyQuery() as NativeQuery).queryText()
+    : undefined;
 });
 
 export const getPromptTemplateVersions = (state: State) =>
@@ -95,10 +97,12 @@ export const getRawSeries = createSelector(
             .card()
         : question.card();
 
-      return question.atomicQueries().map((_, index) => ({
-        card,
-        data: results[index]?.data,
-      }));
+      return [
+        {
+          card,
+          data: results[0]?.data,
+        },
+      ];
     }
   },
 );

@@ -1,9 +1,22 @@
 // various Metabase-specific "scoping" functions like inside popover/modal/navbar/main/sidebar content area
-export const POPOVER_ELEMENT = ".popover[data-state~='visible']";
+export const POPOVER_ELEMENT =
+  ".popover[data-state~='visible'],[data-position]";
 
 export function popover() {
   cy.get(POPOVER_ELEMENT).should("be.visible");
   return cy.get(POPOVER_ELEMENT);
+}
+
+export function mantinePopover() {
+  const MANTINE_POPOVER = "[data-popover=mantine-popover]";
+  return cy.get(MANTINE_POPOVER).should("be.visible");
+}
+
+const HOVERCARD_ELEMENT = ".emotion-HoverCard-dropdown[role='dialog']";
+
+export function hovercard() {
+  cy.get(HOVERCARD_ELEMENT).should("be.visible");
+  return cy.get(HOVERCARD_ELEMENT);
 }
 
 export function main() {
@@ -15,7 +28,9 @@ export function menu() {
 }
 
 export function modal() {
-  return cy.get(".ModalContainer .ModalContent");
+  const LEGACY_MODAL_SELECTOR = ".Modal";
+  const MODAL_SELECTOR = ".emotion-Modal-content[role='dialog']";
+  return cy.get([MODAL_SELECTOR, LEGACY_MODAL_SELECTOR].join(","));
 }
 
 export function sidebar() {
@@ -31,7 +46,7 @@ export function leftSidebar() {
 }
 
 export function navigationSidebar() {
-  return cy.get("#root aside").first();
+  return cy.findByTestId("main-navbar-root");
 }
 
 export function appBar() {
@@ -76,6 +91,37 @@ export function filterWidget() {
 
 export function clearFilterWidget(index = 0) {
   return filterWidget().eq(index).icon("close").click();
+}
+
+export function resetFilterWidgetToDefault(index = 0) {
+  return filterWidget().eq(index).icon("refresh").click();
+}
+
+export function setFilterWidgetValue(
+  value,
+  targetPlaceholder,
+  { buttonLabel = "Update filter" } = {},
+) {
+  filterWidget().eq(0).click();
+  popover().within(() => {
+    cy.icon("close").click();
+    if (value) {
+      cy.findByPlaceholderText(targetPlaceholder).type(value).blur();
+    }
+    cy.button(buttonLabel).click();
+  });
+}
+
+export function toggleFilterWidgetValues(
+  values = [],
+  { buttonLabel = "Add filter" } = {},
+) {
+  filterWidget().eq(0).click();
+
+  popover().within(() => {
+    values.forEach(value => cy.findByText(value).click());
+    cy.button(buttonLabel).click();
+  });
 }
 
 export const openQuestionActions = () => {
@@ -124,6 +170,10 @@ export const dashboardParametersContainer = () => {
 
 export const undoToast = () => {
   return cy.findByTestId("toast-undo");
+};
+
+export const undoToastList = () => {
+  return cy.findAllByTestId("toast-undo");
 };
 
 export function dashboardCards() {

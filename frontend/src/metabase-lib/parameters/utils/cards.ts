@@ -21,14 +21,14 @@ export function getCardUiParameters(
 
   const valuePopulatedParameters: (Parameter[] | ParameterWithTarget[]) & {
     value?: any;
-  } = getValuePopulatedParameters(parameters, parameterValues);
+  } = getValuePopulatedParameters({ parameters, values: parameterValues });
   const question = new Question(card, metadata);
 
   return valuePopulatedParameters.map(parameter => {
     const target: ParameterTarget | undefined = (
       parameter as ParameterWithTarget
     ).target;
-    const field = getParameterTargetField(target, metadata, question);
+    const field = getParameterTargetField(target, question);
     if (field) {
       return {
         ...parameter,

@@ -4,6 +4,7 @@
    [cheshire.core :as json]
    [clojure.math :as math]
    [clojure.math.combinatorics :as math.combo]
+   [clojure.set :as set]
    [clojure.test :refer :all]
    [clojure.walk :as walk]
    [clojurewerkz.quartzite.jobs :as jobs]
@@ -11,6 +12,7 @@
    [clojurewerkz.quartzite.scheduler :as qs]
    [clojurewerkz.quartzite.triggers :as triggers]
    [medley.core :as m]
+   [metabase.db.connection :as mdb.connection]
    [metabase.db.custom-migrations :as custom-migrations]
    [metabase.db.schema-migrations-test.impl :as impl]
    [metabase.models :refer [Database User]]
@@ -32,6 +34,33 @@
 (use-fixtures :once (fixtures/initialize :db))
 
 (jobs/defjob AbandonmentEmail [_] :default)
+
+(defn- table-default [table]
+  (case table
+    :core_user         {:first_name  (mt/random-name)
+                        :last_name   (mt/random-name)
+                        :email       (mt/random-email)
+                        :password    "superstrong"
+                        :date_joined :%now}
+    :metabase_database {:name       (mt/random-name)
+                        :engine     "h2"
+                        :details    "{}"
+                        :created_at :%now
+                        :updated_at :%now}
+    :report_card       {:name                   (mt/random-name)
+                        :dataset_query          "{}"
+                        :display                "table"
+                        :visualization_settings "{}"
+                        :created_at             :%now
+                        :updated_at             :%now}
+    :revision          {:timestamp :%now}
+    {}))
+
+(defn- new-instance-with-default
+  ([table]
+   (new-instance-with-default table {}))
+  ([table properties]
+   (t2/insert-returning-instance! table (merge (table-default table) properties))))
 
 (deftest delete-abandonment-email-task-test
   (testing "Migration v46.00-086: Delete the abandonment email task"
@@ -1324,13 +1353,15 @@
                                                                    :updated_at :%now
                                                                    :details    "{}"})
                 [card-id]      (t2/insert-returning-pks!
-                                :model/Card
+                                :report_card
                                 {:visualization_settings card-vis
                                  :display                "table"
                                  :dataset_query          "{}"
                                  :creator_id             user-id
                                  :database_id            database-id
-                                 :name                   "My Card"})
+                                 :name                   "My Card"
+                                 :created_at             :%now
+                                 :updated_at             :%now})
                 [dashboard-id] (t2/insert-returning-pks! :model/Dashboard {:name       "My Dashboard"
                                                                            :creator_id user-id
                                                                            :parameters []})
@@ -1340,34 +1371,34 @@
                                                                                :size_x                 4
                                                                                :size_y                 4
                                                                                :col                    1
-                                                                               :row                    1})]
-            (let [expected-settings {:graph.dimensions ["CREATED_AT" "CATEGORY"],
-                                     :graph.metrics    ["count"],
-                                     :click            "link",
-                                     :click_link_template
-                                     "http://localhost:3001/?year={{CREATED_AT}}&cat={{CATEGORY}}&count={{count}}"
-                                     :click_behavior
-                                     {:type         "link",
-                                      :linkType     "url",
-                                      :linkTemplate "http://localhost:3001/?year={{CREATED_AT}}&cat={{CATEGORY}}&count={{count}}"},
-                                     :column_settings
-                                     ;; the model keywordizes the json parsing yielding this monstrosity below
-                                     {"[\"ref\",[\"field\",2,null]]"
-                                      {:click_behavior
-                                       {:type             "link",
-                                        :linkType         "url",
-                                        :linkTemplate     "http://example.com/{{ID}}",
-                                        :linkTextTemplate "here's an id: {{ID}}"}},
-                                      "[\"ref\",[\"field\",6,null]]"
-                                      {:click_behavior
-                                       {:type             "link",
-                                        :linkType         "url",
-                                        :linkTemplate     "http://example.com//{{id}}",
-                                        :linkTextTemplate "here is my id: {{id}}"}}}}]
-              (f)
-              (is (= expected-settings
-                     (-> (t2/select-one :model/DashboardCard :id dashcard-id)
-                         :visualization_settings))))))]
+                                                                               :row                    1})
+                expected-settings {:graph.dimensions ["CREATED_AT" "CATEGORY"],
+                                   :graph.metrics    ["count"],
+                                   :click            "link",
+                                   :click_link_template
+                                   "http://localhost:3001/?year={{CREATED_AT}}&cat={{CATEGORY}}&count={{count}}"
+                                   :click_behavior
+                                   {:type         "link",
+                                    :linkType     "url",
+                                    :linkTemplate "http://localhost:3001/?year={{CREATED_AT}}&cat={{CATEGORY}}&count={{count}}"},
+                                   :column_settings
+                                   ;; the model keywordizes the json parsing yielding this monstrosity below
+                                   {"[\"ref\",[\"field\",2,null]]"
+                                    {:click_behavior
+                                     {:type             "link",
+                                      :linkType         "url",
+                                      :linkTemplate     "http://example.com/{{ID}}",
+                                      :linkTextTemplate "here's an id: {{ID}}"}},
+                                    "[\"ref\",[\"field\",6,null]]"
+                                    {:click_behavior
+                                     {:type             "link",
+                                      :linkType         "url",
+                                      :linkTemplate     "http://example.com//{{id}}",
+                                      :linkTextTemplate "here is my id: {{id}}"}}}}]
+            (f)
+            (is (= expected-settings
+                   (-> (t2/select-one :model/DashboardCard :id dashcard-id)
+                       :visualization_settings)))))]
     (testing "Running the migration from scratch"
       (impl/test-migrations ["v48.00-022"] [migrate!]
         (expect-correct-settings! migrate!)))
@@ -1454,3 +1485,97 @@
       (migrate! :down 47)
       ;; 34 because there was a total of 34 data migrations (which are filled on rollback)
       (is (= 34 (t2/count :data_migrations))))))
+
+(defn- table-and-column-of-type
+  [ttype]
+  (->> (t2/query
+        [(case (mdb.connection/db-type)
+           :postgres
+           (format "SELECT table_name, column_name, is_nullable FROM information_schema.columns WHERE data_type = '%s' AND table_schema = 'public';"
+                   ttype)
+           :mysql
+           (format "SELECT table_name, column_name, is_nullable FROM information_schema.columns WHERE data_type = '%s' AND table_schema = '%s';"
+                   ttype (-> (mdb.connection/data-source) .getConnection .getCatalog))
+           :h2
+           (format "SELECT table_name, column_name, is_nullable FROM information_schema.columns WHERE data_type = '%s';"
+                   ttype))])
+       (map (fn [{:keys [table_name column_name is_nullable]}]
+              [(keyword (u/lower-case-en table_name)) (keyword (u/lower-case-en column_name)) (= is_nullable "YES")]))
+       set))
+
+(deftest unify-type-of-time-columns-test
+  (impl/test-migrations ["v49.00-054"] [migrate!]
+    (let [db-type       (mdb.connection/db-type)
+          datetime-type (case db-type
+                          :postgres "timestamp without time zone"
+                          :h2       "TIMESTAMP"
+                          :mysql    "datetime")]
+        (testing "Sanity check"
+          (is (true? (set/subset?
+                      (set (#'custom-migrations/db-type->to-unified-columns db-type))
+                      (table-and-column-of-type datetime-type)))))
+
+        (testing "all of our time columns are now converted to timestamp-tz type, only changelog tables are intact"
+          (migrate!)
+          (is (= #{[:databasechangelog :dateexecuted false] [:databasechangeloglock :lockgranted true]}
+                 (set (table-and-column-of-type datetime-type)))))
+
+        (testing "downgrade should revert all converted columns to its original type"
+          (migrate! :down 48)
+          (is (true? (set/subset?
+                      (set (#'custom-migrations/db-type->to-unified-columns db-type))
+                      (table-and-column-of-type datetime-type)))))
+
+        ;; this is a weird behavior on mariadb that I can only find on CI, but it's nice to have this test anw
+        (testing "not nullable timestamp column should not have extra on update"
+          (let [user-id (t2/insert-returning-pk! :core_user {:first_name  "Howard"
+                                                             :last_name   "Hughes"
+                                                             :email       "howard@aircraft.com"
+                                                             :password    "superstrong"
+                                                             :date_joined :%now})
+                session (t2/insert-returning-instance! :core_session {:user_id    user-id
+                                                                      :id         (str (random-uuid))
+                                                                      :created_at :%now})]
+            (t2/update! :core_session (:id session) {:anti_csrf_token "normal"})
+            (testing "created_at shouldn't change if there is an update"
+              (is (= (:created_at session)
+                     (t2/select-one-fn :created_at :core_session :id (:id session))))))))))
+
+(deftest card-revision-add-type-test
+  (impl/test-migrations "v49.2024-01-22T11:52:00" [migrate!]
+    (let [user-id          (:id (new-instance-with-default :core_user))
+          db-id            (:id (new-instance-with-default :metabase_database))
+          card             (new-instance-with-default :report_card {:dataset false :creator_id user-id :database_id db-id})
+          model            (new-instance-with-default :report_card {:dataset true :creator_id user-id :database_id db-id})
+          card-revision-id (:id (new-instance-with-default :revision
+                                                           {:object    (json/generate-string (dissoc card :type))
+                                                            :model     "Card"
+                                                            :model_id  (:id card)
+                                                            :user_id   user-id}))
+          model-revision-id (:id (new-instance-with-default :revision
+                                                            {:object    (json/generate-string (dissoc model :type))
+                                                             :model     "Card"
+                                                             :model_id  (:id card)
+                                                             :user_id   user-id}))]
+      (testing "sanity check revision object"
+        (let [card-revision-object (t2/select-one-fn (comp json/parse-string :object) :revision card-revision-id)]
+          (testing "doesn't have type"
+            (is (not (contains? card-revision-object "type"))))
+          (testing "has dataset"
+            (is (contains? card-revision-object "dataset")))))
+
+      (testing "after migration card revisions should have type"
+        (migrate!)
+        (let [card-revision-object  (t2/select-one-fn (comp json/parse-string :object) :revision card-revision-id)
+              model-revision-object (t2/select-one-fn (comp json/parse-string :object) :revision model-revision-id)]
+          (is (= "question" (get card-revision-object "type")))
+          (is (= "model" (get model-revision-object "type")))))
+
+      (testing "rollback should remove type and keep dataset"
+        (migrate! :down 48)
+        (let [card-revision-object  (t2/select-one-fn (comp json/parse-string :object) :revision card-revision-id)
+              model-revision-object (t2/select-one-fn (comp json/parse-string :object) :revision model-revision-id)]
+          (is (contains? card-revision-object "dataset"))
+          (is (contains? model-revision-object "dataset"))
+          (is (not (contains? card-revision-object "type")))
+          (is (not (contains? model-revision-object "type"))))))))

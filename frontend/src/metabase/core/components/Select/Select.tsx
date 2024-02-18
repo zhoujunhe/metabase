@@ -10,8 +10,8 @@ import { createRef, Children, Component } from "react";
 import _ from "underscore";
 import cx from "classnames";
 import { createSelector } from "@reduxjs/toolkit";
-import type { IconName } from "metabase/core/components/Icon";
-import { Icon } from "metabase/core/components/Icon";
+import type { IconName } from "metabase/ui";
+import { Icon } from "metabase/ui";
 import PopoverWithTrigger from "metabase/components/PopoverWithTrigger";
 import type { SelectButtonProps } from "metabase/core/components/SelectButton";
 import SelectButton from "metabase/core/components/SelectButton";
@@ -167,17 +167,14 @@ class BaseSelect<TValue, TOption = SelectOption<TValue>> extends Component<
   }
 
   itemIsSelected = (option: TOption) => {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const optionValue = this.props.optionValueFn!(option);
     return this._getValuesSet().has(optionValue);
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   itemIsClickable = (option: TOption) => !this.props.optionDisabledFn!(option);
 
   handleChange = (option: TOption) => {
     const { name, multiple, onChange } = this.props;
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const optionValue = this.props.optionValueFn!(option);
     let value: any;
     if (multiple) {
@@ -201,7 +198,6 @@ class BaseSelect<TValue, TOption = SelectOption<TValue>> extends Component<
       return null;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const icon = this.props.optionIconFn!(item);
     if (icon) {
       return (
@@ -305,6 +301,7 @@ class BaseSelect<TValue, TOption = SelectOption<TValue>> extends Component<
           className="MB-Select"
           alwaysExpanded
           width={width}
+          role="listbox"
           itemIsSelected={this.itemIsSelected}
           itemIsClickable={this.itemIsClickable}
           renderItemName={this.props.optionNameFn}

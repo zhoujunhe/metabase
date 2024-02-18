@@ -17,9 +17,11 @@
   (:import
    (java.io StringWriter)
    (java.util List Map)
-   (liquibase Contexts LabelExpression Liquibase Scope Scope$Attr Scope$ScopedRunner RuntimeEnvironment)
+   (javax.sql DataSource)
+   (liquibase Contexts LabelExpression Liquibase RuntimeEnvironment Scope Scope$Attr Scope$ScopedRunner)
    (liquibase.change.custom CustomChangeWrapper)
    (liquibase.changelog ChangeLogIterator ChangeSet ChangeSet$ExecType)
+   (liquibase.changelog.filter ChangeSetFilter)
    (liquibase.changelog.visitor AbstractChangeExecListener ChangeExecListener UpdateVisitor)
    (liquibase.database Database DatabaseFactory)
    (liquibase.database.jvm JdbcConnection)
@@ -126,16 +128,21 @@
   [conn-or-data-source :- [:or (ms/InstanceOfClass java.sql.Connection) (ms/InstanceOfClass javax.sql.DataSource)]
    f                   :- fn?]
   ;; Custom migrations use toucan2, so we need to make sure it uses the same connection with liquibase
-  (binding [t2.conn/*current-connectable* conn-or-data-source]
-    (if (instance? java.sql.Connection conn-or-data-source)
-      (f (->> conn-or-data-source liquibase-connection database (liquibase conn-or-data-source)))
-      ;; closing the `LiquibaseConnection`/`Database` closes the parent JDBC `Connection`, so only use it in combination
-      ;; with `with-open` *if* we are opening a new JDBC `Connection` from a JDBC spec. If we're passed in a `Connection`,
-      ;; it's safe to assume the caller is managing its lifecycle.
-      (with-open [conn           (.getConnection ^javax.sql.DataSource conn-or-data-source)
-                  liquibase-conn (liquibase-connection conn)
-                  database       (database liquibase-conn)]
-        (f (liquibase conn database))))))
+  (let [f* (fn [^Liquibase liquibase]
+             ;; trigger creation of liquibase's databasechangelog tables if needed, without updating any checksums
+             ;; we need to do this until https://github.com/liquibase/liquibase/issues/5537 is fixed
+             (.checkLiquibaseTables liquibase false (.getDatabaseChangeLog liquibase) nil nil)
+             (f liquibase))]
+    (binding [t2.conn/*current-connectable* conn-or-data-source]
+      (if (instance? java.sql.Connection conn-or-data-source)
+        (f* (->> conn-or-data-source liquibase-connection database (liquibase conn-or-data-source)))
+        ;; closing the `LiquibaseConnection`/`Database` closes the parent JDBC `Connection`, so only use it in combination
+        ;; with `with-open` *if* we are opening a new JDBC `Connection` from a JDBC spec. If we're passed in a `Connection`,
+        ;; it's safe to assume the caller is managing its lifecycle.
+        (with-open [conn           (.getConnection ^javax.sql.DataSource conn-or-data-source)
+                    liquibase-conn (liquibase-connection conn)
+                    database       (database liquibase-conn)]
+          (f* (liquibase conn database)))))))
 
 (defmacro with-liquibase
   "Execute body with an instance of a `Liquibase` bound to `liquibase-binding`.
@@ -168,9 +175,10 @@
   skip creating and releasing migration locks, which is both slightly dangerous and a waste of time when we won't be
   using them.
 
-  (I'm not 100% sure whether `Liquibase.update()` still acquires locks if the database is already up-to-date)"
-  [^Liquibase liquibase]
-  (.listUnrunChangeSets liquibase nil (LabelExpression.)))
+  IMPORTANT: this function takes `data-source` but not `liquibase` because `.listUnrunChangeSets` is buggy. See #38257."
+  [^DataSource data-source]
+  (with-liquibase [liquibase (.getConnection data-source)]
+    (.listUnrunChangeSets liquibase nil (LabelExpression.))))
 
 (defn- migration-lock-exists?
   "Is a migration lock in place for `liquibase`?"
@@ -196,31 +204,39 @@
   "Check and make sure the database isn't locked. If it is, sleep for 2 seconds and then retry several times. There's a
   chance the lock will end up clearing up so we can run migrations normally."
   [^Liquibase liquibase]
-  (u/auto-retry 5
-    (when (migration-lock-exists? liquibase)
-      (Thread/sleep 2000)
-      (throw
-       (LockException.
-        (str
-         (trs "Database has migration lock; cannot run migrations.")
-         " "
-         (trs "You can force-release these locks by running `java -jar metabase.jar migrate release-locks`.")))))))
+  (let [retry-counter (volatile! 0)]
+    (u/auto-retry 5
+      (when (migration-lock-exists? liquibase)
+        (Thread/sleep 2000)
+        (vswap! retry-counter inc)
+        (throw
+         (LockException.
+          (str
+           (trs "Database has migration lock; cannot run migrations.")
+           " "
+           (trs "You can force-release these locks by running `java -jar metabase.jar migrate release-locks`."))))))
+    (if (pos? @retry-counter)
+      (log/warnf "Migration lock was cleared after %d retries." @retry-counter)
+      (log/info "No migration lock found."))))
 
 (defn migrate-up-if-needed!
   "Run any unrun `liquibase` migrations, if needed."
-  [^Liquibase liquibase]
+  [^Liquibase liquibase ^DataSource data-source]
   (log/info (trs "Checking if Database has unrun migrations..."))
-  (if (seq (unrun-migrations liquibase))
+  (if (seq (unrun-migrations data-source))
     (do
-     (log/info (trs "Database has unrun migrations. Waiting for migration lock to be cleared..."))
+     (log/info (trs "Database has unrun migrations. Checking if migraton lock is taken..."))
      (wait-for-migration-lock-to-be-cleared liquibase)
-    ;; while we were waiting for the lock, it was possible that another instance finished the migration(s), so make
-    ;; sure something still needs to be done...
-     (let [unrun-migrations-count (count (unrun-migrations liquibase))]
+     ;; while we were waiting for the lock, it was possible that another instance finished the migration(s), so make
+     ;; sure something still needs to be done...
+     (let [to-run-migrations      (unrun-migrations data-source)
+           unrun-migrations-count (count to-run-migrations)]
        (if (pos? unrun-migrations-count)
          (let [^Contexts contexts nil
                start-time         (System/currentTimeMillis)]
-           (log/info (trs "Migration lock is cleared. Running {0} migrations ..." unrun-migrations-count))
+           (log/info (trs "Running {0} migrations ..." unrun-migrations-count))
+           (doseq [^ChangeSet change to-run-migrations]
+             (log/tracef "To run migration %s" (.getId change)))
            (.update liquibase contexts)
            (log/info (trs "Migration complete in {0}" (u/format-milliseconds (- (System/currentTimeMillis) start-time)))))
          (log/info
@@ -254,7 +270,7 @@
      :or {change-set-filters []}}]
    (let [change-log     (.getDatabaseChangeLog liquibase)
          database       (.getDatabase liquibase)
-         log-iterator   (ChangeLogIterator. change-log (into-array liquibase.changelog.filter.ChangeSetFilter change-set-filters))
+         log-iterator   (ChangeLogIterator. change-log ^"[Lliquibase.changelog.filter.ChangeSetFilter;" (into-array ChangeSetFilter change-set-filters))
          update-visitor (UpdateVisitor. database ^ChangeExecListener exec-listener)
          runtime-env    (RuntimeEnvironment. database (Contexts.) nil)]
      (run-in-scope-locked
@@ -269,11 +285,12 @@
 
   It can be used to fix situations where the database got into a weird state, as was common before the fixes made in
   #3295."
-  [^Liquibase liquibase :- (ms/InstanceOfClass Liquibase)]
+  [^Liquibase liquibase :- (ms/InstanceOfClass Liquibase)
+   ^DataSource data-source :- (ms/InstanceOfClass DataSource)]
   ;; have to do this before clear the checksums else it will wait for locks to be released
   (release-lock-if-needed! liquibase)
   (.clearCheckSums liquibase)
-  (when (seq (unrun-migrations liquibase))
+  (when (seq (unrun-migrations data-source))
     (let [change-log     (.getDatabaseChangeLog liquibase)
           fail-on-errors (mapv (fn [^ChangeSet change-set] [change-set (.getFailOnError change-set)])
                                (.getChangeSets change-log))
@@ -349,3 +366,22 @@
          ids-to-drop     (drop-while #(not= (inc target-version) (first (extract-numbers %))) changeset-ids)]
      (log/infof "Rolling back app database schema to version %d" target-version)
      (.rollback liquibase (count ids-to-drop) ""))))
+
+(defn latest-applied-major-version
+  "Gets the latest version that was applied to the database."
+  [conn]
+  (when-not (fresh-install? conn)
+    (let [changeset-query (format "SELECT id FROM %s WHERE id LIKE 'v%%' ORDER BY ORDEREXECUTED DESC LIMIT 1" (changelog-table-name conn))
+          changeset-id (last (map :id (jdbc/query {:connection conn} [changeset-query])))]
+      (some-> changeset-id extract-numbers first))))
+
+(defn latest-available-major-version
+  "Get the latest version that Liquibase would apply if we ran migrations right now."
+  [^Liquibase liquibase]
+  (->> liquibase
+       (.getDatabaseChangeLog)
+       (.getChangeSets)
+       (map #(.getId ^ChangeSet %))
+       last
+       extract-numbers
+       first))

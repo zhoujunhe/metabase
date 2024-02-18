@@ -73,7 +73,7 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
     });
     popover().within(() => {
       cy.icon("int").click();
-      cy.get("input").type("46");
+      cy.findByPlaceholderText("Enter a number").type("46");
       cy.contains("Add filter").click();
     });
 
@@ -116,14 +116,14 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
     });
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("ID between 96 97").click();
+    cy.findByText("ID is between 96 and 97").click();
+    cy.findByDisplayValue("Between").click();
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("Between").click();
-    cy.findByTestId("operator-select-list").within(() => {
-      cy.contains("Is not");
-      cy.contains("Greater than");
-      cy.contains("Less than");
-    });
+    cy.contains("Is not");
+    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
+    cy.contains("Greater than");
+    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
+    cy.contains("Less than");
   });
 
   it("should append indexes to duplicate custom expression names (metabase#12104)", () => {
@@ -172,17 +172,25 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
 
     cy.button("Done").click();
 
+    getNotebookStep("filter").contains("Price is greater than 1").click();
+
     // change the corresponding custom expression
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("Price is greater than 1").click();
     cy.get(".Icon-chevronleft").click();
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Custom Expression").click();
 
-    cy.get("@formula").clear().type("[Price] > 1 AND [Price] < 5{enter}");
+    cy.get("@formula")
+      .invoke("val", "") // this is a more reliable .clear()
+      .type("[Price] > 1 AND [Price] < 5{enter}");
 
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.contains(/^Price is less than 5/i);
+    // In case it does exist, it usually is an error in expression (caused by not clearing
+    // the input properly before typing), and this check helps to highlight that.
+    cy.findByTestId("expression-editor-textfield").should("not.exist");
+
+    getNotebookStep("filter")
+      .contains("Price is greater than 1")
+      .should("exist");
+    getNotebookStep("filter").contains("Price is less than 5").should("exist");
   });
 
   it("should show the real number of rows instead of HARD_ROW_LIMIT when loading (metabase#17397)", () => {
@@ -216,13 +224,12 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Product ID is 2").click();
 
-    popover().find("input").type("3{enter}");
+    popover().within(() => {
+      cy.findByLabelText("Filter value").focus().type("3").blur();
+      cy.button("Update filter").click();
+    });
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Product ID is 2 selections");
-
-    // Still loading
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.contains("Showing 98 rows");
 
     cy.wait("@dataset");
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
@@ -288,8 +295,11 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
     });
   });
 
-  describe("arithmetic (metabase#13175)", () => {
+  describe("arithmetic (metabase#13175, metabase#18094)", () => {
     beforeEach(() => {
+      // This is required because TableInteractive won't render columns
+      // that don't fit into the viewport
+      cy.viewport(1400, 1000);
       openOrdersTable({ mode: "notebook" });
     });
 
@@ -305,6 +315,8 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
         .type("Example", { delay: 100 });
 
       cy.button("Done").should("not.be.disabled").click();
+
+      getNotebookStep("expression").contains("Example").should("exist");
 
       visualize();
 
@@ -338,6 +350,14 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
     const CASES = {
       CountIf: ["CountIf(([Subtotal] + [Tax]) > 10)", "18,760"],
       SumIf: ["SumIf([Subtotal], ([Subtotal] + [Tax] > 20))", "1,447,850.28"],
+      SumIf2: [
+        'SumIf([Total], [Created At] > "2016-01-01") + SumIf([Subtotal], [Created At] > "2016-01-01")',
+        "2,958,809.85",
+      ],
+      CountIf2: [
+        'CountIf([Created At] > "2016-01-01") + CountIf([Created At] > "2016-01-01")',
+        "37,520",
+      ],
     };
 
     Object.entries(CASES).forEach(([filter, formula]) => {
@@ -345,28 +365,26 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
 
       it(`should work on custom aggregation with ${filter}`, () => {
         summarize({ mode: "notebook" });
-        // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-        cy.findByText("Custom Expression").click();
+        popover().contains("Custom Expression").click();
 
         enterCustomColumnDetails({ formula: expression });
 
         cy.findByPlaceholderText("Something nice and descriptive")
           .click()
-          .type(filter, { delay: 100 });
+          .type(filter);
 
-        // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-        cy.contains(/^expected closing parenthesis/i).should("not.exist");
-        // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-        cy.contains(/^redundant input/i).should("not.exist");
-
+        popover().within(() => {
+          cy.contains(/^expected closing parenthesis/i).should("not.exist");
+          cy.contains(/^redundant input/i).should("not.exist");
+        });
         cy.button("Done").should("not.be.disabled").click();
+
+        cy.findByTestId("aggregate-step").contains(filter).should("exist");
 
         visualize();
 
-        // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-        cy.contains(filter);
-        // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-        cy.contains(result);
+        cy.findByTestId("qb-header").contains(filter);
+        cy.findByTestId("query-builder-main").contains(result);
       });
     });
   });
@@ -447,7 +465,7 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
     cy.createQuestion({
       name: "Products model",
       query: { "source-table": PRODUCTS_ID },
-      dataset: true,
+      type: "model",
       display: "table",
     });
 
@@ -455,7 +473,7 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
       {
         name: "Orders model",
         query: { "source-table": ORDERS_ID },
-        dataset: true,
+        type: "model",
         display: "table",
       },
       { visitQuestion: true },
@@ -515,7 +533,7 @@ describe("scenarios > question > notebook", { tags: "@slow" }, () => {
     () => {
       cy.createNativeQuestion({
         name: "Orders, Model",
-        dataset: true,
+        type: "model",
         native: { query: "SELECT * FROM ORDERS" },
       });
 

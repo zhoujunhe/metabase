@@ -39,8 +39,8 @@
 (defn- print-migrations-and-quit-if-needed!
   "If we are not doing auto migrations then print out migration SQL for user to run manually. Then throw an exception to
   short circuit the setup process and make it clear we can't proceed."
-  [liquibase]
-  (when (seq (liquibase/unrun-migrations liquibase))
+  [liquibase data-source]
+  (when (seq (liquibase/unrun-migrations data-source))
     (log/info (str (trs "Database Upgrade Required")
                    "\n\n"
                    (trs "NOTICE: Your database requires updates to work with this version of Metabase.")
@@ -77,10 +77,10 @@
        (liquibase/consolidate-liquibase-changesets! conn)
        (log/info (trs "Liquibase is ready."))
        (case direction
-         :up            (liquibase/migrate-up-if-needed! liquibase)
-         :force         (liquibase/force-migrate-up-if-needed! liquibase)
+         :up            (liquibase/migrate-up-if-needed! liquibase data-source)
+         :force         (liquibase/force-migrate-up-if-needed! liquibase data-source)
          :down          (apply liquibase/rollback-major-version db-type conn liquibase args)
-         :print         (print-migrations-and-quit-if-needed! liquibase)
+         :print         (print-migrations-and-quit-if-needed! liquibase data-source)
          :release-locks (liquibase/force-release-locks! liquibase))
        ;; Migrations were successful; commit everything and re-enable auto-commit
        (.commit conn)
@@ -117,6 +117,28 @@
                      (.getDatabaseProductName metadata) (.getDatabaseProductVersion metadata))
                 (u/emoji "✅")))))
 
+(mu/defn ^:private error-if-downgrade-required!
+  [data-source :- (ms/InstanceOfClass javax.sql.DataSource)]
+  (log/info (u/format-color 'cyan (trs "Checking if a database downgrade is required...")))
+  (with-open [conn (.getConnection ^javax.sql.DataSource data-source)]
+    (liquibase/with-liquibase [liquibase conn]
+      (let [latest-available (liquibase/latest-available-major-version liquibase)
+            latest-applied (liquibase/latest-applied-major-version conn)]
+        ;; `latest-applied` will be `nil` for fresh installs
+        (when (and latest-applied (< latest-available latest-applied))
+          (log/error (str (u/format-color 'red (trs "ERROR: Downgrade detected."))
+                          "\n\n"
+                          (trs "Your metabase instance appears to have been downgraded without a corresponding database downgrade.")
+                          "\n\n"
+                          (trs "You must run `java -jar metabase.jar migrate down` from version {0}." latest-applied)
+                          "\n\n"
+                          (trs "Once your database has been downgraded, try running the application again.")
+                          "\n\n"
+                          (trs "See: https://www.metabase.com/docs/latest/installation-and-operation/upgrading-metabase#rolling-back-an-upgrade")))
+          (throw (ex-info (trs "Downgrade detected. Please run `migrate down` from version {0}."
+                            latest-applied)
+                          {})))))))
+
 (mu/defn ^:private run-schema-migrations!
   "Run through our DB migration process and make sure DB is fully prepared"
   [db-type       :- :keyword
@@ -140,6 +162,7 @@
        (binding [mdb.connection/*application-db* (mdb.connection/application-db db-type data-source :create-pool? false) ; should already be a pool
                  setting/*disable-cache*         true]
          (verify-db-connection db-type data-source)
+         (error-if-downgrade-required! data-source)
          (run-schema-migrations! db-type data-source auto-migrate?))))
   :done)
 

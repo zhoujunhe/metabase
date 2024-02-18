@@ -5,11 +5,17 @@
    [clojure.test :refer :all]
    [metabase.config :as config]
    [metabase.models
-    :refer [Collection Dashboard DashboardCard ParameterCard NativeQuerySnippet Revision]]
+    :refer [Collection
+            Dashboard
+            DashboardCard
+            NativeQuerySnippet
+            ParameterCard
+            Revision]]
    [metabase.models.card :as card]
    [metabase.models.revision :as revision]
    [metabase.models.serialization :as serdes]
-   [metabase.query-processor :as qp]
+   [metabase.query-processor.card-test :as qp.card-test]
+   [metabase.query-processor.preprocess :as qp.preprocess]
    [metabase.test :as mt]
    [metabase.test.util :as tu]
    [metabase.util :as u]
@@ -232,7 +238,7 @@
 
 (deftest normalize-result-metadata-test
   (testing "Should normalize result metadata keys when fetching a Card from the DB"
-    (let [metadata (qp/query->expected-cols (mt/mbql-query venues))]
+    (let [metadata (qp.preprocess/query->expected-cols (mt/mbql-query venues))]
       (t2.with-temp/with-temp [:model/Card {card-id :id} {:dataset_query   (mt/mbql-query venues)
                                                           :result_metadata metadata}]
         (is (= (mt/derecordize metadata)
@@ -245,7 +251,7 @@
                           (f (t2/select-one-fn :result_metadata :model/Card :id card-id))))
            "updating" (fn [changes f]
                         (t2.with-temp/with-temp [:model/Card {card-id :id} {:dataset_query   (mt/mbql-query checkins)
-                                                                            :result_metadata (qp/query->expected-cols (mt/mbql-query checkins))}]
+                                                                            :result_metadata (qp.preprocess/query->expected-cols (mt/mbql-query checkins))}]
                           (t2/update! :model/Card card-id changes)
                           (f (t2/select-one-fn :result_metadata :model/Card :id card-id))))}]
 
@@ -253,10 +259,10 @@
       (testing "If result_metadata is empty, we should attempt to populate it"
         (f {:dataset_query (mt/mbql-query venues)}
            (fn [metadata]
-             (is (= (map :name (qp/query->expected-cols (mt/mbql-query venues)))
+             (is (= (map :name (qp.preprocess/query->expected-cols (mt/mbql-query venues)))
                     (map :name metadata))))))
       (testing "Don't overwrite result_metadata that was passed in"
-        (let [metadata (take 1 (qp/query->expected-cols (mt/mbql-query venues)))]
+        (let [metadata (take 1 (qp.preprocess/query->expected-cols (mt/mbql-query venues)))]
           (f {:dataset_query   (mt/mbql-query venues)
               :result_metadata metadata}
              (fn [new-metadata]
@@ -327,34 +333,66 @@
        (is (= expected
               (t2/select-one-fn :visualization_settings :model/Card :id (u/the-id card))))))))
 
+(deftest template-tag-parameters-test
+  (testing "Card with a Field filter parameter"
+    (mt/with-temp [:model/Card card {:dataset_query (qp.card-test/field-filter-query)}]
+      (is (= [{:id "_DATE_",
+               :type :date/all-options,
+               :target [:dimension [:template-tag "date"]],
+               :name "Check-In Date",
+               :slug "date",
+               :default nil
+               :required false}]
+             (card/template-tag-parameters card)))))
+  (testing "Card with a non-Field-filter parameter"
+    (mt/with-temp [:model/Card card {:dataset_query (qp.card-test/non-field-filter-query)}]
+      (is (= [{:id "_ID_",
+               :type :number/=,
+               :target [:variable [:template-tag "id"]],
+               :name "Order ID",
+               :slug "id",
+               :default "1"
+               :required true}]
+             (card/template-tag-parameters card)))))
+  (testing "Should ignore native query snippets and source card IDs"
+    (mt/with-temp [:model/Card card {:dataset_query (qp.card-test/non-parameter-template-tag-query)}]
+      (is (= [{:id "_ID_",
+               :type :number/=,
+               :target [:variable [:template-tag "id"]],
+               :name "Order ID",
+               :slug "id",
+               :default "1"
+               :required true}]
+             (card/template-tag-parameters card))))))
+
 (deftest validate-template-tag-field-ids-test
   (testing "Disallow saving a Card with native query Field filter template tags referencing a different Database (#14145)"
-    (let [test-data-db-id      (mt/id)
-          sample-dataset-db-id (mt/dataset sample-dataset (mt/id))
-          card-data            (fn [database-id]
-                                 {:database_id   database-id
-                                  :dataset_query {:database database-id
-                                                  :type     :native
-                                                  :native   {:query         "SELECT COUNT(*) FROM PRODUCTS WHERE {{FILTER}}"
-                                                             :template-tags {"FILTER" {:id           "_FILTER_"
-                                                                                       :name         "FILTER"
-                                                                                       :display-name "Filter"
-                                                                                       :type         :dimension
-                                                                                       :dimension    [:field (mt/id :venues :name) nil]
-                                                                                       :widget-type  :string/=
-                                                                                       :default      nil}}}}})
-          good-card-data       (card-data test-data-db-id)
-          bad-card-data        (card-data sample-dataset-db-id)]
+    (let [test-data-db-id   (mt/id)
+          bird-counts-db-id (mt/dataset daily-bird-counts (mt/id))
+          card-data         (fn [database-id]
+                              {:database_id   database-id
+                               :dataset_query {:database database-id
+                                               :type     :native
+                                               :native   {:query         "SELECT COUNT(*) FROM PRODUCTS WHERE {{FILTER}}"
+                                                          :template-tags {"FILTER" {:id           "_FILTER_"
+                                                                                    :name         "FILTER"
+                                                                                    :display-name "Filter"
+                                                                                    :type         :dimension
+                                                                                    :dimension    [:field (mt/id :venues :name) nil]
+                                                                                    :widget-type  :string/=
+                                                                                    :default      nil}}}}})
+          good-card-data  (card-data test-data-db-id)
+          bad-card-data   (card-data bird-counts-db-id)]
       (testing "Should not be able to create new Card with a filter with the wrong Database ID"
         (is (thrown-with-msg?
              clojure.lang.ExceptionInfo
-             #"Invalid Field Filter: Field \d+ \"VENUES\"\.\"NAME\" belongs to Database \d+ \"test-data\", but the query is against Database \d+ \"sample-dataset\""
+             #"Invalid Field Filter: Field \d+ \"VENUES\"\.\"NAME\" belongs to Database \d+ \"test-data\", but the query is against Database \d+ \"daily-bird-counts\""
              (t2.with-temp/with-temp [:model/Card _ bad-card-data]))))
       (testing "Should not be able to update a Card to have a filter with the wrong Database ID"
         (t2.with-temp/with-temp [:model/Card {card-id :id} good-card-data]
           (is (thrown-with-msg?
                clojure.lang.ExceptionInfo
-               #"Invalid Field Filter: Field \d+ \"VENUES\"\.\"NAME\" belongs to Database \d+ \"test-data\", but the query is against Database \d+ \"sample-dataset\""
+               #"Invalid Field Filter: Field \d+ \"VENUES\"\.\"NAME\" belongs to Database \d+ \"test-data\", but the query is against Database \d+ \"daily-bird-counts\""
                (t2/update! :model/Card card-id bad-card-data))))))))
 
 ;;; ------------------------------------------ Parameters tests ------------------------------------------
@@ -488,7 +526,7 @@
                (t2/select 'ParameterCard :card_id source-card-id)))))))
 
 (deftest cleanup-parameter-on-card-changes-test
-  (mt/dataset sample-dataset
+  (mt/dataset test-data
     (mt/with-temp
       [:model/Card {source-card-id :id} (merge (mt/card-with-source-metadata-for-query
                                                 (mt/mbql-query products {:fields [(mt/$ids $products.title)
@@ -595,7 +633,7 @@
              (serdes/descendants "Card" (:id card2)))))))
 
 (deftest extract-test
-  (let [metadata (qp/query->expected-cols (mt/mbql-query venues))
+  (let [metadata (qp.preprocess/query->expected-cols (mt/mbql-query venues))
         query    (mt/mbql-query venues)]
     (testing "normal cards omit result_metadata"
       (t2.with-temp/with-temp [:model/Card {card-id :id} {:dataset_query   query
@@ -727,6 +765,7 @@
                             (= col :table_id)          (mt/id :venues)
                             (= col :database_id)       (:id db)
                             (= col :query_type)        :native
+                            (= col :type)              "model"
                             (= col :dataset_query)     (mt/mbql-query users)
                             (= col :visualization_settings) {:text "now it's a text card"}
                             (int? value)               (inc value)

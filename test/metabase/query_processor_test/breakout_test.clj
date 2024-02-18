@@ -240,10 +240,11 @@
       (is (=? {:status :failed
                :class  (partial = clojure.lang.ExceptionInfo)
                :error  "Unable to bin Field without a min/max value (missing or incomplete fingerprint)"}
-              (qp/process-userland-query
-               (mt/mbql-query venues
-                 {:aggregation [[:count]]
-                  :breakout    [[:field %latitude {:binning {:strategy :default}}]]})))))))
+              (qp/process-query
+               (qp/userland-query
+                (mt/mbql-query venues
+                  {:aggregation [[:count]]
+                   :breakout    [[:field %latitude {:binning {:strategy :default}}]]}))))))))
 
 (defn- nested-venues-query [card-or-card-id]
   {:database lib.schema.id/saved-questions-virtual-database-id
@@ -308,7 +309,7 @@
 (deftest ^:parallel binning-with-source-card-with-explicit-joins-test
   (testing "Make sure binning works with a source card that contains explicit joins"
     (mt/test-drivers (mt/normal-drivers-with-feature :binning :nested-queries :left-join)
-      (mt/dataset sample-dataset
+      (mt/dataset test-data
         (let [source-card-query (mt/mbql-query orders
                                   {:joins  [{:source-table $$people
                                              :alias        "People"

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ComponentStory } from "@storybook/react";
-import { useArgs } from "@storybook/client-api";
+import { useArgs } from "@storybook/addons";
 import type { UniqueIdentifier } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 
@@ -31,15 +31,12 @@ const Template: ComponentStory<typeof TabRow> = args => {
   const handleChange = (value: unknown) => updateArgs({ value });
   const [message, setMessage] = useState("");
 
-  const action: TabButtonMenuAction<unknown> = (
-    { value: selectedValue },
-    value,
-  ) =>
+  const action: TabButtonMenuAction = ({ value: selectedValue }, value) =>
     setMessage(
       `Clicked ${value}, currently selected value is ${selectedValue}`,
     );
 
-  const menuItems: TabButtonMenuItem<unknown>[] = [
+  const menuItems: TabButtonMenuItem[] = [
     {
       label: "Click me!",
       action,

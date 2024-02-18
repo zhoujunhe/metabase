@@ -256,7 +256,7 @@ describe("scenarios > x-rays", { tags: "@slow" }, () => {
 
     // confirm parameter filter is applied as filter in query builder
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("State is GA");
+    cy.findByText("User → State is GA");
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("463");
   });
@@ -329,6 +329,25 @@ describe("scenarios > x-rays", { tags: "@slow" }, () => {
         // Ensure charts actually got rendered
         cy.get("text.x-axis-label").contains("Created At");
       });
+  });
+
+  it("should default x-ray dashboard width to 'fixed'", () => {
+    cy.intercept("POST", "/api/dataset").as("dataset");
+    cy.visit(`/auto/dashboard/table/${ORDERS_ID}`);
+    cy.wait("@dataset", { timeout: 60000 });
+
+    // x-ray dashboards should default to 'fixed' width
+    cy.findByTestId("fixed-width-dashboard-header").should(
+      "have.css",
+      "max-width",
+      "1048px",
+    );
+    cy.findByTestId("fixed-width-filters").should(
+      "have.css",
+      "max-width",
+      "1048px",
+    );
+    cy.findByTestId("dashboard-grid").should("have.css", "max-width", "1048px");
   });
 });
 

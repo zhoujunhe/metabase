@@ -21,9 +21,9 @@
    [metabase.lib.schema.literal.jvm :as lib.schema.literal.jvm]
    [metabase.models.setting :refer [defsetting]]
    [metabase.public-settings.premium-features :refer [defenterprise]]
-   [metabase.query-processor.context :as qp.context]
    [metabase.query-processor.error-type :as qp.error-type]
    [metabase.query-processor.middleware.limit :as limit]
+   [metabase.query-processor.pipeline :as qp.pipeline]
    [metabase.query-processor.reducible :as qp.reducible]
    [metabase.query-processor.store :as qp.store]
    [metabase.query-processor.timezone :as qp.timezone]
@@ -367,8 +367,8 @@
     ;; manually.
     (when-not write?
       (try
-        (log/trace (pr-str '(.setAutoCommit conn false)))
-        (.setAutoCommit conn false)
+        (log/trace (pr-str '(.setAutoCommit conn true)))
+        (.setAutoCommit conn true)
         (catch Throwable e
           (log/debug e "Error enabling connection autoCommit"))))
     (try
@@ -656,11 +656,17 @@
 
 (defn reducible-rows
   "Returns an object that can be reduced to fetch the rows and columns in a `ResultSet` in a driver-specific way (e.g.
-  by using `read-column-thunk` to fetch values)."
+  by using `read-column-thunk` to fetch values).
+
+  The three-arity was added in 0.48.0"
   {:added "0.35.0"}
-  [driver ^ResultSet rs ^ResultSetMetaData rsmeta canceled-chan]
-  (let [row-thunk (row-thunk driver rs rsmeta)]
-    (qp.reducible/reducible-rows row-thunk canceled-chan)))
+  ([driver ^ResultSet rs ^ResultSetMetaData rsmeta]
+   (let [row-thunk (row-thunk driver rs rsmeta)]
+     (qp.reducible/reducible-rows row-thunk)))
+
+  ([driver ^ResultSet rs ^ResultSetMetaData rsmeta canceled-chan]
+   (let [row-thunk (row-thunk driver rs rsmeta)]
+     (qp.reducible/reducible-rows row-thunk canceled-chan))))
 
 (defmulti inject-remark
   "Injects the remark into the SQL query text."
@@ -676,22 +682,25 @@
   (str "-- " remark "\n" sql))
 
 (defn execute-reducible-query
-  "Default impl of `execute-reducible-query` for sql-jdbc drivers."
+  "Default impl of [[metabase.driver/execute-reducible-query]] for sql-jdbc drivers."
   {:added "0.35.0", :arglists '([driver query context respond] [driver sql params max-rows context respond])}
   ([driver {{sql :query, params :params} :native, :as outer-query} context respond]
    {:pre [(string? sql) (seq sql)]}
-   (let [remark   (qp.util/query->remark driver outer-query)
-         sql      (inject-remark driver sql remark)
+   (let [database (lib.metadata/database (qp.store/metadata-provider))
+         sql      (if (get-in database [:details :include-user-id-and-hash] true)
+                    (->> (qp.util/query->remark driver outer-query)
+                         (inject-remark driver sql))
+                    sql)
          max-rows (limit/determine-query-max-rows outer-query)]
      (execute-reducible-query driver sql params max-rows context respond)))
 
-  ([driver sql params max-rows context respond]
+  ([driver sql params max-rows _context respond]
    (do-with-connection-with-options
     driver
     (lib.metadata/database (qp.store/metadata-provider))
     {:session-timezone (qp.timezone/report-timezone-id-if-supported driver (lib.metadata/database (qp.store/metadata-provider)))}
     (fn [^Connection conn]
-      (with-open [stmt          (statement-or-prepared-statement driver conn sql params (qp.context/canceled-chan context))
+      (with-open [stmt          (statement-or-prepared-statement driver conn sql params qp.pipeline/*canceled-chan*)
                   ^ResultSet rs (try
                                   (execute-statement-or-prepared-statement! driver stmt max-rows params sql)
                                   (catch Throwable e
@@ -703,7 +712,7 @@
                                                     e))))]
         (let [rsmeta           (.getMetaData rs)
               results-metadata {:cols (column-metadata driver rsmeta)}]
-          (respond results-metadata (reducible-rows driver rs rsmeta (qp.context/canceled-chan context)))))))))
+          (respond results-metadata (reducible-rows driver rs rsmeta qp.pipeline/*canceled-chan*))))))))
 
 
 ;;; +----------------------------------------------------------------------------------------------------------------+

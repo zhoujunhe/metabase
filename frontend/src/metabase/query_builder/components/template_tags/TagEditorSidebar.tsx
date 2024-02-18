@@ -1,5 +1,4 @@
 import { Component } from "react";
-import PropTypes from "prop-types";
 import { t } from "ttag";
 import cx from "classnames";
 import _ from "underscore";
@@ -17,24 +16,32 @@ import type {
   TemplateTag,
   TemplateTagId,
 } from "metabase-types/api";
+import type { EmbeddingParameterVisibility } from "metabase/public/lib/types";
 import type NativeQuery from "metabase-lib/queries/NativeQuery";
 import type Database from "metabase-lib/metadata/Database";
 import type Field from "metabase-lib/metadata/Field";
+import type Question from "metabase-lib/Question";
 
 import { TagEditorParam } from "./TagEditorParam";
 import { TagEditorHelp } from "./TagEditorHelp";
+
+type GetEmbeddedParamVisibility = (
+  slug: string,
+) => EmbeddingParameterVisibility;
 
 interface TagEditorSidebarProps {
   card: Card;
   query: NativeQuery;
   databases: Database[];
   databaseFields: Field[];
+  question: Question;
   sampleDatabaseId: DatabaseId;
   setDatasetQuery: (query: NativeDatasetQuery) => void;
   setTemplateTag: (tag: TemplateTag) => void;
   setTemplateTagConfig: (tag: TemplateTag, config: Parameter) => void;
   setParameterValue: (tagId: TemplateTagId, value: RowValue) => void;
   onClose: () => void;
+  getEmbeddedParameterVisibility: GetEmbeddedParamVisibility;
 }
 
 interface TagEditorSidebarState {
@@ -44,17 +51,6 @@ interface TagEditorSidebarState {
 export class TagEditorSidebar extends Component<TagEditorSidebarProps> {
   state: TagEditorSidebarState = {
     section: "settings",
-  };
-
-  static propTypes = {
-    card: PropTypes.object.isRequired,
-    onClose: PropTypes.func.isRequired,
-    databaseFields: PropTypes.array,
-    sampleDatabaseId: PropTypes.number,
-    setDatasetQuery: PropTypes.func.isRequired,
-    setTemplateTag: PropTypes.func.isRequired,
-    setTemplateTagConfig: PropTypes.func.isRequired,
-    setParameterValue: PropTypes.func.isRequired,
   };
 
   setSection(section: "settings" | "help") {
@@ -73,14 +69,16 @@ export class TagEditorSidebar extends Component<TagEditorSidebarProps> {
       sampleDatabaseId,
       setDatasetQuery,
       query,
+      question,
       setTemplateTag,
       setTemplateTagConfig,
       setParameterValue,
       onClose,
+      getEmbeddedParameterVisibility,
     } = this.props;
     const tags = query.variableTemplateTags();
-    const database = query.database();
-    const parameters = query.question().parameters();
+    const database = question.database();
+    const parameters = question.parameters();
     const parametersById = _.indexBy(parameters, "id");
 
     let section;
@@ -118,6 +116,7 @@ export class TagEditorSidebar extends Component<TagEditorSidebarProps> {
               setTemplateTag={setTemplateTag}
               setTemplateTagConfig={setTemplateTagConfig}
               setParameterValue={setParameterValue}
+              getEmbeddedParameterVisibility={getEmbeddedParameterVisibility}
             />
           ) : (
             <TagEditorHelp
@@ -142,6 +141,7 @@ interface SettingsPaneProps {
   setTemplateTag: (tag: TemplateTag) => void;
   setTemplateTagConfig: (tag: TemplateTag, config: Parameter) => void;
   setParameterValue: (tagId: TemplateTagId, value: RowValue) => void;
+  getEmbeddedParameterVisibility: GetEmbeddedParamVisibility;
 }
 
 const SettingsPane = ({
@@ -153,14 +153,20 @@ const SettingsPane = ({
   setTemplateTag,
   setTemplateTagConfig,
   setParameterValue,
+  getEmbeddedParameterVisibility,
 }: SettingsPaneProps) => (
   <div>
     {tags.map(tag => (
-      <div key={tag.name}>
+      <div key={tag.id}>
         <TagEditorParam
           tag={tag}
           key={tag.name}
           parameter={parametersById[tag.id]}
+          embeddedParameterVisibility={
+            parametersById[tag.id]
+              ? getEmbeddedParameterVisibility(parametersById[tag.id].slug)
+              : null
+          }
           databaseFields={databaseFields}
           database={database}
           databases={databases}

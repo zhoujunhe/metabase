@@ -19,14 +19,18 @@
                   [:> [:field (meta/id :venues :id) nil] [:* [:field (meta/id :venues :price) nil] 11]]
                   [:contains [:field (meta/id :venues :name) nil] "BBQ" {:case-sensitive true}]]})
 
+(def ^:private segments-db
+  {:segments [{:id          segment-id
+               :name        "PriceID-BBQ"
+               :table-id    (meta/id :venues)
+               :definition  segment-definition
+               :description "The ID is greater than 11 times the price and the name contains \"BBQ\"."}]})
+
 (def ^:private metadata-provider
-  (lib.tu/mock-metadata-provider
-   meta/metadata-provider
-   {:segments [{:id          segment-id
-                :name        "PriceID-BBQ"
-                :table-id    (meta/id :venues)
-                :definition  segment-definition
-                :description "The ID is greater than 11 times the price and the name contains \"BBQ\"."}]}))
+  (lib.tu/mock-metadata-provider meta/metadata-provider segments-db))
+
+(def ^:private metadata-provider-with-cards
+  (lib.tu/mock-metadata-provider lib.tu/metadata-provider-with-mock-cards segments-db))
 
 (def ^:private segment-clause
   [:segment {:lib/uuid (str (random-uuid))} segment-id])
@@ -38,6 +42,9 @@
 
 (def ^:private segment-metadata
   (lib.metadata/segment query-with-segment segment-id))
+
+(deftest ^:parallel uses-segment?-test
+  (is (lib/uses-segment? query-with-segment segment-id)))
 
 (deftest ^:parallel query-suggested-name-test
   (is (= "Venues, Filtered by ID is 5 and PriceID-BBQ"
@@ -88,6 +95,7 @@
                 :filter-positions [0]}]
               (map #(lib/display-info query %) available-segments)))
       (let [multi-stage-query (lib/append-stage query)]
+        (is (lib/uses-segment? multi-stage-query segment-id))
         (testing "not the first stage -- don't return Segments (#36196)"
           (is (nil? (lib/available-segments multi-stage-query)))
           (is (nil? (lib/available-segments multi-stage-query -1)))
@@ -97,7 +105,19 @@
                  (lib/available-segments multi-stage-query 0)
                  (lib/available-segments multi-stage-query -2)))))))
   (testing "query with different Table -- don't return Segments"
-    (is (nil? (lib/available-segments (lib/query metadata-provider (meta/table-metadata :orders)))))))
+    (is (nil? (lib/available-segments (lib/query metadata-provider (meta/table-metadata :orders))))))
+  (testing "query with different source table joining the segments table -- don't return Segments"
+    (let [query (-> (lib/query metadata-provider (meta/table-metadata :categories))
+                    (lib/join (-> (lib/join-clause (lib/query metadata-provider (meta/table-metadata :venues))
+                                                   [(lib/= (meta/field-metadata :venues :price) 4)])
+                                  (lib/with-join-fields :all))))]
+      (is (not (lib/uses-segment? query segment-id)))
+      (is (nil? (lib/available-segments query)))))
+  (testing "query based on a card -- don't return Segments"
+    (doseq [card-key [:venues :venues/native]]
+      (let [query (lib/query metadata-provider-with-cards (card-key lib.tu/mock-cards))]
+        (is (not (lib/uses-segment? query segment-id)))
+        (is (nil? (lib/available-segments (lib/append-stage query))))))))
 
 (deftest ^:parallel filter-with-segment-test
   (testing "Should be able to pass a Segment metadata to `filter`"
@@ -110,6 +130,7 @@
                       [:segment {:lib/uuid (str (random-uuid))} segment-id]]]
         (testing (pr-str (list 'lib/filter 'query segment))
           (let [query' (lib/filter query segment)]
+            (is (lib/uses-segment? query' segment-id))
             (is (=? {:lib/type :mbql/query
                      :stages   [{:lib/type     :mbql.stage/mbql
                                  :source-table (meta/id :venues)

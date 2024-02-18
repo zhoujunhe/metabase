@@ -170,19 +170,19 @@ describe("CollectionHeader", () => {
         collection,
         isBookmarked: true,
       });
-      userEvent.click(screen.getByLabelText("bookmark icon"));
+      userEvent.click(screen.getByLabelText("bookmark_filled icon"));
 
       expect(onDeleteBookmark).toHaveBeenCalledWith(myCollection);
     });
   });
 
   describe("collection menu", () => {
-    it("should have collection menu options", () => {
+    it("should have collection menu options", async () => {
       const collection = { can_write: true };
       setup({ collection });
 
       userEvent.click(screen.getByLabelText("ellipsis icon"));
-      expect(screen.getByText("Move")).toBeInTheDocument();
+      expect(await screen.findByText("Move")).toBeInTheDocument();
       expect(screen.getByText("Archive")).toBeInTheDocument();
     });
   });

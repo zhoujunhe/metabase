@@ -8,9 +8,11 @@
    [malli.error :as me]
    [metabase.driver :as driver]
    [metabase.models.card :refer [Card]]
-   [metabase.models.model-index :as model-index :refer [ModelIndex
-                                                        ModelIndexValue]]
+   [metabase.models.model-index
+    :as model-index
+    :refer [ModelIndex ModelIndexValue]]
    [metabase.query-processor :as qp]
+   [metabase.query-processor.compile :as qp.compile]
    [metabase.task :as task]
    [metabase.task.index-values :as task.index-values]
    [metabase.task.sync-databases :as task.sync-databases]
@@ -37,7 +39,7 @@
 
 (deftest quick-run-through
   (with-scheduler-setup
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (let [query     (mt/mbql-query products)
             pk_ref    (mt/$ids $products.id)
             value_ref (mt/$ids $products.title)]
@@ -140,7 +142,7 @@
 
 (deftest fetch-values-test
   (mt/test-drivers (disj (mt/normal-drivers) :mongo)
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (doseq [[scenario query [field-refs]]
               (remove nil?
                       [[:mbql (mt/mbql-query products {:fields [$id $title]})]
@@ -149,7 +151,7 @@
                                                                       [:concat $title "custom"]}})
                         [(mt/$ids [$products.id [:expression "full-name"]])]]
                        [:native (mt/native-query
-                                 (qp/compile
+                                 (qp.compile/compile
                                   (mt/mbql-query products {:fields [$id $title]})))]
                        (when (driver/database-supports? (:engine (mt/db)) :left-join (mt/db))
                          [:join (mt/$ids
@@ -213,7 +215,7 @@
         (mt/user-http-request :rasta :delete 200 (str "/model-index/" (:id model-index)))))))
 
 (deftest model-index-test
-  (mt/dataset sample-dataset
+  (mt/dataset test-data
     (testing "Simple queries"
       (test-index {:query      (mt/mbql-query products)
                    :pk-name    "id"
@@ -244,7 +246,7 @@
                    :subset     #{"Awesome Concrete Shoes" "Mediocre Wooden Bench"}
                    :scenario   :with-joins}))
     (testing "Native"
-      (test-index {:query      (mt/native-query (qp/compile (mt/mbql-query products)))
+      (test-index {:query      (mt/native-query (qp.compile/compile (mt/mbql-query products)))
                    :pk-name    "id"
                    :value-name "title"
                    :quantity   200

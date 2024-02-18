@@ -4,12 +4,11 @@ import { t } from "ttag";
 import { assoc, assocIn, chain, getIn, updateIn } from "icepick";
 import _ from "underscore";
 import slugg from "slugg";
-import * as ML from "cljs/metabase.lib.js";
+import * as Lib from "metabase-lib";
 import type {
   Card,
   DatabaseId,
   DatasetQuery,
-  DependentMetadataItem,
   NativeDatasetQuery,
   ParameterValuesConfig,
   TemplateTag,
@@ -23,9 +22,8 @@ import { getTemplateTagParameter } from "metabase-lib/parameters/utils/template-
 import type Variable from "metabase-lib/variables/Variable";
 import TemplateTagVariable from "metabase-lib/variables/TemplateTagVariable";
 import ValidationError from "metabase-lib/ValidationError";
-import { isFieldReference } from "metabase-lib/references";
 import type Dimension from "../Dimension";
-import { FieldDimension, TemplateTagDimension } from "../Dimension";
+import { TemplateTagDimension } from "../Dimension";
 import DimensionOptions from "../DimensionOptions";
 
 import { getNativeQueryTable } from "./utils/native-query-table";
@@ -102,9 +100,13 @@ export default class NativeQuery extends AtomicQuery {
   }
 
   /* Query superclass methods */
+
+  /**
+   * @deprecated use MLv2
+   */
   hasData() {
     return (
-      this.databaseId() != null && (!this.requiresTable() || this.collection())
+      this._databaseId() != null && (!this.requiresTable() || this.collection())
     );
   }
 
@@ -117,65 +119,40 @@ export default class NativeQuery extends AtomicQuery {
   }
 
   isEmpty() {
-    return this.databaseId() == null || this.queryText().length === 0;
-  }
-
-  clean() {
-    return this.setDatasetQuery(
-      updateIn(
-        this.datasetQuery(),
-        ["native", "template-tags"],
-        tt => tt || {},
-      ),
-    );
+    return this._databaseId() == null || this.queryText().length === 0;
   }
 
   /* AtomicQuery superclass methods */
   tables(): Table[] | null | undefined {
-    const database = this.database();
+    const database = this._database();
     return (database && database.tables) || null;
   }
 
-  databaseId(): DatabaseId | null | undefined {
+  /**
+   * @deprecated Use MLv2
+   */
+  _databaseId(): DatabaseId | null | undefined {
     // same for both structured and native
     return this._nativeDatasetQuery.database;
   }
 
-  database(): Database | null | undefined {
-    const databaseId = this.databaseId();
+  /**
+   * @deprecated Use MLv2
+   */
+  _database(): Database | null | undefined {
+    const databaseId = this._databaseId();
     return databaseId != null ? this._metadata.database(databaseId) : null;
   }
 
   engine(): string | null | undefined {
-    const database = this.database();
+    const database = this._database();
     return database && database.engine;
-  }
-
-  /**
-   * Returns true if the database metadata (or lack thererof indicates the user can modify and run this query
-   */
-  readOnly() {
-    const database = this.database();
-    return !database || database.native_permissions !== "write";
-  }
-
-  // This basically just mirrors StructuredQueries `isEditable` method,
-  // so there is no need to do `isStructured ? isEditable() : readOnly()`
-  isEditable() {
-    return !this.readOnly();
   }
 
   /* Methods unique to this query type */
 
-  /**
-   * @returns a new query with the provided Database set.
-   */
-  setDatabase(database: Database): NativeQuery {
-    return this.setDatabaseId(database.id);
-  }
-
   setDatabaseId(databaseId: DatabaseId): NativeQuery {
-    if (databaseId !== this.databaseId()) {
+    if (databaseId !== this._databaseId()) {
       // TODO: this should reset the rest of the query?
       return new NativeQuery(
         this._originalQuestion,
@@ -199,12 +176,12 @@ export default class NativeQuery extends AtomicQuery {
   }
 
   hasWritePermission() {
-    const database = this.database();
+    const database = this._database();
     return database != null && database.native_permissions === "write";
   }
 
   supportsNativeParameters() {
-    const database = this.database();
+    const database = this._database();
     return (
       database != null && _.contains(database.features, "native-parameters")
     );
@@ -212,12 +189,6 @@ export default class NativeQuery extends AtomicQuery {
 
   table(): Table | null {
     return getNativeQueryTable(this);
-  }
-
-  sourceTable(): null {
-    // Source tables are only available in structured queries,
-    // this method exists to keep query API consistent
-    return null;
   }
 
   queryText(): string {
@@ -322,6 +293,11 @@ export default class NativeQuery extends AtomicQuery {
         if (!dimension) {
           return new ValidationError(t`Invalid template tag: ${tag.name}`);
         }
+        if (tag.required && !tag.default) {
+          return new ValidationError(
+            t`Missing default value for a required template tag: ${tag.name}`,
+          );
+        }
 
         return dimension.validateTemplateTag();
       })
@@ -349,7 +325,7 @@ export default class NativeQuery extends AtomicQuery {
     config: ParameterValuesConfig,
   ): NativeQuery {
     const newParameter = getTemplateTagParameter(tag, config);
-    return this.question().setParameter(tag.id, newParameter).query();
+    return this.question().setParameter(tag.id, newParameter).legacyQuery();
   }
 
   setDatasetQuery(datasetQuery: DatasetQuery): NativeQuery {
@@ -370,7 +346,9 @@ export default class NativeQuery extends AtomicQuery {
     });
   }
 
-  variables(variableFilter: VariableFilter = () => true): Variable[] {
+  variables(
+    variableFilter: VariableFilter = () => true,
+  ): TemplateTagVariable[] {
     return this.templateTags()
       .filter(tag => tag.type !== "dimension")
       .map(tag => new TemplateTagVariable([tag.name], this.metadata(), this))
@@ -438,25 +416,7 @@ export default class NativeQuery extends AtomicQuery {
    */
   private _getUpdatedTemplateTags(queryText: string): TemplateTags {
     return queryText && this.supportsNativeParameters()
-      ? ML.extract_template_tags(queryText, this.templateTagsMap())
+      ? Lib.extractTemplateTags(queryText, this.templateTagsMap())
       : {};
-  }
-
-  dependentMetadata(): DependentMetadataItem[] {
-    const templateTags = this.templateTags();
-    return templateTags
-      .filter(
-        tag => tag.type === "dimension" && isFieldReference(tag.dimension),
-      )
-      .map(tag => {
-        const dimension = FieldDimension.parseMBQL(
-          tag.dimension,
-          this.metadata(),
-        );
-        return {
-          type: "field",
-          id: dimension.field().id,
-        };
-      });
   }
 }

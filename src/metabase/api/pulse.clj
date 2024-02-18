@@ -4,6 +4,7 @@
    [clojure.set :refer [difference]]
    [compojure.core :refer [GET POST PUT]]
    [hiccup.core :refer [html]]
+   [hiccup.page :refer [html5]]
    [metabase.api.alert :as api.alert]
    [metabase.api.common :as api]
    [metabase.api.common.validation :as validation]
@@ -23,6 +24,7 @@
    [metabase.plugins.classloader :as classloader]
    [metabase.public-settings.premium-features :as premium-features]
    [metabase.pulse]
+   [metabase.pulse.preview :as preview]
    [metabase.pulse.render :as render]
    [metabase.query-processor :as qp]
    [metabase.query-processor.middleware.permissions :as qp.perms]
@@ -252,14 +254,14 @@
   {:arglists '([card])}
   [{query :dataset_query, card-id :id}]
   (binding [qp.perms/*card-id* card-id]
-    (qp/process-query-and-save-execution!
-     (assoc query
-            :async? false
-            :middleware {:process-viz-settings? true
-                         :js-int-to-string?     false})
-     {:executed-by api/*current-user-id*
-      :context     :pulse
-      :card-id     card-id})))
+    (qp/process-query
+     (qp/userland-query
+      (assoc query
+             :middleware {:process-viz-settings? true
+                          :js-int-to-string?     false})
+      {:executed-by api/*current-user-id*
+       :context     :pulse
+       :card-id     card-id}))))
 
 (api/defendpoint GET "/preview_card/:id"
   "Get HTML rendering of a Card with `id`."
@@ -268,12 +270,33 @@
   (let [card   (api/read-check Card id)
         result (pulse-card-query-results card)]
     {:status 200
-     :body   (html
+     :body   (html5
               [:html
                [:body {:style "margin: 0;"}
                 (binding [render/*include-title*   true
                           render/*include-buttons* true]
                   (render/render-pulse-card-for-display (metabase.pulse/defaulted-timezone card) card result))]])}))
+
+(api/defendpoint GET "/preview_dashboard/:id"
+  "Get HTML rendering of a Dashboard with `id`.
+
+  This endpoint relies on a custom middleware defined in `metabase.pulse.preview/style-tag-nonce-middleware` to
+  allow the style tag to render properly, given our Content Security Policy setup. This middleware is attached to these
+  routes at the bottom of this namespace using `metabase.api.common/define-routes`."
+  [id]
+  {id ms/PositiveInt}
+  (api/read-check :model/Dashboard id)
+  {:status  200
+   :headers {"Content-Type" "text/html"}
+   :body    (preview/style-tag-from-inline-styles
+             (html5
+               [:head
+                [:meta {:charset "utf-8"}]
+                [:link {:nonce "%NONCE%" ;; this will be str/replaced by 'style-tag-nonce-middleware
+                        :rel  "stylesheet"
+                        :href "https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap"}]]
+               [:body [:h2 (format "Backend Artifacts Preview for Dashboard %s" id)]
+                (preview/render-dashboard-to-html id)]))})
 
 (api/defendpoint GET "/preview_card_info/:id"
   "Get JSON object containing HTML rendering of a Card with `id` and other information."
@@ -315,7 +338,11 @@
    collection_id       [:maybe ms/PositiveInt]
    collection_position [:maybe ms/PositiveInt]
    dashboard_id        [:maybe ms/PositiveInt]}
-  (check-card-read-permissions cards)
+  ;; Check permissions on cards that exist. Placeholders don't matter.
+  (check-card-read-permissions
+    (remove (fn [{:keys [id display]}]
+              (and (nil? id)
+                   (= "placeholder" display))) cards))
   ;; make sure any email addresses that are specified are allowed before sending the test Pulse.
   (doseq [channel channels]
     (pulse-channel/validate-email-domains channel))
@@ -332,4 +359,7 @@
     (t2/delete! PulseChannelRecipient :id pcr-id))
   api/generic-204-no-content)
 
-(api/define-routes)
+(def ^:private style-nonce-middleware
+  (partial preview/style-tag-nonce-middleware "/api/pulse/preview_dashboard"))
+
+(api/define-routes style-nonce-middleware)

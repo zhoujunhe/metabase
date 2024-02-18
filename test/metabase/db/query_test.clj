@@ -4,12 +4,13 @@
    [clojure.test :refer :all]
    [metabase.db.query :as mdb.query]
    [metabase.query-processor :as qp]
+   [metabase.query-processor.compile :as qp.compile]
    [metabase.test :as mt]))
 
 (defn- verify-same-query
   "Ensure that the formatted native query derived from an mbql query produce the same results."
   [q]
-  (let [{:keys [query]} (qp/compile q)
+  (let [{:keys [query]} (qp.compile/compile q)
         formatted-query (mdb.query/format-sql query)
         native-query    {:database (mt/id)
                          :type     :native
@@ -22,7 +23,7 @@
 
 (deftest ensure-same-queries-test
   (testing "A test with several joins and an aggregate should produce the same result in mbql or the derived native sql"
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (let [q {:type     :query
                :query    (mt/$ids
                           {:source-table (mt/id :orders)
@@ -47,7 +48,7 @@
                :database (mt/id)}]
         (verify-same-query q))))
   (testing "A test with several joins a custom column, and an aggregate should produce the same result in mbql or the derived native sql"
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (let [q {:type     :query
                :query    (mt/$ids
                           {:source-table (mt/id :orders)

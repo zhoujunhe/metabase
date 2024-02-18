@@ -363,8 +363,12 @@
                      :joins           {::sequence normalize-join}}
    ;; we smuggle metadata for datasets and want to preserve their "database" form vs a normalized form so it matches
    ;; the style in annotate.clj
-   :info            {:metadata/dataset-metadata identity}
+   :info            {:metadata/dataset-metadata identity
+                     ;; don't try to normalize the keys in viz-settings passed in as part of `:info`.
+                     :visualization-settings    identity
+                     :context                   maybe-normalize-token}
    :parameters      {::sequence normalize-query-parameter}
+   ;; TODO -- when does query ever have a top-level `:context` key??
    :context         #(some-> % maybe-normalize-token)
    :source-metadata {::sequence normalize-source-metadata}
    :viz-settings    maybe-normalize-token})
@@ -639,25 +643,45 @@
 
 (defn- canonicalize-mbql-clauses
   "Walk an `mbql-query` an canonicalize non-top-level clauses like `:fk->`."
-  [mbql-query]
-  (walk/prewalk
-   (fn [x]
-     (cond
-       (map? x)
-       (m/map-vals canonicalize-mbql-clauses x)
+  [form]
+  (cond
+    ;; Special handling for records so that they are not converted into plain maps.
+    ;; Only the values are canonicalized.
+    (record? form)
+    (reduce-kv (fn [r k x] (assoc r k (canonicalize-mbql-clauses x))) form form)
 
-       (not (mbql-clause? x))
-       x
+    ;; Only the values are canonicalized.
+    (map? form)
+    (update-vals form canonicalize-mbql-clauses)
 
-       :else
-       (try
-         (canonicalize-mbql-clause x)
-         (catch #?(:clj Throwable :cljs js/Error) e
-           (log/error (i18n/tru "Invalid clause:") x)
-           (throw (ex-info (i18n/tru "Invalid MBQL clause: {0}" (ex-message e))
-                           {:clause x}
-                           e))))))
-   mbql-query))
+    (mbql-clause? form)
+    (let [top-canonical
+          (try
+            (canonicalize-mbql-clause form)
+            (catch #?(:clj Throwable :cljs js/Error) e
+              (log/error (i18n/tru "Invalid clause:") form)
+              (throw (ex-info (i18n/tru "Invalid MBQL clause: {0}" (ex-message e))
+                              {:clause form}
+                              e))))]
+      ;; Canonical clauses are assumed to be sequential things conj'd at the end.
+      ;; In fact, they should better be vectors.
+      (if (seq top-canonical)
+        (into (conj (empty top-canonical) (first top-canonical))
+              (map canonicalize-mbql-clauses)
+              (rest top-canonical))
+        top-canonical))
+
+    ;; ISeq instances (e.g., list and lazy sequences) are converted to vectors.
+    (seq? form)
+    (mapv canonicalize-mbql-clauses form)
+
+    ;; Other collections (e.g., vectors, sets, and queues) are assumed to be conj'd at the end
+    ;; and we keep their types.
+    (coll? form)
+    (into (empty form) (map canonicalize-mbql-clauses) form)
+
+    :else
+    form))
 
 (defn- wrap-single-aggregations
   "Convert old MBQL 95 single-aggregations like `{:aggregation :count}` or `{:aggregation [:count]}` to MBQL 98+
@@ -764,6 +788,12 @@
       (dissoc :source-metadata)
       (assoc-in [:query :source-metadata] source-metadata)))
 
+(defn- canonicalize-mbql-clauses-excluding-native
+  [{:keys [native] :as outer-query}]
+  (if native
+    (-> outer-query (dissoc :native) canonicalize-mbql-clauses (assoc :native native))
+    (canonicalize-mbql-clauses outer-query)))
+
 (defn- canonicalize
   "Canonicalize a query [MBQL query], rewriting the query as if you perfectly followed the recommended style guides for
   writing MBQL. Does things like removes unneeded and empty clauses, converts older MBQL '95 syntax to MBQL '98, etc."
@@ -774,7 +804,7 @@
       query           (update :query canonicalize-inner-mbql-query)
       parameters      (update :parameters (partial mapv canonicalize-mbql-clauses))
       native          (update :native canonicalize-native-query)
-      true            canonicalize-mbql-clauses)
+      true            canonicalize-mbql-clauses-excluding-native)
     (catch #?(:clj Throwable :cljs js/Error) e
       (throw (ex-info (i18n/tru "Error canonicalizing query: {0}" (ex-message e))
                       {:query query}
@@ -853,10 +883,18 @@
         (set/rename-keys {:query :native}))
     (remove-empty-clauses source-query [:query])))
 
+(defn- remove-empty-clauses-in-parameter [parameter]
+  (merge
+   ;; don't remove `value: nil` from a parameter, the FE code (`haveParametersChanged`) is extremely dumb and will
+   ;; consider the parameter to have changed and thus the query to be 'dirty' if we do this.
+   (select-keys parameter [:value])
+   (remove-empty-clauses-in-map parameter [:parameters ::sequence])))
+
 (def ^:private path->special-remove-empty-clauses-fn
-  {:native identity
-   :query  {:source-query remove-empty-clauses-in-source-query
-            :joins        {::sequence remove-empty-clauses-in-join}}
+  {:native       identity
+   :query        {:source-query remove-empty-clauses-in-source-query
+                  :joins        {::sequence remove-empty-clauses-in-join}}
+   :parameters   {::sequence remove-empty-clauses-in-parameter}
    :viz-settings identity})
 
 (defn- remove-empty-clauses

@@ -7,11 +7,27 @@
    [metabase.util.malli.fn :as mu.fn]
    [net.cgrand.macrovich :as macros]))
 
+(set! *warn-on-reflection* true)
+
 ;;; TODO -- this should generate type hints from the schemas and from the return type as well.
 (defn- deparameterized-arglist [{:keys [args]}]
   (-> (malli.destructure/parse args)
       :arglist
-      (with-meta (meta args))))
+      (with-meta (macros/case
+                  :cljs
+                   (meta args)
+
+                   ;; make sure we resolve classnames e.g. `java.sql.Connection` intstead of `Connection`, otherwise the
+                   ;; tags won't work if you use them in another namespace that doesn't import that class. (Clj only)
+                   :clj
+                   (let [args-meta    (meta args)
+                         tag          (:tag args-meta)
+                         resolved-tag (when (symbol? tag)
+                                        (let [resolved (ns-resolve *ns* tag)]
+                                          (when (class? resolved)
+                                            (symbol (.getName ^Class resolved)))))]
+                     (cond-> args-meta
+                       resolved-tag (assoc :tag resolved-tag)))))))
 
 (defn- deparameterized-arglists [{:keys [arities], :as _parsed}]
   (let [[arities-type arities-value] arities]
@@ -47,6 +63,9 @@
   https://metaboat.slack.com/archives/CKZEMT1MJ/p1690496060299339 and #32843 for more information. This new
   implementation solves most of our memory consumption problems.
 
+  Unless it's in a skipped namespace during prod, (see: [[mu.fn/instrument-ns?]]) this macro emits clojure code to
+  validate its inputs and outputs based on its malli schema annotations.
+
   Example macroexpansion:
 
     (mu/defn f :- :int
@@ -71,10 +90,15 @@
                           {:arglists (list 'quote (deparameterized-arglists parsed))
                            :schema   (mu.fn/fn-schema parsed)}
                           attr-map)
-        docstring        (annotated-docstring parsed)]
-    `(def ~(vary-meta fn-name merge attr-map)
-       ~docstring
-       ~(macros/case
-          :clj  (let [error-context {:fn-name (list 'quote (symbol (name (ns-name *ns*)) (name fn-name)))}]
-                  (mu.fn/instrumented-fn-form error-context parsed))
-          :cljs (mu.fn/deparameterized-fn-form parsed)))))
+        docstring        (annotated-docstring parsed)
+        instrument?      (mu.fn/instrument-ns? *ns*)]
+    (if-not instrument?
+      `(def ~(vary-meta fn-name merge attr-map)
+         ~docstring
+         ~(mu.fn/deparameterized-fn-form parsed))
+      `(def ~(vary-meta fn-name merge attr-map)
+         ~docstring
+         ~(macros/case
+            :clj  (let [error-context {:fn-name (list 'quote fn-name)}]
+                    (mu.fn/instrumented-fn-form error-context parsed))
+            :cljs (mu.fn/deparameterized-fn-form parsed))))))

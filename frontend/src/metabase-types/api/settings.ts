@@ -187,6 +187,8 @@ export interface OpenAiModel {
   owned_by: string;
 }
 
+export type HelpLinkSetting = "metabase" | "hidden" | "custom";
+
 export interface Settings {
   "active-users-count"?: number;
   "admin-email": string;
@@ -203,6 +205,7 @@ export interface Settings {
   "custom-homepage-dashboard": number | null;
   "deprecation-notice-version"?: string;
   "dismissed-custom-dashboard-toast"?: boolean;
+  "dismissed-browse-models-banner"?: boolean;
   "email-configured?": boolean;
   "embedding-app-origin": string;
   "embedding-secret-key"?: string;
@@ -223,6 +226,8 @@ export interface Settings {
   "google-auth-enabled": boolean;
   "has-user-setup": boolean;
   "hide-embed-branding?": boolean;
+  "help-link": HelpLinkSetting;
+  "help-link-custom-destination": string;
   "is-hosted?": boolean;
   "is-metabot-enabled": boolean;
   "jwt-enabled"?: boolean;
@@ -254,6 +259,7 @@ export interface Settings {
   "show-homepage-pin-message": boolean;
   "show-homepage-xrays": boolean;
   "show-lighthouse-illustration": boolean;
+  "show-metabase-links": boolean;
   "show-metabot": boolean;
   "site-locale": string;
   "site-uuid": string;
@@ -276,6 +282,7 @@ export interface Settings {
   "uploads-table-prefix": string | null;
   "user-visibility": string | null;
   "last-acknowledged-version": string | null;
+  "show-static-embed-terms": boolean | null;
 }
 
 export type SettingKey = keyof Settings;

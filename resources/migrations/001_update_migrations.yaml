@@ -33,6 +33,15 @@ databaseChangeLog:
       name: databasechangelog.name
       value: databasechangelog
       dbms: postgresql
+  # in MySQL, use bit(1) for booleans instead of tinyint
+  - property:
+      name: boolean.type
+      value: boolean
+      dbms: postgresql,h2
+  - property:
+      name: boolean.type
+      value: bit(1)
+      dbms: mysql,mariadb
 
   - objectQuotingStrategy: QUOTE_ALL_OBJECTS
 
@@ -2291,8 +2300,11 @@ databaseChangeLog:
       id: v46.00-090
       author: noahmoss
       comment: Add foreign key constraint on sandboxes.permission_id
-      # This is a revised version of a prior migration (v46.00-075) so it may fail due to the FK constriant already existing
-      failOnError: false
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - foreignKeyConstraintExists:
+                - foreignKeyName: fk_sandboxes_ref_permissions
       changes:
         - addForeignKeyConstraint:
             baseTableName: sandboxes
@@ -3117,6 +3129,17 @@ databaseChangeLog:
                   constraints:
                     nullable: true
                     unique: true
+
+  - changeSet:
+      id: v47.00-059
+      author: piranha
+      comment: 'Drops not null from dashboard_tab.entity_id since it breaks drop-entity-ids command'
+      changes:
+        - dropNotNullConstraint:
+            tableName: dashboard_tab
+            columnName: entity_id
+            columnDataType: char(21)
+      rollback: # noop, and 'drop not null' is a noop if it's dropped already
 
   - changeSet:
       id: v48.00-001
@@ -4157,8 +4180,1357 @@ databaseChangeLog:
               - column:
                   name: started_at
 
-  # >>>>>>>>>> DO NOT ADD NEW MIGRATIONS BELOW THIS LINE! ADD THEM ABOVE <<<<<<<<<<
+  - changeSet:
+      id: v48.00-061
+      author: piranha
+      comment: 'Adds query_execution.cache_hash -> query_cache.query_hash'
+      changes:
+        - addColumn:
+            tableName: query_execution
+            columns:
+              - column:
+                  name: cache_hash
+                  type: ${blob.type}
+                  constraints:
+                    nullable: true
+                  remarks: 'Hash of normalized query, calculated in middleware.cache'
 
+  # this index was added in migration 95, but during our split migration work in #34400 we didn't include this index
+  # in the sql initialization, so we need to recreate one here for new instances running 48+
+  - changeSet:
+      id: v48.00-067
+      author: qnkhuat
+      comment: 'Add unique constraint idx_databasechangelog_id_author_filename'
+      preConditions:
+        - onFail: MARK_RAN
+        # If we're dumping the migration as a SQL file or trying to force-migrate we can't check the preconditions
+        # so just go ahead and skip the entire thing. This is a non-critical migration
+        - onUpdateSQL: IGNORE
+        - and:
+          - sqlCheck:
+              expectedResult: 0
+              sql: SELECT count(*) FROM (SELECT count(*) FROM DATABASECHANGELOG GROUP BY ID, AUTHOR, FILENAME HAVING count(*) > 1) t1
+          - or:
+            - and:
+              - dbms:
+                  type: postgresql
+              - sqlCheck:
+                  expectedResult: 0
+                  sql: >-
+                    SELECT COUNT(*)
+                    FROM pg_indexes
+                    WHERE tablename = 'databasechangelog' AND
+                          indexname = 'idx_databasechangelog_id_author_filename';
+            - and:
+              - dbms:
+                  type: h2
+              - sqlCheck:
+                  expectedResult: 0
+                  sql: >-
+                    SELECT COUNT(*)
+                    FROM INFORMATION_SCHEMA.INDEXES
+                    WHERE TABLE_NAME = 'DATABASECHANGELOG' AND
+                          INDEX_NAME = 'IDX_DATABASECHANGELOG_ID_AUTHOR_FILENAME_INDEX_1';
+            - and:
+              - dbms:
+                  type: mysql,mariadb
+              - not:
+                - indexExists:
+                    tableName: ${databasechangelog.name}
+                    indexName: idx_databasechangelog_id_author_filename
+      changes:
+        - addUniqueConstraint:
+            constraintName: idx_databasechangelog_id_author_filename
+            tableName: ${databasechangelog.name}
+            columnNames: id, author, filename
+      rollback:
+        - dropUniqueConstraint:
+            tableName: ${databasechangelog.name}
+            constraintName: idx_databasechangelog_id_author_filename
+
+  - changeSet:
+      id: v49.00-000
+      author: qnkhuat
+      comment: Remove leagcy pulses
+      changes:
+        - sql: DELETE FROM pulse where dashboard_id is null and alert_condition is null;
+      # pulse has been deprecated in v38(~2.5 years ago), even the UI to view it is broken
+      # so we don't need to worry about recovering it on rollback
+      rollback:
+
+  - changeSet:
+      id: v49.00-003
+      author: johnswanson
+      comment: Add a `type` to users
+      changes:
+        - addColumn:
+            columns:
+              - column:
+                  name: type
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+                  defaultValue: 'personal'
+                  remarks: The type of user
+            tableName: core_user
+
+  - changeSet:
+      id: v49.00-004
+      author: johnswanson
+      comment: Add a table for API keys
+      changes:
+        - createTable:
+            tableName: api_key
+            remarks: An API Key
+            columns:
+              - column:
+                  remarks: The ID of the API Key itself
+                  name: id
+                  type: int
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: int
+                  remarks: The ID of the user who this API Key acts as
+                  constraints:
+                    nullable: false
+                    referencedTableName: core_user
+                    referencedColumnNames: id
+                    foreignKeyName: fk_api_key_user_id
+              - column:
+                  remarks: The hashed API key
+                  name: key
+                  type: varchar(254)
+                  constraints:
+                    nullable: false
+              - column:
+                  remarks: The first 7 characters of the unhashed key
+                  name: key_prefix
+                  type: varchar(7)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  remarks: The ID of the user that created this API key
+                  name: created_by
+                  type: integer
+                  constraints:
+                    nullable: false
+                    referencedTableName: core_user
+                    referencedColumnNames: id
+                    foreignKeyName: fk_api_key_created_by_user_id
+              - column:
+                  remarks: The timestamp when the key was created
+                  name: created_at
+                  type: ${timestamp_type}
+                  defaultValueComputed: current_timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  remarks: The timestamp when the key was last updated
+                  name: updated_at
+                  type: ${timestamp_type}
+                  defaultValueComputed: current_timestamp
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: v49.00-005
+      author: johnswanson
+      comment: Add an index on `api_key.created_by`
+      rollback: # not necessary, will be removed with the table
+      changes:
+        - createIndex:
+            tableName: api_key
+            indexName: idx_api_key_created_by
+            columns:
+              column:
+                name: created_by
+
+  - changeSet:
+      id: v49.00-006
+      author: johnswanson
+      comment: Add an index on `api_key.user_id`
+      rollback: # not necessary, will be removed with the table
+      changes:
+        - createIndex:
+            tableName: api_key
+            indexName: idx_api_key_user_id
+            columns:
+              column:
+                name: user_id
+
+  - changeSet:
+      id: v49.00-007
+      author: johnswanson
+      comment: Set the `type` of the internal user
+      changes:
+        - sql:
+            sql: UPDATE core_user SET type='internal' WHERE id=13371338;
+      rollback: # not necessary
+
+  - changeSet:
+      id: v49.00-008
+      author: qnkhuat
+      comment: Add metabase_field.database_indexed
+      changes:
+        - addColumn:
+            tableName: metabase_field
+            columns:
+              - column:
+                  name: database_indexed
+                  type: boolean
+                  constraints:
+                    nullable: true
+                  remarks: 'If the database supports indexing, this column indicate whether or not a field is indexed, or is the 1st column in a composite index'
+
+  - changeSet:
+      id: v49.00-009
+      author: adam-james
+      comment: Migrate pulse_card.include_csv to 'true' when the joined card.display is 'table'
+      changes:
+        - sql:
+            dbms: mariadb,mysql
+            sql: >-
+              UPDATE pulse_card AS pc
+              JOIN report_card AS rc ON rc.id = pc.card_id
+              SET pc.include_csv = TRUE
+              WHERE rc.display = 'table';
+        - sql:
+            dbms: postgresql,h2
+            sql: >-
+              UPDATE pulse_card pc
+              SET include_csv = TRUE
+              WHERE pc.card_id IN (
+                  SELECT rc.id
+                  FROM report_card rc
+                  WHERE rc.display = 'table'
+                  AND rc.id = pc.card_id
+              );
+      rollback: # no change
+
+  - changeSet:
+      id: v49.00-010
+      author: johnswanson
+      comment: Add a name to API Keys
+      changes:
+        - addColumn:
+            tableName: api_key
+            columns:
+              - column:
+                  name: name
+                  type: varchar(254)
+                  constraints:
+                    nullable: false
+                    unique: true
+                  remarks: 'The user-defined name of the API key.'
+
+  - changeSet:
+      id: v49.00-011
+      author: qnkhuat
+      comment: Add metabase_table.database_require_filter
+      changes:
+        - addColumn:
+            tableName: metabase_table
+            columns:
+              - column:
+                  name: database_require_filter
+                  type: boolean
+                  constraints:
+                    nullable: true
+                  remarks: 'If true, the table requires a filter to be able to query it'
+
+  - changeSet:
+      id: v49.00-012
+      author: qnkhuat
+      comment: Add metabase_field.database_partitioned
+      changes:
+        - addColumn:
+            tableName: metabase_field
+            columns:
+              - column:
+                  name: database_partitioned
+                  type: boolean
+                  constraints:
+                    nullable: true
+                  remarks: 'Whether the table is partitioned by this field'
+
+  - changeSet:
+      id: v49.00-013
+      author: johnswanson
+      comment: Add `api_key.updated_by_id`
+      rollback: # will be removed with the table
+      changes:
+        - addColumn:
+            tableName: api_key
+            columns:
+              - column:
+                  remarks: The ID of the user that last updated this API key
+                  name: updated_by_id
+                  type: integer
+                  constraints:
+                    # no default and nullable: false for a new column? yikes! But this should probably be ok, because
+                    # we don't yet have any UI for creating a new API key.
+                    nullable: false
+                    referencedTableName: core_user
+                    referencedColumnNames: id
+                    foreignKeyName: fk_api_key_updated_by_id_user_id
+
+  - changeSet:
+      id: v49.00-014
+      author: johnswanson
+      comment: Add an index on `api_key.updated_by_id`
+      rollback: # not necessary, will be removed with the table
+      changes:
+        - createIndex:
+            tableName: api_key
+            indexName: idx_api_key_updated_by_id
+            columns:
+              column:
+                name: updated_by_id
+
+  - changeSet:
+      id: v49.00-015
+      author: johnswanson
+      comment: Rename `created_by` to `creator_id`
+      rollback: # not necessary, will be removed with the table
+      changes:
+        - renameColumn:
+            tableName: api_key
+            columnDataType: integer
+            oldColumnName: created_by
+            newColumnName: creator_id
+
+  - changeSet:
+      id: v49.00-016
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of action.archived from boolean to
+        ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: action
+            columnName: archived
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: action
+            columnName: archived
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-017
+      author: noahmoss
+      comment: Add NOT NULL constraint to action.archived
+      changes:
+        - addNotNullConstraint:
+            columnDataType: ${boolean.type}
+            tableName: action
+            columnName: archived
+            defaultNullValue: false
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-018
+      author: noahmoss
+      comment: Add default value to action.archived
+      changes:
+        - addDefaultValue:
+            defaultValueBoolean: false
+            tableName: action
+            columnName: archived
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-019
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of metabase_field.json_unfolding from
+        boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: metabase_field
+            columnName: json_unfolding
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: metabase_field
+            columnName: json_unfolding
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-020
+      author: noahmoss
+      comment: Add NOT NULL constraint to metabase_field.json_unfolding
+      changes:
+        - addNotNullConstraint:
+            columnDataType: ${boolean.type}
+            tableName: metabase_field
+            columnName: json_unfolding
+            defaultNullValue: false
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-021
+      author: noahmoss
+      comment: Add default value to metabase_field.json_unfolding
+      changes:
+        - addDefaultValue:
+            defaultValueBoolean: false
+            tableName: metabase_field
+            columnName: json_unfolding
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-022
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of metabase_field.database_is_auto_increment
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: metabase_field
+            columnName: database_is_auto_increment
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: metabase_field
+            columnName: database_is_auto_increment
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-023
+      author: noahmoss
+      comment: Add NOT NULL constraint to metabase_field.database_is_auto_increment
+      changes:
+        - addNotNullConstraint:
+            columnDataType: ${boolean.type}
+            tableName: metabase_field
+            columnName: database_is_auto_increment
+            defaultNullValue: false
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-024
+      author: noahmoss
+      comment: Add default value to metabase_field.database_is_auto_increment
+      changes:
+        - addDefaultValue:
+            defaultValueBoolean: false
+            tableName: metabase_field
+            columnName: database_is_auto_increment
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-025
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of report_dashboard.auto_apply_filters
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: report_dashboard
+            columnName: auto_apply_filters
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: report_dashboard
+            columnName: auto_apply_filters
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-026
+      author: noahmoss
+      comment: Add NOT NULL constraint to report_dashboard.auto_apply_filters
+      changes:
+        - addNotNullConstraint:
+            columnDataType: ${boolean.type}
+            tableName: report_dashboard
+            columnName: auto_apply_filters
+            defaultNullValue: true
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-027
+      author: noahmoss
+      comment: Add default value to report_dashboard.auto_apply_filters
+      changes:
+        - addDefaultValue:
+            defaultValueBoolean: true
+            tableName: report_dashboard
+            columnName: auto_apply_filters
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-028
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of metabase_database.is_audit
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: metabase_database
+            columnName: is_audit
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: metabase_database
+            columnName: is_audit
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-029
+      author: noahmoss
+      comment: Add NOT NULL constraint to metabase_database.is_audit
+      changes:
+        - addNotNullConstraint:
+            columnDataType: ${boolean.type}
+            tableName: metabase_database
+            columnName: is_audit
+            defaultNullValue: false
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-030
+      author: noahmoss
+      comment: Add default value to metabase_database.is_audit
+      changes:
+        - addDefaultValue:
+            defaultValueBoolean: false
+            tableName: metabase_database
+            columnName: is_audit
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-031
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of metabase_table.is_upload
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: metabase_table
+            columnName: is_upload
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: metabase_table
+            columnName: is_upload
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-032
+      author: noahmoss
+      comment: Add NOT NULL constraint to metabase_table.is_upload
+      changes:
+        - addNotNullConstraint:
+            columnDataType: ${boolean.type}
+            tableName: metabase_table
+            columnName: is_upload
+            defaultNullValue: false
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-033
+      author: noahmoss
+      comment: Add default value to metabase_table.is_upload
+      changes:
+        - addDefaultValue:
+            defaultValueBoolean: false
+            tableName: metabase_table
+            columnName: is_upload
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-034
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of revision.most_recent
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: revision
+            columnName: most_recent
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: revision
+            columnName: most_recent
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-035
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of revision.most_recent
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: revision
+            columnName: most_recent
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: revision
+            columnName: most_recent
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-036
+      author: noahmoss
+      comment: Add NOT NULL constraint to revision.most_recent
+      changes:
+        - addNotNullConstraint:
+            columnDataType: ${boolean.type}
+            tableName: revision
+            columnName: most_recent
+            defaultNullValue: false
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-037
+      author: noahmoss
+      comment: Add default value to revision.most_recent
+      changes:
+        - addDefaultValue:
+            defaultValueBoolean: false
+            tableName: revision
+            columnName: most_recent
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-038
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of table_privileges.select
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: table_privileges
+            columnName: select
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: table_privileges
+            columnName: select
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-039
+      author: noahmoss
+      comment: Add NOT NULL constraint to table_privileges.select
+      changes:
+        - addNotNullConstraint:
+            columnDataType: ${boolean.type}
+            tableName: table_privileges
+            columnName: select
+            defaultNullValue: false
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-040
+      author: noahmoss
+      comment: Add default value to table_privileges.select
+      changes:
+        - addDefaultValue:
+            defaultValueBoolean: false
+            tableName: table_privileges
+            columnName: select
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-041
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of table_privileges.update
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: table_privileges
+            columnName: update
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: table_privileges
+            columnName: update
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-042
+      author: noahmoss
+      comment: Add NOT NULL constraint to table_privileges.update
+      changes:
+        - addNotNullConstraint:
+            columnDataType: ${boolean.type}
+            tableName: table_privileges
+            columnName: update
+            defaultNullValue: false
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-043
+      author: noahmoss
+      comment: Add default value to table_privileges.update
+      changes:
+        - addDefaultValue:
+            defaultValueBoolean: false
+            tableName: table_privileges
+            columnName: update
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-044
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of table_privileges.insert
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: table_privileges
+            columnName: insert
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: table_privileges
+            columnName: insert
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-045
+      author: noahmoss
+      comment: Add NOT NULL constraint to table_privileges.insert
+      changes:
+        - addNotNullConstraint:
+            columnDataType: ${boolean.type}
+            tableName: table_privileges
+            columnName: insert
+            defaultNullValue: false
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-046
+      author: noahmoss
+      comment: Add default value to table_privileges.insert
+      changes:
+        - addDefaultValue:
+            defaultValueBoolean: false
+            tableName: table_privileges
+            columnName: insert
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-047
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of table_privileges.delete
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: table_privileges
+            columnName: delete
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: table_privileges
+            columnName: delete
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-048
+      author: noahmoss
+      comment: Add NOT NULL constraint to table_privileges.delete
+      changes:
+        - addNotNullConstraint:
+            columnDataType: ${boolean.type}
+            tableName: table_privileges
+            columnName: delete
+            defaultNullValue: false
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-049
+      author: noahmoss
+      comment: Add default value to table_privileges.delete
+      changes:
+        - addDefaultValue:
+            defaultValueBoolean: false
+            tableName: table_privileges
+            columnName: delete
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-050
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of query_execution.is_sandboxed
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: query_execution
+            columnName: is_sandboxed
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: query_execution
+            columnName: is_sandboxed
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-051
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of view_log.has_access
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: view_log
+            columnName: has_access
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: view_log
+            columnName: has_access
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-052
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of metabase_field.database_indexed
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: metabase_field
+            columnName: database_indexed
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: metabase_field
+            columnName: database_indexed
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-053
+      author: noahmoss
+      comment: >-
+        Added 0.49.0 - modify type of metabase_table.database_require_filter
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: metabase_table
+            columnName: database_require_filter
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: metabase_table
+            columnName: database_require_filter
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.00-059
+      author: qnkhuat
+      comment: Added 0.49.0 - unify type of time columns
+      changes:
+        - customChange:
+            class: "metabase.db.custom_migrations.UnifyTimeColumnsType"
+
+  - changeSet:
+      id: v49.00-060
+      author: qnkhuat
+      comment: >-
+        Added 0.49.0 - modify type of metabase_field.database_partitioned
+        from boolean to ${boolean.type} on mysql,mariadb
+      dbms: mysql,mariadb
+      changes:
+        - modifyDataType:
+            tableName: metabase_field
+            columnName: database_partitioned
+            newDataType: ${boolean.type}
+      rollback:
+        - modifyDataType:
+            tableName: metabase_field
+            columnName: database_partitioned
+            newDataType: boolean
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.2023-01-24T12:00:00
+      author: piranha
+      comment: >-
+        This significantly speeds up api.database/autocomplete-fields query
+        and is an improvement for issue 30588.
+        H2 does not support this: https://github.com/h2database/h2database/issues/3535
+        Mariadb does not support this.
+        Mysql says it does, but reports an error during migration.
+      dbms: postgresql
+      changes:
+        - createIndex:
+            tableName: metabase_field
+            indexName: idx_field_name_lower
+            columns:
+              - column:
+                  name: lower(name)
+                  computed: true
+      rollback:
+        - dropIndex:
+            tableName: metabase_field
+            indexName: idx_field_name_lower
+
+  - changeSet:
+      id: v49.2024-01-22T11:50:00
+      author: qnkhuat
+      comment: Add `report_card.type`
+      changes:
+        - addColumn:
+            tableName: report_card
+            columns:
+              - column:
+                  remarks: The type of card, could be 'question', 'model', 'metric'
+                  name: type
+                  type: varchar(16)
+                  defaultValue: "question"
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: v49.2024-01-22T11:51:00
+      author: qnkhuat
+      comment: Backfill `report_card.type`
+      changes:
+        - sql:
+            sql: >-
+              UPDATE report_card
+              SET type = 'model'
+              WHERE dataset is true
+      rollback: # no need, the column will be dropped
+
+  - changeSet:
+      id: v49.2024-01-22T11:52:00
+      author: qnkhuat
+      comment: Backfill `report_card.type`
+      changes:
+        - customChange:
+            class: "metabase.db.custom_migrations.CardRevisionAddType"
+
+  - changeSet:
+      id: v49.2024-01-29T19:26:40
+      author: adam-james
+      comment: Add width setting to Dashboards
+      changes:
+        - addColumn:
+            tableName: report_dashboard
+            columns:
+              - column:
+                  name: width
+                  type: varchar(16)
+                  defaultValue: "fixed"
+                  remarks: "The value of the dashboard's width setting can be fixed or full. New dashboards will be set to fixed"
+
+  - changeSet:
+      id: v49.2024-01-29T19:30:00
+      author: adam-james
+      comment: Update existing report_dashboard width values to full
+      changes:
+        - update:
+            tableName: report_dashboard
+            columns:
+              - column:
+                  name: width
+                  value: "full"
+      rollback: []
+
+  - changeSet:
+      id: v49.2024-01-29T19:56:40
+      author: adam-james
+      comment: Dashboard width setting must have a value
+      changes:
+        - addNotNullConstraint:
+            tableName: report_dashboard
+            columnName: width
+            columnDatatype: varchar(16)
+            defaultNullvalue: "full"
+            remarks: "If for some reason an existing dashboard has null width value it is set to full"
+
+  - changeSet:
+      id: v49.2024-01-29T19:59:12
+      author: adam-james
+      comment: Add default value to report_dashboard.width for mysql and mariadb
+      changes:
+        - addDefaultValue:
+            defaultValue: "fixed"
+            tableName: report_dashboard
+            columnName: width
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: mysql,mariadb
+
+  - changeSet:
+      id: v49.2024-02-02T11:27:49
+      author: oisincoveney
+      comment: >-
+        Add report_card.initially_published_at
+      changes:
+        - addColumn:
+            tableName: report_card
+            columns:
+              - column:
+                  name: initially_published_at
+                  type: ${timestamp_type}
+                  constraints:
+                    nullable: true
+                  remarks: The timestamp when the card was first published in a static embed
+
+  - changeSet:
+        id: v49.2024-02-02T11:28:36
+        author: oisincoveney
+        comment: >-
+          Add report_dashboard.initially_published_at
+        changes:
+          - addColumn:
+              tableName: report_dashboard
+              columns:
+                - column:
+                    name: initially_published_at
+                    type: ${timestamp_type}
+                    constraints:
+                      nullable: true
+                    remarks: The timestamp when the dashboard was first published in a static embed
+
+  - changeSet:
+      id: v49.2024-02-07T21:52:01
+      author: noahmoss
+      comment: Added 0.49.0 - updated view v_view_log
+      changes:
+        - sqlFile:
+            dbms: postgresql
+            path: instance_analytics_views/view_log/v2/postgres-view_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: mysql,mariadb
+            path: instance_analytics_views/view_log/v2/mysql-view_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: h2
+            path: instance_analytics_views/view_log/v2/h2-view_log.sql
+            relativeToChangelogFile: true
+      rollback:
+        - sqlFile:
+            dbms: postgresql
+            path: instance_analytics_views/view_log/v1/postgres-view_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: mysql,mariadb
+            path: instance_analytics_views/view_log/v1/mysql-view_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: h2
+            path: instance_analytics_views/view_log/v1/h2-view_log.sql
+            relativeToChangelogFile: true
+
+  - changeSet:
+      id: v49.2024-02-07T21:52:02
+      author: noahmoss
+      comment: Added 0.49.0 - updated view v_audit_log
+      changes:
+        - sqlFile:
+            dbms: postgresql
+            path: instance_analytics_views/audit_log/v2/postgres-audit_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: mysql,mariadb
+            path: instance_analytics_views/audit_log/v2/mysql-audit_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: h2
+            path: instance_analytics_views/audit_log/v2/h2-audit_log.sql
+            relativeToChangelogFile: true
+      rollback:
+        - sqlFile:
+            dbms: postgresql
+            path: instance_analytics_views/audit_log/v1/postgres-audit_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: mysql,mariadb
+            path: instance_analytics_views/audit_log/v1/mysql-audit_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: h2
+            path: instance_analytics_views/audit_log/v1/h2-audit_log.sql
+            relativeToChangelogFile: true
+
+  - changeSet:
+      id: v49.2024-02-07T21:52:03
+      author: noahmoss
+      comment: Added 0.49.0 - updated view v_group_members
+      changes:
+        - sqlFile:
+            path: instance_analytics_views/group_members/v2/group_members.sql
+            relativeToChangelogFile: true
+      rollback:
+        - sqlFile:
+            dbms: postgresql
+            path: instance_analytics_views/group_members/v1/group_members.sql
+            relativeToChangelogFile: true
+
+  - changeSet:
+      id: v49.2024-02-07T21:52:04
+      author: noahmoss
+      comment: Added 0.49.0 - updated view v_query_log
+      changes:
+        - sqlFile:
+            dbms: postgresql
+            path: instance_analytics_views/query_log/v2/postgres-query_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: mysql,mariadb
+            path: instance_analytics_views/query_log/v2/mysql-query_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: h2
+            path: instance_analytics_views/query_log/v2/h2-query_log.sql
+            relativeToChangelogFile: true
+      rollback:
+        - sqlFile:
+            dbms: postgresql
+            path: instance_analytics_views/query_log/v1/postgres-query_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: mysql,mariadb
+            path: instance_analytics_views/query_log/v1/mysql-query_log.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: h2
+            path: instance_analytics_views/query_log/v1/h2-query_log.sql
+            relativeToChangelogFile: true
+
+  - changeSet:
+      id: v49.2024-02-07T21:52:05
+      author: noahmoss
+      comment: Added 0.49.0 - updated view v_users
+      changes:
+        - sqlFile:
+            dbms: postgresql
+            path: instance_analytics_views/users/v2/postgres-users.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: mysql,mariadb
+            path: instance_analytics_views/users/v2/mysql-users.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: h2
+            path: instance_analytics_views/users/v2/h2-users.sql
+            relativeToChangelogFile: true
+      rollback:
+        - sqlFile:
+            dbms: postgresql
+            path: instance_analytics_views/users/v1/postgres-users.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: mysql,mariadb
+            path: instance_analytics_views/users/v1/mysql-users.sql
+            relativeToChangelogFile: true
+        - sqlFile:
+            dbms: h2
+            path: instance_analytics_views/users/v1/h2-users.sql
+            relativeToChangelogFile: true
+
+  - changeSet:
+      id: v49.2024-02-09T13:55:26
+      author: noahmoss
+      comment: Set default value for enable-public-sharing to `false` for existing instances with users, if not already set
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - or:
+                - and:
+                    - dbms:
+                        type: postgresql
+                    - sqlCheck:
+                        expectedResult: 0
+                        sql: SELECT count(*) FROM setting WHERE key = 'enable-public-sharing';
+                - and:
+                    - dbms:
+                        type: h2
+                    - sqlCheck:
+                        expectedResult: 0
+                        sql: SELECT count(*) FROM setting WHERE "KEY" = 'enable-public-sharing';
+                - and:
+                    - dbms:
+                        type: mysql,mariadb
+                    - sqlCheck:
+                        expectedResult: 0
+                        sql: SELECT count(*) FROM setting WHERE `key` = 'enable-public-sharing';
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM core_user;
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: INSERT INTO setting (key, value) VALUES ('enable-public-sharing', 'false');
+        - sql:
+            dbms: mysql,mariadb
+            sql: INSERT INTO setting (`key`, value) VALUES ('enable-public-sharing', 'false');
+        - sql:
+            dbms: h2
+            sql: INSERT INTO setting ("KEY", "VALUE") VALUES ('enable-public-sharing', 'false');
+      rollback: # not needed
+
+
+  # >>>>>>>>>> DO NOT ADD NEW MIGRATIONS BELOW THIS LINE! ADD THEM ABOVE <<<<<<<<<<
 
 ########################################################################################################################
 #
@@ -4173,24 +5545,18 @@ databaseChangeLog:
 #       automatically and the migrations linter will check for the presence of rollback where required as
 #       much as possible.
 #
-# 2) Please post a message in the Metabase Slack #migrations channel to let others know you are creating a new
-#    migration so someone else doesn't steal your ID number
+# 2) Migration IDs should follow the format
 #
-# 3) Migrations IDs should follow the format
+#    vMM.TIMESTAMP
 #
-#    vMM.mm-NNN
+#    Where
 #
-#    where
+#    M         = major version
+#    TIMESTAMP = the current timestamp with format `yyyy-MM-dd'T'HH:mm:ss`
+#                To get this timestamp, evaluate this in your REPL: `(dev/migration-timestamp)`
 #
-#    M = major version
-#    m = minor version
-#    N = migration number relative to that major+minor version
-#
-#   e.g. the first migration added to 0.42.0 should be numbered v42.00-000 and the second migration should be numbered
-#   v42.00-001. The first migration for 0.42.1 should be numbered v42.01-000, and so forth.
-#
-#   This numbering scheme was adopted beginning with version 0.42.0 so that we could go back and add migrations to patch
-#   releases without the ID sequence getting wildly out of order. See PR #18821 for more information.
+#    E.g: You're adding a new migration for version 49, And it's 10:30:00AM on April 1, 2023 (UTC),
+#    your migration id should be: `v49.2023-04-01T10:30:00`.
 #
 # PLEASE KEEP THIS MESSAGE AT THE BOTTOM OF THIS FILE!!!!! Add new migrations above the message.
 #

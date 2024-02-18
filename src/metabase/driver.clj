@@ -54,6 +54,7 @@
 (defsetting report-timezone
   (deferred-tru "Connection timezone to use when executing queries. Defaults to system timezone.")
   :visibility :settings-manager
+  :export?    true
   :audit      :getter
   :setter
   (fn [new-value]
@@ -63,6 +64,7 @@
 (defsetting report-timezone-short
   "Current report timezone abbreviation"
   :visibility :public
+  :export?    true
   :setter     :none
   :getter     (fn [] (short-timezone-name (report-timezone)))
   :doc        false)
@@ -70,6 +72,7 @@
 (defsetting report-timezone-long
   "Current report timezone string"
   :visibility :public
+  :export?    true
   :setter     :none
   :getter     (fn [] (long-timezone-name (report-timezone)))
   :doc        false)
@@ -316,6 +319,14 @@
   dispatch-on-initialized-driver
   :hierarchy #'hierarchy)
 
+(defmulti describe-table-indexes
+  "Returns a set of map containing information about the indexes of a table.
+  Currently we only sync single column indexes or the first column of a composite index.
+  Results should match the [[metabase.sync.interface/TableIndexMetadata]] schema."
+  {:added "0.49.0" :arglists '([driver database table])}
+  dispatch-on-initialized-driver
+  :hierarchy #'hierarchy)
+
 (defmulti escape-entity-name-for-metadata
   "escaping for when calling `.getColumns` or `.getTables` on table names or schema names. Useful for when a database
   driver has difference escaping rules for table or schema names when used from metadata.
@@ -399,6 +410,8 @@
     (respond results-metadata rows)
 
   You can use [[metabase.query-processor.reducible/reducible-rows]] to create reducible, streaming results.
+
+  `respond` MUST BE CALLED SYNCHRONOUSLY!!!
 
   Example impl:
 
@@ -532,7 +545,10 @@
     :connection-impersonation-requires-role
 
     ;; Does the driver require specifying a collection (table) for native queries? (mongo)
-    :native-requires-specified-collection})
+    :native-requires-specified-collection
+
+    ;; Does the driver support column(s) support storing index info
+    :index-info})
 
 
 (defmulti supports?
@@ -688,7 +704,7 @@
 
   For databases that do not feature concepts like 'prepared statements', this method need not be implemented; the
   default implementation is an identity function."
-  {:added "0.32.0", :arglists '([driver query]), :style/indent 1}
+  {:added "0.32.0", :arglists '([driver inner-query]), :style/indent 1}
   dispatch-on-initialized-driver
   :hierarchy #'hierarchy)
 
@@ -876,6 +892,10 @@
 ;;; |                                                    Upload                                                      |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
+(def ^:dynamic *insert-chunk-rows*
+  "The number of rows to insert at a time when uploading data to a database. This can be bound for testing purposes."
+  nil)
+
 (defmulti table-name-length-limit
   "Return the maximum number of characters allowed in a table name, or `nil` if there is no limit."
   {:changelog-test/ignore true, :added "0.47.0", :arglists '([driver])}
@@ -883,8 +903,10 @@
   :hierarchy #'hierarchy)
 
 (defmulti create-table!
-  "Create a table named `table-name`. If the table already exists it will throw an error."
-  {:added "0.47.0", :arglists '([driver db-id table-name col->type])}
+  "Create a table named `table-name`. If the table already exists it will throw an error.
+  `args` is an optional map with an optional entry `primary-key`. The `primary-key` value is a vector of column names
+  that make up the primary key."
+  {:added "0.47.0", :arglists '([driver database-id table-name column-definitions & args])}
   dispatch-on-initialized-driver
   :hierarchy #'hierarchy)
 
@@ -896,8 +918,25 @@
 
 (defmulti insert-into!
   "Insert `values` into a table named `table-name`. `values` is a lazy sequence of rows, where each row's order matches
-   `column-names`."
+   `column-names`.
+
+  The types in `values` may include:
+  - java.lang.String
+  - java.lang.Double
+  - java.math.BigInteger
+  - java.lang.Boolean
+  - java.time.LocalDate
+  - java.time.LocalDateTime
+  - java.time.OffsetDateTime"
   {:added "0.47.0", :arglists '([driver db-id table-name column-names values])}
+  dispatch-on-initialized-driver
+  :hierarchy #'hierarchy)
+
+(defmulti add-columns!
+  "Add columns given by `column-definitions` to a table named `table-name`. If the table doesn't exist it will throw an error.
+  `args` is an optional map with an optional key `primary-key`. The `primary-key` value is a vector of column names
+  that make up the primary key. Currently only a single primary key is supported."
+  {:added "0.49.0", :arglists '([driver db-id table-name column-definitions & args])}
   dispatch-on-initialized-driver
   :hierarchy #'hierarchy)
 
@@ -915,13 +954,23 @@
 
   - [:bigint]
   - [[:varchar 255]]
-  - [:generated-always :as :identity :primary-key]"
+  - [:generated-always :as :identity]"
   {:changelog-test/ignore true, :added "0.47.0", :arglists '([driver upload-type])}
   dispatch-on-initialized-driver
   :hierarchy #'hierarchy)
 
+(defmulti create-auto-pk-with-append-csv?
+  "Returns true if the driver should create an auto-incrementing primary key column when appending CSV data to an existing
+  upload table. This is because we want to add auto-pk columns for drivers that supported uploads before auto-pk columns
+  were introduced by metabase#36249. It should return false if the driver supported the uploads feature in version 48 or later."
+  {:added "0.49.0" :arglists '([driver])}
+  dispatch-on-initialized-driver
+  :hierarchy #'hierarchy)
+
+(defmethod create-auto-pk-with-append-csv? ::driver [_] false)
+
 (defmulti current-user-table-privileges
-  "Returns the rows of data as arrays needed to populate the tabel_privileges table
+  "Returns the rows of data as arrays needed to populate the table_privileges table
    with the DB connection's current user privileges.
    The data contains the privileges that the user has on the given `database`.
    The privileges include select, insert, update, and delete.
@@ -937,7 +986,7 @@
 
    Either:
    (1) role is null, corresponding to the privileges of the DB connection's current user
-   (2) role is not null, corresponing to the privileges of the role"
-  {:added "0.48.0", :arglists '([driver database])}
+   (2) role is not null, corresponding to the privileges of the role"
+  {:added "0.48.0", :arglists '([driver database & args])}
   dispatch-on-initialized-driver
   :hierarchy #'hierarchy)

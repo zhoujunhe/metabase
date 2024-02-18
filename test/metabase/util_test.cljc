@@ -202,6 +202,15 @@
     nil          nil
     []           nil))
 
+(deftest ^:parallel index-of-lazy-test
+  (testing "index-of should be lazy"
+    (let [evaluated? (atom false)]
+      (is (= 3
+             (u/index-of string? (lazy-cat [1 2 3 "STRING"]
+                                           (reset! evaluated? true)
+                                           [4]))))
+      (is (false? @evaluated?)))))
+
 (deftest ^:parallel snake-key-test
   (is (= {:num_cans 2, :lisp_case? {:nested_maps? true}}
          (u/snake-keys {:num-cans 2, :lisp-case? {:nested-maps? true}}))))
@@ -448,3 +457,9 @@
     2 1250.04
     1 1250.0
     0 1250.0))
+
+(deftest conflicting-keys-test
+  (is (= [] (u/conflicting-keys {:a 1 :b 2}
+                                {:b 2 :c 3})))
+  (is (= [:c :e] (u/conflicting-keys {:a 1 :b 2 :c 3 :e nil}
+                                     {:b 2 :c 4 :d 5 :e 6}))))

@@ -7,13 +7,8 @@
    [metabase.driver.sql-jdbc.execute :as sql-jdbc.execute]
    [metabase.driver.sql.query-processor :as sql.qp]
    [metabase.query-processor :as qp]
-   [metabase.test :as mt]
-   #_{:clj-kondo/ignore [:discouraged-namespace :deprecated-namespace]}
-   [metabase.util.honeysql-extensions :as hx]))
-
-(use-fixtures :each (fn [thunk]
-                      (binding [hx/*honey-sql-version* 2]
-                        (thunk))))
+   [metabase.query-processor.compile :as qp.compile]
+   [metabase.test :as mt]))
 
 (deftest ^:parallel apply-page-test
   (testing "Make sure our custom implementation of `apply-page` works the way we'd expect"
@@ -68,7 +63,7 @@
                    :filter      [:= $name "wow"]})]
       (testing "The native query returned in query results should use user-friendly splicing"
         (is (= "SELECT COUNT(*) AS `count` FROM `test_data`.`venues` AS `t1` WHERE `t1`.`name` = 'wow'"
-               (:query (qp/compile-and-splice-parameters query))
+               (:query (qp.compile/compile-and-splice-parameters query))
                (-> (qp/process-query query) :data :native_form :query))))
 
       (testing "When actually running the query we should use paranoid splicing and hex-encode strings"

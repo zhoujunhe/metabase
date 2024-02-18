@@ -11,8 +11,9 @@ import cx from "classnames";
 import title from "metabase/hoc/Title";
 import * as MetabaseAnalytics from "metabase/lib/analytics";
 import MetabaseSettings from "metabase/lib/settings";
-import AdminLayout from "metabase/components/AdminLayout";
+import { AdminLayout } from "metabase/components/AdminLayout";
 import { NotFound } from "metabase/containers/ErrorPages";
+import SaveStatus from "metabase/components/SaveStatus";
 
 import { prepareAnalyticsValue } from "metabase/admin/settings/utils";
 import ErrorBoundary from "metabase/ErrorBoundary";
@@ -249,11 +250,8 @@ class SettingsEditor extends Component {
 
   render() {
     return (
-      <AdminLayout
-        saveStatusRef={this.saveStatusRef}
-        title={t`Settings`}
-        sidebar={this.renderSettingsSections()}
-      >
+      <AdminLayout sidebar={this.renderSettingsSections()}>
+        <SaveStatus ref={this.saveStatusRef} />
         <ErrorBoundary>{this.renderSettingsPane()}</ErrorBoundary>
       </AdminLayout>
     );

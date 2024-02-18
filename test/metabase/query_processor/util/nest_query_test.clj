@@ -7,6 +7,7 @@
    [metabase.lib.test-util :as lib.tu]
    [metabase.lib.test-util.macros :as lib.tu.macros]
    [metabase.query-processor :as qp]
+   [metabase.query-processor.preprocess :as qp.preprocess]
    [metabase.query-processor.store :as qp.store]
    [metabase.query-processor.util.add-alias-info :as add]
    [metabase.query-processor.util.nest-query :as nest-query]
@@ -25,7 +26,7 @@
 (defn- nest-expressions [query]
   (driver/with-driver (or driver/*driver* :h2)
     (-> query
-        qp/preprocess
+        qp.preprocess/preprocess
         :query
         nest-query/nest-expressions
         remove-source-metadata)))
@@ -67,7 +68,7 @@
                            :breakout    [$price]
                            :aggregation [[:count]]
                            :fields      [[:expression "double_price"]]})
-                        qp/preprocess
+                        qp.preprocess/preprocess
                         add/add-alias-info
                         nest-expressions))))))
 
@@ -100,13 +101,13 @@
                                                              ::add/desired-alias "double_id"
                                                              ::add/position      0}]
                                         [:field %date {:temporal-unit            :day
-                                                       ::nest-query/outer-select true
+                                                       :qp/ignore-coercion       true
                                                        ::add/source-table        ::add/source
                                                        ::add/source-alias        "DATE"
                                                        ::add/desired-alias       "DATE"
                                                        ::add/position            1}]
                                         [:field %date {:temporal-unit            :month
-                                                       ::nest-query/outer-select true
+                                                       :qp/ignore-coercion       true
                                                        ::add/source-table        ::add/source
                                                        ::add/source-alias        "DATE"
                                                        ::add/desired-alias       "DATE_2"
@@ -118,7 +119,7 @@
                                            !day.date
                                            !month.date]
                              :limit       1})
-                          qp/preprocess
+                          qp.preprocess/preprocess
                           add/add-alias-info
                           nest-expressions)))))))
 
@@ -288,7 +289,7 @@
 
 (deftest nest-expressions-ignore-source-queries-from-joins-test-e2e-test
   (testing "Ignores source-query from joins (#20809)"
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (t2.with-temp/with-temp [:model/Card base {:dataset_query
                                                  (mt/mbql-query
                                                    reviews
@@ -521,7 +522,7 @@
                                             :alias        "CategoriesStats"
                                             :fields       :all}]
                              :limit       3})
-                          qp/preprocess
+                          qp.preprocess/preprocess
                           add/add-alias-info
                           nest-expressions)))))))
 
@@ -544,7 +545,7 @@
                                                        [:expression "test" {::add/desired-alias "test"
                                                                             ::add/position      1}]]}
                          :fields       [[:field %price {:temporal-unit            :default
-                                                        ::nest-query/outer-select true
+                                                        :qp/ignore-coercion       true
                                                         ::add/source-table        ::add/source
                                                         ::add/source-alias        "PRICE"
                                                         ::add/desired-alias       "PRICE"
@@ -566,7 +567,7 @@
 (deftest ^:parallel multiple-joins-with-expressions-test
   (testing "We should be able to compile a complicated query with multiple joins and expressions correctly"
     (driver/with-driver :h2
-      (mt/dataset sample-dataset
+      (mt/dataset test-data
         (qp.store/with-metadata-provider meta/metadata-provider
           (is (partial= (lib.tu.macros/$ids orders
                           (merge {:source-query (let [product-id        [:field %product-id {::add/source-table  $$orders
@@ -608,7 +609,7 @@
                                                                                      ::add/desired-alias "PRODUCTS__via__PRODUCT_ID__CATEGORY"
                                                                                      ::add/position      0}]
                                        created-at        [:field %created-at {:temporal-unit            :year
-                                                                              ::nest-query/outer-select true
+                                                                              :qp/ignore-coercion       true
                                                                               ::add/source-table        ::add/source
                                                                               ::add/source-alias        "CREATED_AT"
                                                                               ::add/desired-alias       "CREATED_AT"
@@ -639,13 +640,13 @@
                                               :alias        "PRODUCTS__via__PRODUCT_ID"
                                               :fk-field-id  %product-id
                                               :condition    [:= $product-id &PRODUCTS__via__PRODUCT_ID.products.id]}]})
-                            qp/preprocess
+                            qp.preprocess/preprocess
                             add/add-alias-info
                             nest-expressions))))))))
 
 (deftest ^:parallel uniquify-aliases-test
   (driver/with-driver :h2
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (qp.store/with-metadata-provider meta/metadata-provider
         (is (partial= (lib.tu.macros/$ids products
                         {:source-query       {:source-table $$products
@@ -681,7 +682,7 @@
                              :aggregation [[:count]]
                              :order-by    [[:asc [:expression"CATEGORY"]]]
                              :limit       1})
-                          qp/preprocess
+                          qp.preprocess/preprocess
                           add/add-alias-info
                           :query
                           nest-query/nest-expressions)))))))

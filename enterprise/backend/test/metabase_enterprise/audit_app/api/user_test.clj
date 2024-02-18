@@ -1,8 +1,12 @@
 (ns ^:mb/once metabase-enterprise.audit-app.api.user-test
   (:require
    [clojure.test :refer :all]
-   [metabase.models :refer [Card Dashboard DashboardCard Pulse PulseCard PulseChannel PulseChannelRecipient User]]
-   [metabase.public-settings.premium-features-test :as premium-features-test]
+   [metabase-enterprise.audit-app.permissions-test :as ee-perms-test]
+   [metabase-enterprise.audit-db :as audit-db]
+   [metabase.models :refer [Card Dashboard DashboardCard Pulse PulseCard
+                            PulseChannel PulseChannelRecipient User]]
+   [metabase.models.permissions :as perms]
+   [metabase.models.permissions-group :as perms-group]
    [metabase.test :as mt]
    [toucan2.core :as t2]
    [toucan2.tools.with-temp :as t2.with-temp]))
@@ -10,14 +14,14 @@
 (deftest delete-subscriptions-test
   (testing "DELETE /api/ee/audit-app/user/:id/subscriptions"
     (testing "Should require a token with `:audit-app`"
-      (premium-features-test/with-premium-features #{}
+      (mt/with-premium-features #{}
         (t2.with-temp/with-temp [User {user-id :id}]
           (is (= "Audit app is a paid feature not currently available to your instance. Please upgrade to use it. Learn more at metabase.com/upgrade/"
                  (mt/user-http-request user-id
                                        :delete 402
                                        (format "ee/audit-app/user/%d/subscriptions" user-id)))))))
 
-    (premium-features-test/with-premium-features #{:audit-app}
+    (mt/with-premium-features #{:audit-app}
       (doseq [run-type [:admin :non-admin]]
         (mt/with-temp [User                  {user-id :id} {}
                        Card                  {card-id :id} {}
@@ -84,3 +88,30 @@
                           :alert-archived?                  true
                           :dashboard-subscription-archived? true}
                          (describe-objects))))))))))))
+
+(deftest get-audit-info-test
+  (testing "GET /api/ee/audit-app/user/audit-info"
+    (mt/with-premium-features #{:audit-app}
+      (ee-perms-test/install-audit-db-if-needed!)
+      (testing "None of the ids show up when perms aren't given"
+        (perms/revoke-collection-permissions! (perms-group/all-users) (audit-db/default-custom-reports-collection))
+        (perms/revoke-collection-permissions! (perms-group/all-users) (audit-db/default-audit-collection))
+        (is (= #{}
+               (->>
+                (mt/user-http-request :rasta :get 200 "/ee/audit-app/user/audit-info")
+                keys
+                (into #{})))))
+      (testing "Custom reports collection shows up when perms are given"
+        (perms/grant-collection-read-permissions! (perms-group/all-users) (audit-db/default-custom-reports-collection))
+        (is (= #{:custom_reports}
+               (->>
+                (mt/user-http-request :rasta :get 200 "/ee/audit-app/user/audit-info")
+                keys
+                (into #{})))))
+      (testing "Everything shows up when all perms are given"
+        (perms/grant-collection-read-permissions! (perms-group/all-users) (audit-db/default-audit-collection))
+        (is (= #{:question_overview :dashboard_overview :custom_reports}
+               (->>
+                (mt/user-http-request :rasta :get 200 "/ee/audit-app/user/audit-info")
+                keys
+                (into #{}))))))))

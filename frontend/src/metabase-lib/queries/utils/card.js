@@ -2,12 +2,12 @@ import _ from "underscore";
 import { updateIn } from "icepick";
 
 import { copy } from "metabase/lib/utils";
+import * as Lib from "metabase-lib";
 import { normalizeParameterValue } from "metabase-lib/parameters/utils/parameter-values";
 import { deriveFieldOperatorFromParameter } from "metabase-lib/parameters/utils/operators";
-import * as Q_DEPRECATED from "metabase-lib/queries/utils"; // legacy
 
-export function isStructured(card) {
-  return card.dataset_query.type === "query";
+export function isNative(card) {
+  return card?.dataset_query?.type === "native";
 }
 
 function cardVisualizationIsEquivalent(cardA, cardB) {
@@ -20,7 +20,7 @@ function cardVisualizationIsEquivalent(cardA, cardB) {
 export function cardQueryIsEquivalent(cardA, cardB) {
   cardA = updateIn(cardA, ["dataset_query", "parameters"], p => p || []);
   cardB = updateIn(cardB, ["dataset_query", "parameters"], p => p || []);
-  return _.isEqual(
+  return Lib.areLegacyQueriesEqual(
     _.pick(cardA, "dataset_query"),
     _.pick(cardB, "dataset_query"),
   );
@@ -54,10 +54,6 @@ export function applyParameters(
   parameterMappings = [],
 ) {
   const datasetQuery = copy(card.dataset_query);
-  // clean the query
-  if (datasetQuery.type === "query") {
-    datasetQuery.query = Q_DEPRECATED.cleanQuery(datasetQuery.query);
-  }
   datasetQuery.parameters = [];
   for (const parameter of parameters || []) {
     const value = parameterValues[parameter.id];

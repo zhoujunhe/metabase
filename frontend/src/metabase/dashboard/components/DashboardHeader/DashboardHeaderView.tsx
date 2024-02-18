@@ -9,8 +9,9 @@ import type { Collection, Dashboard } from "metabase-types/api";
 
 import EditBar from "metabase/components/EditBar";
 import { PLUGIN_COLLECTION_COMPONENTS } from "metabase/plugins";
-import { useDispatch } from "metabase/lib/redux";
+import { useDispatch, useSelector } from "metabase/lib/redux";
 import { updateDashboard } from "metabase/dashboard/actions";
+import { getIsSidebarOpen } from "metabase/dashboard/selectors";
 
 import {
   EditWarning,
@@ -22,15 +23,17 @@ import {
   HeaderLastEditInfoLabel,
   HeaderCaption,
   HeaderCaptionContainer,
+  HeaderFixedWidthContainer,
+  HeaderContainer,
 } from "../../components/DashboardHeaderView.styled";
 import { DashboardTabs } from "../../components/DashboardTabs/DashboardTabs";
 
 interface DashboardHeaderViewProps {
-  editingTitle: string;
-  editingSubtitle: string;
-  editingButtons: JSX.Element[];
-  editWarning: string;
-  headerButtons: React.ReactNode[];
+  editingTitle?: string;
+  editingSubtitle?: string;
+  editingButtons?: JSX.Element[];
+  editWarning?: string;
+  headerButtons?: React.ReactNode[];
   headerClassName: string;
   location: Location;
   isEditing: boolean;
@@ -40,8 +43,11 @@ interface DashboardHeaderViewProps {
   collection: Collection;
   isBadgeVisible: boolean;
   isLastEditInfoVisible: boolean;
-  onLastEditInfoClick: () => null;
-  setDashboardAttribute: (prop: string, value: string) => null;
+  onLastEditInfoClick: () => void;
+  setDashboardAttribute: <Key extends keyof Dashboard>(
+    key: Key,
+    value: Dashboard[Key],
+  ) => void;
 }
 
 export function DashboardHeaderComponent({
@@ -63,6 +69,8 @@ export function DashboardHeaderComponent({
   const [showSubHeader, setShowSubHeader] = useState(true);
   const header = useRef<HTMLDivElement>(null);
   const dispatch = useDispatch();
+
+  const isSidebarOpen = useSelector(getIsSidebarOpen);
 
   const _headerButtons = useMemo(
     () => (
@@ -88,10 +96,12 @@ export function DashboardHeaderComponent({
 
   useEffect(() => {
     const timerId = setTimeout(() => {
-      setShowSubHeader(false);
+      if (isLastEditInfoVisible) {
+        setShowSubHeader(false);
+      }
     }, 4000);
     return () => clearTimeout(timerId);
-  }, []);
+  }, [isLastEditInfoVisible]);
 
   return (
     <div>
@@ -107,48 +117,70 @@ export function DashboardHeaderComponent({
           <span>{editWarning}</span>
         </EditWarning>
       )}
-      <div>
+      <HeaderContainer
+        isFixedWidth={dashboard?.width === "fixed"}
+        isSidebarOpen={isSidebarOpen}
+      >
         <HeaderRow
-          isNavBarOpen={isNavBarOpen}
           className={cx("QueryBuilder-section", headerClassName)}
           data-testid="dashboard-header"
           ref={header}
         >
-          <HeaderContent hasSubHeader showSubHeader={showSubHeader}>
-            <HeaderCaptionContainer>
-              <HeaderCaption
-                key={dashboard.name}
-                initialValue={dashboard.name}
-                placeholder={t`Add title`}
-                isDisabled={!dashboard.can_write}
-                data-testid="dashboard-name-heading"
-                onChange={handleUpdateCaption}
-              />
-              <PLUGIN_COLLECTION_COMPONENTS.CollectionInstanceAnalyticsIcon
-                color={color("brand")}
-                collection={collection}
-                entity="dashboard"
-              />
-            </HeaderCaptionContainer>
-            <HeaderBadges>
-              {isLastEditInfoVisible && (
-                <HeaderLastEditInfoLabel
-                  item={dashboard}
-                  onClick={onLastEditInfoClick}
-                  className=""
+          <HeaderFixedWidthContainer
+            data-testid="fixed-width-dashboard-header"
+            isNavBarOpen={isNavBarOpen}
+            isFixedWidth={dashboard?.width === "fixed"}
+          >
+            <HeaderContent
+              role="heading"
+              hasSubHeader
+              showSubHeader={showSubHeader}
+            >
+              <HeaderCaptionContainer>
+                <HeaderCaption
+                  key={dashboard.name}
+                  initialValue={dashboard.name}
+                  placeholder={t`Add title`}
+                  isDisabled={!dashboard.can_write}
+                  data-testid="dashboard-name-heading"
+                  onChange={handleUpdateCaption}
                 />
-              )}
-            </HeaderBadges>
-          </HeaderContent>
+                <PLUGIN_COLLECTION_COMPONENTS.CollectionInstanceAnalyticsIcon
+                  color={color("brand")}
+                  collection={collection}
+                  entity="dashboard"
+                />
+              </HeaderCaptionContainer>
+              <HeaderBadges>
+                {isLastEditInfoVisible && (
+                  <HeaderLastEditInfoLabel
+                    item={dashboard}
+                    onClick={onLastEditInfoClick}
+                    className=""
+                  />
+                )}
+              </HeaderBadges>
+            </HeaderContent>
 
-          <HeaderButtonsContainer isNavBarOpen={isNavBarOpen}>
-            {_headerButtons}
-          </HeaderButtonsContainer>
+            <HeaderButtonsContainer isNavBarOpen={isNavBarOpen}>
+              {_headerButtons}
+            </HeaderButtonsContainer>
+          </HeaderFixedWidthContainer>
         </HeaderRow>
-        <HeaderRow isNavBarOpen={isNavBarOpen}>
-          <DashboardTabs location={location} isEditing={isEditing} />
+        <HeaderRow>
+          <HeaderFixedWidthContainer
+            data-testid="fixed-width-dashboard-tabs"
+            isNavBarOpen={isNavBarOpen}
+            isFixedWidth={dashboard?.width === "fixed"}
+          >
+            <DashboardTabs
+              dashboardId={dashboard.id}
+              location={location}
+              isEditing={isEditing}
+            />
+          </HeaderFixedWidthContainer>
         </HeaderRow>
-      </div>
+      </HeaderContainer>
     </div>
   );
 }

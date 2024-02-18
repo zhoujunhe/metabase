@@ -18,7 +18,8 @@
    [metabase.util.log :as log]
    [toucan2.core :as t2])
   (:import
-   (java.util.jar JarEntry JarFile)))
+   (java.util.jar JarEntry JarFile)
+   (sun.nio.fs UnixPath)))
 
 (set! *warn-on-reflection* true)
 
@@ -75,24 +76,33 @@
   "Default custom reports entity id."
   "okNLSZKdSxaoG58JSQY54")
 
-(defn collection-entity-id->collection
-  "Returns the collection from entity id for collections. Memoizes from entity id."
-  [entity-id]
+(def default-question-overview-entity-id
+  "Default Question Overview (this is a dashboard) entity id."
+  "jm7KgY6IuS6pQjkBZ7WUI")
+
+(def default-dashboard-overview-entity-id
+  "Default Dashboard Overview (this is a dashboard) entity id."
+  "bJEYb0o5CXlfWFcIztDwJ")
+
+(defn entity-id->object
+  "Returns the object from entity id and model. Memoizes from entity id.
+  Should only be used for audit/pre-loaded objects."
+  [model entity-id]
   ((mdb.connection/memoize-for-application-db
     (fn [entity-id]
-      (t2/select-one :model/Collection :entity_id entity-id))) entity-id))
+      (t2/select-one model :entity_id entity-id))) entity-id))
 
 (defenterprise default-custom-reports-collection
   "Default custom reports collection."
   :feature :none
   []
-  (collection-entity-id->collection default-custom-reports-entity-id))
+  (entity-id->object :model/Collection default-custom-reports-entity-id))
 
 (defenterprise default-audit-collection
   "Default audit collection (instance analytics) collection."
   :feature :none
   []
-  (collection-entity-id->collection default-audit-collection-entity-id))
+  (entity-id->object :model/Collection default-audit-collection-entity-id))
 
 (defn- install-database!
   "Creates the audit db, a clone of the app db used for auditing purposes.
@@ -100,8 +110,6 @@
   - This uses a weird ID because some tests were hardcoded to look for database with ID = 2, and inserting an extra db
   throws that off since these IDs are sequential."
   [engine id]
-  ;; guard against someone manually deleting the audit-db entry, but not removing the audit-db permissions.
-  (t2/delete! :permissions {:where [:like :object (str "%/db/" id "/%")]})
   (t2/insert! Database {:is_audit         true
                         :id               id
                         :name             "Internal Metabase Database"
@@ -110,7 +118,9 @@
                         :is_full_sync     true
                         :is_on_demand     false
                         :creator_id       nil
-                        :auto_run_queries true}))
+                        :auto_run_queries true})
+  ;; guard against someone manually deleting the audit-db entry, but not removing the audit-db permissions.
+  (t2/delete! :model/Permissions {:where [:like :object (str "%/db/" id "/%")]}))
 
 (defn- adjust-audit-db-to-source!
   [{audit-db-id :id}]
@@ -148,32 +158,37 @@
                   {:name [:upper :name]}))
     (log/infof "Adjusted Audit DB to match host engine: %s" (name mdb.env/db-type))))
 
-(def analytics-dir-resource
+(def ^:private analytics-dir-resource
   "A resource dir containing analytics content created by Metabase to load into the app instance on startup."
   (io/resource "instance_analytics"))
 
-(def instance-analytics-plugin-dir
+(defn- instance-analytics-plugin-dir
   "The directory analytics content is unzipped or moved to, and subsequently loaded into the app from on startup."
-  (fs/path (plugins/plugins-dir) "instance_analytics"))
+  [plugins-dir]
+  (fs/path (fs/absolutize plugins-dir) "instance_analytics"))
+
+(def ^:private jar-resource-path "instance_analytics/")
 
 (defn- ia-content->plugins
   "Load instance analytics content (collections/dashboards/cards/etc.) from resources dir or a zip file
-   and put it into plugins/instance_analytics"
-  []
-  (when (fs/exists? (u.files/relative-path instance-analytics-plugin-dir))
-    (fs/delete-tree (u.files/relative-path instance-analytics-plugin-dir)))
-  (if (running-from-jar?)
-    (let [path-to-jar (get-jar-path)]
-      (log/info "The app is running from a jar, starting copy...")
-      (copy-from-jar! path-to-jar "instance_analytics/" "plugins/")
-      (log/info "Copying complete."))
-    (let [in-path (fs/path analytics-dir-resource)]
-      (log/info "The app is not running from a jar, starting copy...")
-      (log/info (str "Copying " in-path " -> " instance-analytics-plugin-dir))
-      (fs/copy-tree (u.files/relative-path in-path)
-                    (u.files/relative-path instance-analytics-plugin-dir)
-                    {:replace-existing true})
-      (log/info "Copying complete."))))
+   and copies it into the provided directory (by default, plugins/instance_analytics)."
+  [plugins-dir]
+  (let [ia-dir (instance-analytics-plugin-dir plugins-dir)]
+    (when (fs/exists? (u.files/relative-path ia-dir))
+      (fs/delete-tree (u.files/relative-path ia-dir)))
+    (if (running-from-jar?)
+      (let [path-to-jar (get-jar-path)]
+        (log/info "The app is running from a jar, starting copy...")
+        (log/info (str "Copying " path-to-jar "::" jar-resource-path " -> " plugins-dir))
+        (copy-from-jar! path-to-jar jar-resource-path plugins-dir)
+        (log/info "Copying complete."))
+      (let [in-path (fs/path analytics-dir-resource)]
+        (log/info "The app is not running from a jar, starting copy...")
+        (log/info (str "Copying " in-path " -> " ia-dir))
+        (fs/copy-tree (u.files/relative-path in-path)
+                      (u.files/relative-path ia-dir)
+                      {:replace-existing true})
+        (log/info "Copying complete.")))))
 
 (defsetting load-analytics-content
   "Whether or not we should load Metabase analytics content on startup. Defaults to true, but can be disabled via environment variable."
@@ -184,22 +199,67 @@
   :audit      :never
   :doc        false)
 
+(def ^:constant SKIP_CHECKSUM_FLAG
+  "If `last-analytics-checksum` is set to this value, we will skip calculating checksums entirely and *always* reload the
+  analytics data."
+  -1)
+
+(defsetting last-analytics-checksum
+  "A place to save the analytics-checksum, to check between app startups. If set to -1, skips the checksum process
+  entirely to avoid calculating checksums in environments (e2e tests) where we don't care."
+  :type       :integer
+  :default    0
+  :visibility :internal
+  :audit      :never
+  :doc        false
+  :export?    false)
+
+(defn- should-skip-checksum? [last-checksum]
+  (= SKIP_CHECKSUM_FLAG last-checksum))
+
+(defn analytics-checksum
+  "Hashes the contents of all non-dir files in the `analytics-dir-resource`."
+  []
+  (->> ^UnixPath (instance-analytics-plugin-dir (plugins/plugins-dir))
+       (.toFile)
+       file-seq
+       (remove fs/directory?)
+       (pmap #(hash (slurp %)))
+       (reduce +)))
+
+(defn- should-load-audit?
+  "Should we load audit data?"
+  [load-analytics-content? last-checksum current-checksum]
+  (and load-analytics-content?
+       (or (should-skip-checksum? last-checksum)
+           (not= last-checksum current-checksum))))
+
+(defn- get-last-and-current-checksum
+  "Gets the previous and current checksum for the analytics directory, respecting the `-1` flag for skipping checksums entirely."
+  []
+  (let [last-checksum (last-analytics-checksum)]
+    (if (should-skip-checksum? last-checksum)
+      [SKIP_CHECKSUM_FLAG SKIP_CHECKSUM_FLAG]
+      [last-checksum (analytics-checksum)])))
+
 (defn- maybe-load-analytics-content!
   [audit-db]
-  (when (and analytics-dir-resource (load-analytics-content))
+  (when analytics-dir-resource
     (ee.internal-user/ensure-internal-user-exists!)
     (adjust-audit-db-to-source! audit-db)
-    (log/info "Loading Analytics Content...")
-    (ia-content->plugins)
-    (log/info (str "Loading Analytics Content from: " instance-analytics-plugin-dir))
-    ;; The EE token might not have :serialization enabled, but audit features should still be able to use it.
-    (let [report (log/with-no-logs
-                   (serialization.cmd/v2-load-internal! (str instance-analytics-plugin-dir)
-                                                        {}
-                                                        :token-check? false))]
-      (if (not-empty (:errors report))
-        (log/info (str "Error Loading Analytics Content: " (pr-str report)))
-        (log/info (str "Loading Analytics Content Complete (" (count (:seen report)) ") entities loaded."))))
+    (ia-content->plugins (plugins/plugins-dir))
+    (let [[last-checksum current-checksum] (get-last-and-current-checksum)]
+      (when (should-load-audit? (load-analytics-content) last-checksum current-checksum)
+        (last-analytics-checksum! current-checksum)
+        (log/info (str "Loading Analytics Content from: " (instance-analytics-plugin-dir (plugins/plugins-dir))))
+        ;; The EE token might not have :serialization enabled, but audit features should still be able to use it.
+        (let [report (log/with-no-logs
+                       (serialization.cmd/v2-load-internal! (str (instance-analytics-plugin-dir (plugins/plugins-dir)))
+                                                            {:backfill? false}
+                                                            :token-check? false))]
+          (if (not-empty (:errors report))
+            (log/info (str "Error Loading Analytics Content: " (pr-str report)))
+            (log/info (str "Loading Analytics Content Complete (" (count (:seen report)) ") entities loaded."))))))
     (when-let [audit-db (t2/select-one :model/Database :is_audit true)]
       (adjust-audit-db-to-host! audit-db))))
 

@@ -8,14 +8,12 @@ import type { QuestionCreatorOpts } from "metabase-lib/Question";
 import Question from "metabase-lib/Question";
 import * as ML_Urls from "metabase-lib/urls";
 
-import { appendSlug, extractQueryParams } from "./utils";
+import { appendSlug, getEncodedUrlSearchParams } from "./utils";
 
 type Card = Partial<SavedCard> & {
   card_id?: CardId | string;
   model?: "card" | "dataset";
 };
-
-export const newQuestionFlow = () => "/question/new";
 
 export type QuestionUrlBuilderParams = {
   mode?: "view" | "notebook";
@@ -38,13 +36,7 @@ export function question(
   }
 
   if (query && typeof query === "object") {
-    query = extractQueryParams(query)
-      .map(([key, value]) =>
-        value == null
-          ? `${encodeURIComponent(key)}=`
-          : [key, value].map(encodeURIComponent).join("="),
-      )
-      .join("&");
+    query = String(getEncodedUrlSearchParams(query));
   }
 
   if (hash && hash.charAt(0) !== "#") {
@@ -128,7 +120,7 @@ export function publicQuestion({
   includeSiteUrl = true,
 }: {
   uuid: string;
-  type: string | null;
+  type?: string | null;
   query?: string;
   includeSiteUrl?: boolean;
 }) {

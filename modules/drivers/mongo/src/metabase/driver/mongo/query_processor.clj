@@ -9,6 +9,11 @@
    [java-time.api :as t]
    [metabase.driver :as driver]
    [metabase.driver.common :as driver.common]
+   [metabase.driver.mongo.operators :refer [$add $addToSet $and $avg $concat $cond
+                                            $dayOfMonth $dayOfWeek $dayOfYear $divide $eq $expr
+                                            $group $gt $gte $hour $limit $literal $lookup $lt $lte $match $max $min
+                                            $minute $mod $month $multiply $ne $not $or $project $regexMatch $second
+                                            $size $skip $sort $strcasecmp $subtract $sum $toLower $unwind $year]]
    [metabase.driver.util :as driver.u]
    [metabase.lib.metadata :as lib.metadata]
    [metabase.mbql.schema :as mbql.s]
@@ -25,12 +30,7 @@
    [metabase.util.i18n :refer [tru]]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
-   [metabase.util.malli.schema :as ms]
-   [monger.operators :refer [$add $addToSet $and $avg $concat $cond
-                             $dayOfMonth $dayOfWeek $dayOfYear $divide $eq $expr
-                             $group $gt $gte $hour $limit $literal $lookup $lt $lte $match $max $min $minute
-                             $mod $month $multiply $ne $not $or $project $regexMatch $second $size $skip $sort
-                             $strcasecmp $subtract $sum $toLower $unwind $year]])
+   [metabase.util.malli.schema :as ms])
   (:import
    (org.bson BsonBinarySubType)
    (org.bson.types Binary ObjectId)))
@@ -104,6 +104,18 @@
   "Used for tracking depth of nesting on which [[mbql->native-rec]] operates.
   That is required eg. in `->lvalue :aggregation` call."
   0)
+
+(def ^:dynamic ^:private *next-alias-index*
+  "Tracks index of next alias for join compilation. It is bound in [[mbql->native]] to `volatile!` valued 0. Hence
+   every compilation starts with a fresh 0. Indices are used in [[handle-join]] to make aliases unique. Index values
+   are gathered using [[next-alias-index]], hence first used index is of value 1."
+  nil)
+
+(defn- next-alias-index
+  "Increment [[*next-alias-index*]] counter and return new index. Further context can be found in
+   [[*next-alias-index*]] docstring."
+  []
+  (vswap! *next-alias-index* inc))
 
 (def ^:dynamic ^:private *field-mappings*
   "The mapping from the fields to the projected names created
@@ -908,12 +920,11 @@
                      [:field _ (_ :guard #(not= (:join-alias %) alias))])
         ;; Map the own fields to a fresh alias and to its rvalue.
         mapping (map (fn [f] (let [alias (-> (format "let_%s_" (->lvalue f))
-                                            ;; ~ in let aliases provokes a parse error in Mongo. For correct function,
-                                            ;; aliases should also contain no . characters (#32182).
-                                            (str/replace #"~|\." "_")
-                                            gensym
-                                            name)]
-                              {:field f, :rvalue (->rvalue f), :alias alias}))
+                                             ;; ~ in let aliases provokes a parse error in Mongo. For correct function,
+                                             ;; aliases should also contain no . characters (#32182).
+                                             (str/replace #"~|\." "_")
+                                             (str "__" (next-alias-index)))]
+                               {:field f, :rvalue (->rvalue f), :alias alias}))
                      own-fields)]
     ;; Add the mappings from the source query and the let bindings of $lookup to the field mappings.
     ;; In the join pipeline the let bindings have to referenced with the prefix $$, so we add $ to the name.
@@ -1359,7 +1370,15 @@
   "Parse a serialized native query. Like a normal JSON parse, but handles BSON/MongoDB extended JSON forms."
   [^String s]
   (try
-    (mapv (fn [^org.bson.BsonValue v] (-> v .asDocument com.mongodb.BasicDBObject.))
+    ;; TODO: Fixme! In following expression we were previously creating BasicDBObject's. As part of Monger removal
+    ;;       in favor of plain mongo-java-driver we now create Documents. I believe following conversion was and is
+    ;;       responsible for https://github.com/metabase/metabase/issues/38181. When pipeline is deserialized,
+    ;;       we end up with vector of `Document`s into which are appended new query stages, which are clojure
+    ;;       structures. When we render the query in "view native query" in query builder, clojure structures
+    ;;       are transformed to json correctly. But documents are rendered to their string representation (screenshot
+    ;;       in the issue). Possible fix could be to represent native queries in ejson v2, which conforms to json rfc,
+    ;;       hence there would be no need for special bson values handling. That is to be further investigated.
+    (mapv (fn [^org.bson.BsonValue v] (-> v .asDocument org.bson.Document.))
           (org.bson.BsonArray/parse s))
     (catch Throwable e
       (throw (ex-info (tru "Unable to parse query: {0}" (.getMessage e))
@@ -1395,7 +1414,8 @@
   "Compile an MBQL query."
   [query]
   (let [query (update query :query preprocess)]
-    (binding [*query* query]
+    (binding [*query* query
+              *next-alias-index* (volatile! 0)]
       (let [source-table-name (if-let [source-table-id (mbql.u/query->source-table-id query)]
                                 (:name (lib.metadata/table (qp.store/metadata-provider) source-table-id))
                                 (query->collection-name query))

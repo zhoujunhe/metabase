@@ -110,7 +110,6 @@ class MetabaseSettings {
    */
   on(key: SettingKey, callback: SettingListener) {
     this._listeners[key] = this._listeners[key] || [];
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     this._listeners[key]!.push(callback);
   }
 
@@ -302,6 +301,7 @@ class MetabaseSettings {
    * @deprecated use getLearnUrl
    */
   learnUrl(path = "") {
+    // eslint-disable-next-line no-unconditional-metabase-links-render -- This is the implementation of MetabaseSettings.learnUrl()
     return `https://www.metabase.com/learn/${path}`;
   }
 
@@ -414,12 +414,6 @@ const initValues =
   typeof window !== "undefined" ? _.clone(window.MetabaseBootstrap) : null;
 
 const settings = new MetabaseSettings(initValues);
-
-if (typeof window !== "undefined") {
-  (
-    window as Window & { __metabaseSettings?: MetabaseSettings }
-  ).__metabaseSettings = settings;
-}
 
 // eslint-disable-next-line import/no-default-export -- deprecated usage
 export default settings;

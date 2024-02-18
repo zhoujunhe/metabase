@@ -1,7 +1,7 @@
 import fetchMock from "fetch-mock";
 
 import userEvent from "@testing-library/user-event";
-import { renderWithProviders, screen, waitFor } from "__support__/ui";
+import { renderWithProviders, screen, waitFor, within } from "__support__/ui";
 import { createMockGroup } from "metabase-types/api/mocks";
 
 import { SettingsJWTForm } from "./SettingsJWTForm";
@@ -16,16 +16,24 @@ const GROUPS = [
 
 const elements = [
   {
-    // placeholder: false,
     key: "jwt-enabled",
     value: null,
     is_env_setting: false,
     env_name: "MB_JWT_ENABLED",
     description: "Is JWT authentication configured and enabled?",
-    default: false,
     originalValue: null,
     display_name: "JWT Authentication",
     type: "boolean",
+  },
+  {
+    key: "jwt-user-provisioning-enabled?",
+    value: null,
+    is_env_setting: false,
+    env_name: "MB_JWT_USER_PROVISIONING_ENABLED",
+    display_name: "User Provisioning",
+    description:
+      "When we enable JWT user provisioning, we automatically create a Metabase account on LDAP signin for users who\ndon't have one.",
+    default: true,
   },
   {
     placeholder: "https://jwt.yourdomain.org",
@@ -34,7 +42,6 @@ const elements = [
     is_env_setting: false,
     env_name: "MB_JWT_IDENTITY_PROVIDER_URI",
     description: "URL of JWT based login page",
-    default: null,
     originalValue: null,
     display_name: "JWT Identity Provider URI",
     type: "string",
@@ -42,14 +49,12 @@ const elements = [
     autoFocus: true,
   },
   {
-    // placeholder: null,
     key: "jwt-shared-secret",
     value: null,
     is_env_setting: false,
     env_name: "MB_JWT_SHARED_SECRET",
     description:
       "String used to seed the private key used to validate JWT messages. A hexadecimal-encoded 256-bit key (i.e., a 64-character string) is strongly recommended.",
-    default: null,
     originalValue: null,
     display_name: "String used by the JWT signing key",
     type: "text",
@@ -92,24 +97,19 @@ const elements = [
     type: "string",
   },
   {
-    // placeholder: false,
     key: "jwt-group-sync",
     value: null,
     is_env_setting: false,
     env_name: "MB_JWT_GROUP_SYNC",
-    // description: null,
-    default: false,
     originalValue: null,
     display_name: "Synchronize group memberships",
   },
   {
-    // placeholder: {},
     key: "jwt-group-mappings",
     value: null,
     is_env_setting: false,
     env_name: "MB_JWT_GROUP_MAPPINGS",
     description: "JSON containing JWT to Metabase group mappings.",
-    default: {},
     originalValue: null,
   },
 ];
@@ -142,6 +142,7 @@ describe("SettingsJWTForm", () => {
     const { onSubmit } = setup();
 
     const ATTRS = {
+      "jwt-user-provisioning-enabled?": false,
       "jwt-identity-provider-uri": "http://example.com",
       "jwt-shared-secret":
         "590ab155f412d477b8ab9c8b0e7b2e3ab4d4523e83770a724a2088edbde7f19a",
@@ -152,6 +153,7 @@ describe("SettingsJWTForm", () => {
       "jwt-group-sync": true,
     };
 
+    userEvent.click(screen.getByLabelText(/User Provisioning/));
     userEvent.type(
       await screen.findByRole("textbox", { name: /JWT Identity Provider URI/ }),
       ATTRS["jwt-identity-provider-uri"],
@@ -174,9 +176,10 @@ describe("SettingsJWTForm", () => {
       await screen.findByRole("textbox", { name: /Last name attribute/ }),
       ATTRS["jwt-attribute-lastname"],
     );
-    userEvent.click(await screen.findByRole("button", { name: /Save/ }));
+    const groupSchema = await screen.findByTestId("jwt-group-schema");
+    userEvent.click(within(groupSchema).getByRole("checkbox")); // checkbox for "jwt-group-sync"
 
-    userEvent.click(screen.getByRole("checkbox")); // checkbox for "jwt-enabled"
+    userEvent.click(await screen.findByRole("button", { name: /Save/ }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(ATTRS);

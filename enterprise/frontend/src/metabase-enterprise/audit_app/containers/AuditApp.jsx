@@ -6,8 +6,8 @@ import Link from "metabase/core/components/Link";
 import { useCollectionListQuery } from "metabase/common/hooks";
 import { isInstanceAnalyticsCollection } from "metabase/collections/utils";
 import fitViewport from "metabase/hoc/FitViewPort";
-import { Icon } from "metabase/core/components/Icon";
-import { Flex, Box } from "metabase/ui";
+import { Icon, Flex, Box } from "metabase/ui";
+
 import SidebarLayout from "../components/SidebarLayoutFixedWidth";
 import { AuditSidebar } from "../components/AuditSidebar";
 import { DeprecationNotice } from "./AuditApp.styled";
@@ -39,6 +39,7 @@ const DeprecationSection = () => {
                   key="link"
                   to={`/collection/${auditCollection.id}`}
                 >
+                  {/* eslint-disable-next-line no-literal-metabase-strings -- Metabase settings */}
                   {t`Metabase Analytics Collection`}
                 </Link>
               )}

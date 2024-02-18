@@ -12,7 +12,6 @@
    [metabase.models.permissions-group :as perms-group]
    [metabase.models.pulse :as pulse]
    [metabase.models.pulse-test :as pulse-test]
-   [metabase.public-settings.premium-features-test :as premium-features-test]
    [metabase.server.middleware.util :as mw.util]
    [metabase.test :as mt]
    [metabase.test.mock.util :refer [pulse-channel-defaults]]
@@ -210,7 +209,7 @@
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
 (deftest post-alert-test
-  (is (= {:errors {:alert_condition "enum of rows, goal"}
+  (is (= {:errors          {:alert_condition "enum of rows, goal"}
           :specific-errors {:alert_condition ["should be either rows or goal, received: \"not rows\""]}}
          (mt/user-http-request
           :rasta :post 400 "alert" {:alert_condition "not rows"
@@ -225,7 +224,7 @@
            {:card "value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`."}
            :specific-errors
            {:card
-            ["value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`., received: nil"]}}
+            ["value must be a map with the keys `include_csv`, `include_xls`, and `dashboard_card_id`., received: nil"]}}
          (mt/user-http-request
           :rasta :post 400 "alert" {:alert_condition  "rows"
                                     :alert_first_only false})))
@@ -433,7 +432,7 @@
            {:card "nullable value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`."}
            :specific-errors
            {:card
-            ["value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`., received: \"foobar\""]}}
+            ["value must be a map with the keys `include_csv`, `include_xls`, and `dashboard_card_id`., received: \"foobar\""]}}
          (mt/user-http-request
           :rasta :put 400 "alert/1" {:alert_condition  "rows"
                                      :alert_first_only false
@@ -631,7 +630,7 @@
                                   (dissoc (default-alert-req card pc {} []) :channels))))))))
 
 (deftest alert-event-test
-  (premium-features-test/with-premium-features #{:audit-app}
+  (mt/with-premium-features #{:audit-app}
     (mt/with-non-admin-groups-no-root-collection-perms
       (t2.with-temp/with-temp [Collection collection {}
                                Card       card {:name          "My question"
@@ -928,7 +927,7 @@
 
 (deftest alert-unsubscribe-event-test
   (testing "Alert has two recipients, and non-admin unsubscribes"
-    (premium-features-test/with-premium-features #{:audit-app}
+    (mt/with-premium-features #{:audit-app}
       (mt/with-temp [Card                  card  (basic-alert-query)
                      Pulse                 alert (basic-alert)
                      PulseCard             _     (pulse-card alert card)

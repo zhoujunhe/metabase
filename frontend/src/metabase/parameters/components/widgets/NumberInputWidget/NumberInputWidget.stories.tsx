@@ -1,6 +1,6 @@
 import type { ComponentStory } from "@storybook/react";
-import { useArgs } from "@storybook/client-api";
-import NumberInputWidget from "./NumberInputWidget";
+import { useArgs } from "@storybook/addons";
+import { NumberInputWidget } from "./NumberInputWidget";
 
 export default {
   title: "Parameters/NumberInputWidget",

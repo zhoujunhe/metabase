@@ -8,7 +8,7 @@ import {
 import { setupFieldSearchValuesEndpoints } from "__support__/server-mocks";
 import Fields from "metabase/entities/fields";
 
-import { checkNotNull } from "metabase/lib/types";
+import { checkNotNull, isNotNull } from "metabase/lib/types";
 import type { IFieldValuesWidgetProps } from "metabase/components/FieldValuesWidget";
 import { FieldValuesWidget } from "metabase/components/FieldValuesWidget";
 
@@ -59,7 +59,7 @@ async function setup({
   renderWithProviders(
     <FieldValuesWidget
       value={[]}
-      fields={fields.filter(checkNotNull)}
+      fields={fields.filter(isNotNull)}
       onChange={jest.fn()}
       prefix={prefix}
       {...props}
@@ -121,7 +121,7 @@ describe("FieldValuesWidget", () => {
     });
 
     describe("has_field_values = search", () => {
-      const field = metadata.field(PRODUCTS.VENDOR);
+      const field = metadata.field(PEOPLE.EMAIL);
 
       it("should not call fetchFieldValues", async () => {
         const { fetchFieldValues } = await setup({
@@ -133,7 +133,7 @@ describe("FieldValuesWidget", () => {
       it("should have 'Search by Vendor' as the placeholder text", async () => {
         await setup({ fields: [field] });
         expect(
-          screen.getByPlaceholderText("Search by Vendor"),
+          screen.getByPlaceholderText("Search by Email"),
         ).toBeInTheDocument();
       });
     });
@@ -210,7 +210,7 @@ describe("FieldValuesWidget", () => {
       await setup({
         fields: [
           metadata.field(PRODUCTS.CATEGORY),
-          metadata.field(PRODUCTS.VENDOR),
+          metadata.field(PEOPLE.EMAIL),
         ],
       });
 

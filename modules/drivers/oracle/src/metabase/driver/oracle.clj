@@ -182,11 +182,7 @@
   [_driver]
   :oracle)
 
-(defmethod sql.qp/honey-sql-version :oracle
-  [_driver]
-  2)
-
-;; Oracle mod is a function like mod(x, y) rather than an operator like x mod y
+;;; Oracle mod is a function like mod(x, y) rather than an operator like x mod y
 (defn- format-mod
   [_fn [x y]]
   (let [[x-sql & x-args] (sql/format-expr x {:nested true})
@@ -624,14 +620,14 @@
 
 (defmethod unprepare/unprepare-value [:oracle OffsetDateTime]
   [_ t]
-  (let [s (-> (t/format "yyyy-MM-dd HH:mm:ss.SSS ZZZZZ" t)
-              ;; Oracle doesn't like `Z` to mean UTC
-              (str/replace #"Z$" "UTC"))]
-    (format "timestamp '%s'" s)))
+  ;; Oracle doesn't like `Z` to mean UTC
+  (format "timestamp '%s'" (-> (t/format "yyyy-MM-dd HH:mm:ss.SSS ZZZZZ" t)
+                               (str/replace #" Z$" " UTC"))))
 
 (defmethod unprepare/unprepare-value [:oracle ZonedDateTime]
   [_ t]
-  (format "timestamp '%s'" (t/format "yyyy-MM-dd HH:mm:ss.SSS VV" t)))
+  (format "timestamp '%s'" (-> (t/format "yyyy-MM-dd HH:mm:ss.SSS VV" t)
+                               (str/replace #" Z$" " UTC"))))
 
 (defmethod unprepare/unprepare-value [:oracle Instant]
   [driver t]

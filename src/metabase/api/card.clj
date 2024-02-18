@@ -2,21 +2,18 @@
   "/api/card endpoints."
   (:require
    [cheshire.core :as json]
-   [clj-bom.core :as bom]
    [clojure.core.async :as a]
-   [clojure.data.csv :as csv]
-   [clojure.string :as str]
+   [clojure.java.io :as io]
    [compojure.core :refer [DELETE GET POST PUT]]
    [medley.core :as m]
-   [metabase.analytics.snowplow :as snowplow]
    [metabase.api.common :as api]
    [metabase.api.common.validation :as validation]
    [metabase.api.dataset :as api.dataset]
    [metabase.api.field :as api.field]
    [metabase.driver :as driver]
-   [metabase.driver.sync :as driver.s]
-   [metabase.driver.util :as driver.u]
    [metabase.events :as events]
+   [metabase.lib.convert :as lib.convert]
+   [metabase.lib.core :as lib]
    [metabase.lib.types.isa :as lib.types.isa]
    [metabase.mbql.normalize :as mbql.normalize]
    [metabase.mbql.util :as mbql.u]
@@ -25,11 +22,9 @@
    [metabase.models.card :as card]
    [metabase.models.collection :as collection]
    [metabase.models.collection.root :as collection.root]
-   [metabase.models.humanization :as humanization]
    [metabase.models.interface :as mi]
    [metabase.models.params :as params]
    [metabase.models.params.custom-values :as custom-values]
-   [metabase.models.permissions :as perms]
    [metabase.models.persisted-info :as persisted-info]
    [metabase.models.query :as query]
    [metabase.models.query.permissions :as query-perms]
@@ -41,10 +36,7 @@
    [metabase.query-processor.pivot :as qp.pivot]
    [metabase.related :as related]
    [metabase.server.middleware.offset-paging :as mw.offset-paging]
-   [metabase.sync :as sync]
    [metabase.sync.analyze.query-results :as qr]
-   [metabase.sync.sync-metadata.fields :as sync-fields]
-   [metabase.sync.sync-metadata.tables :as sync-tables]
    [metabase.task.persist-refresh :as task.persist-refresh]
    [metabase.upload :as upload]
    [metabase.util :as u]
@@ -54,9 +46,7 @@
    [metabase.util.malli :as mu]
    [metabase.util.malli.schema :as ms]
    [steffan-westcott.clj-otel.api.trace.span :as span]
-   [toucan2.core :as t2])
-  (:import
-   (java.io File)))
+   [toucan2.core :as t2]))
 
 (set! *warn-on-reflection* true)
 
@@ -116,6 +106,24 @@
        ;; now check if model-id really occurs as a card ID
        (filter (fn [card] (some #{model-id} (-> card :dataset_query query/collect-card-ids))))))
 
+(defn- cards-for-segment-or-metric
+  [model-type model-id]
+  (->> (t2/select :model/Card {:where [:like :dataset_query (str "%" (name model-type) "%" model-id "%")]})
+       ;; now check if the segment/metric with model-id really occurs in a filter/aggregation expression
+       (filter (fn [card]
+                 (when-let [query (some-> card :dataset_query lib.convert/->pMBQL)]
+                   (case model-type
+                     :segment (lib/uses-segment? query model-id)
+                     :metric (lib/uses-metric? query model-id)))))))
+
+(defmethod cards-for-filter-option* :using_metric
+  [_filter-option model-id]
+  (cards-for-segment-or-metric :metric model-id))
+
+(defmethod cards-for-filter-option* :using_segment
+  [_filter-option model-id]
+  (cards-for-segment-or-metric :segment model-id))
+
 (defn- cards-for-filter-option [filter-option model-id-or-nil]
   (-> (apply cards-for-filter-option* filter-option (when model-id-or-nil [model-id-or-nil]))
       (t2/hydrate :creator :collection)))
@@ -125,21 +133,31 @@
   "a valid card filter option."
   (map name (keys (methods cards-for-filter-option*))))
 
+(defn- db-id-via-table
+  [model model-id]
+  (t2/select-one-fn :db_id :model/Table {:select [:t.db_id]
+                                         :from [[:metabase_table :t]]
+                                         :join [[model :m] [:= :t.id :m.table_id]]
+                                         :where [:= :m.id model-id]}))
+
 (api/defendpoint GET "/"
   "Get all the Cards. Option filter param `f` can be used to change the set of Cards that are returned; default is
-  `all`, but other options include `mine`, `bookmarked`, `database`, `table`, `using_model` and `archived`. See
-  corresponding implementation functions above for the specific behavior of each filterp option. :card_index:"
+  `all`, but other options include `mine`, `bookmarked`, `database`, `table`, `using_model`, `using_metric`,
+  `using_segment`, and `archived`. See corresponding implementation functions above for the specific behavior of each
+  filterp option. :card_index:"
   [f model_id]
   {f        [:maybe (into [:enum] card-filter-options)]
    model_id [:maybe ms/PositiveInt]}
   (let [f (or (keyword f) :all)]
-    (when (contains? #{:database :table :using_model} f)
+    (when (contains? #{:database :table :using_model :using_metric :using_segment} f)
       (api/checkp (integer? model_id) "model_id" (format "model_id is a required parameter when filter mode is '%s'"
                                                          (name f)))
       (case f
-        :database    (api/read-check Database model_id)
-        :table       (api/read-check Database (t2/select-one-fn :db_id Table, :id model_id))
-        :using_model (api/read-check Card model_id)))
+        :database      (api/read-check Database model_id)
+        :table         (api/read-check Database (t2/select-one-fn :db_id Table, :id model_id))
+        :using_model   (api/read-check Card model_id)
+        :using_metric  (api/read-check Database (db-id-via-table :metric model_id))
+        :using_segment (api/read-check Database (db-id-via-table :segment model_id))))
     (let [cards          (filter mi/can-read? (cards-for-filter-option f model_id))
           last-edit-info (:card (last-edit/fetch-last-edited-info {:card-ids (map :id cards)}))]
       (into []
@@ -158,7 +176,8 @@
     {:name       "hydrate-card-details"
      :attributes {:card/id card-id}}
     (-> card
-        (t2/hydrate :creator
+        (t2/hydrate :based_on_upload
+                    :creator
                     :dashboard_count
                     :can_write
                     :average_query_time
@@ -167,7 +186,7 @@
                     [:collection :is_personal]
                     [:moderation_reviews :moderator_details])
         (cond->                                             ; card
-          (:dataset card) (t2/hydrate :persisted)))))
+          (card/model? card) (t2/hydrate :persisted)))))
 
 (api/defendpoint GET "/:id"
   "Get `Card` with ID."
@@ -395,12 +414,14 @@
 
 ;;; ------------------------------------------------- Creating Cards -------------------------------------------------
 
+
 (api/defendpoint POST "/"
   "Create a new `Card`."
   [:as {{:keys [collection_id collection_position dataset dataset_query description display name
-                parameters parameter_mappings result_metadata visualization_settings cache_ttl], :as body} :body}]
+                parameters parameter_mappings result_metadata visualization_settings cache_ttl type], :as body} :body}]
   {name                   ms/NonBlankString
    dataset                [:maybe :boolean]
+   type                   [:maybe card/CardTypes]
    dataset_query          ms/Map
    parameters             [:maybe [:sequential ms/Parameter]]
    parameter_mappings     [:maybe [:sequential ms/ParameterMapping]]
@@ -452,13 +473,14 @@
   "Update a `Card`."
   [id :as {{:keys [dataset_query description display name visualization_settings archived collection_id
                    collection_position enable_embedding embedding_params result_metadata parameters
-                   cache_ttl dataset collection_preview]
+                   cache_ttl dataset collection_preview type]
             :as   card-updates} :body}]
   {id                     ms/PositiveInt
    name                   [:maybe ms/NonBlankString]
    parameters             [:maybe [:sequential ms/Parameter]]
    dataset_query          [:maybe ms/Map]
    dataset                [:maybe :boolean]
+   type                   [:maybe card/CardTypes]
    display                [:maybe ms/NonBlankString]
    description            [:maybe :string]
    visualization_settings [:maybe ms/Map]
@@ -470,8 +492,11 @@
    result_metadata        [:maybe qr/ResultsMetadata]
    cache_ttl              [:maybe ms/PositiveInt]
    collection_preview     [:maybe :boolean]}
-  (let [card-before-update (t2/hydrate (api/write-check Card id)
-                                       [:moderation_reviews :moderator_details])]
+  (let [card-before-update     (t2/hydrate (api/write-check Card id)
+                                           [:moderation_reviews :moderator_details])
+        is-model-after-update? (if (and (nil? type) (nil? dataset))
+                                 (card/model? card-before-update)
+                                 (card/model? (card/ensure-type-and-dataset-are-consistent card-updates)))]
     ;; Do various permissions checks
     (doseq [f [collection/check-allowed-to-change-collection
                check-allowed-to-modify-query
@@ -482,11 +507,10 @@
                                                              :query             dataset_query
                                                              :metadata          result_metadata
                                                              :original-metadata (:result_metadata card-before-update)
-                                                             :dataset?          (if (some? dataset)
-                                                                                  dataset
-                                                                                  (:dataset card-before-update))})
+                                                             :dataset?          is-model-after-update?})
           card-updates          (merge card-updates
-                                       (when dataset
+                                       (when (and (or (some? type) (some? dataset))
+                                                  is-model-after-update?)
                                          {:display :table}))
           metadata-timeout      (a/timeout card/metadata-sync-wait-ms)
           [fresh-metadata port] (a/alts!! [result-metadata-chan metadata-timeout])
@@ -613,10 +637,10 @@
   ;;    POST /api/dashboard/:dashboard-id/card/:card-id/query
   ;;
   ;; endpoint instead. Or error in that situtation? We're not even validating that you have access to this Dashboard.
-  (qp.card/run-query-for-card-async
+  (qp.card/process-query-for-card
    card-id :api
    :parameters   parameters
-   :ignore_cache ignore_cache
+   :ignore-cache ignore_cache
    :dashboard-id dashboard_id
    :context      (if collection_preview :collection :question)
    :middleware   {:process-viz-settings? false}))
@@ -630,7 +654,7 @@
   {card-id       ms/PositiveInt
    parameters    [:maybe ms/JSONString]
    export-format (into [:enum] api.dataset/export-formats)}
-  (qp.card/run-query-for-card-async
+  (qp.card/process-query-for-card
    card-id export-format
    :parameters  (json/parse-string parameters keyword)
    :constraints nil
@@ -703,10 +727,10 @@
                  :or   {ignore_cache false}} :body}]
   {card-id      ms/PositiveInt
    ignore_cache [:maybe :boolean]}
-  (qp.card/run-query-for-card-async card-id :api
-                            :parameters parameters,
-                            :qp-runner qp.pivot/run-pivot-query
-                            :ignore_cache ignore_cache))
+  (qp.card/process-query-for-card card-id :api
+                                    :parameters   parameters
+                                    :qp           qp.pivot/run-pivot-query
+                                    :ignore-cache ignore_cache))
 
 (api/defendpoint POST "/:card-id/persist"
   "Mark the model (card) as persisted. Runs the query and saves it to the database backing the card and hot swaps this
@@ -714,7 +738,7 @@
   [card-id]
   {card-id ms/PositiveInt}
   (premium-features/assert-has-feature :cache-granular-controls (tru "Granular cache controls"))
-  (api/let-404 [{:keys [dataset database_id] :as card} (t2/select-one Card :id card-id)]
+  (api/let-404 [{:keys [database_id] :as card} (t2/select-one Card :id card-id)]
     (let [database (t2/select-one Database :id database_id)]
       (api/write-check database)
       (when-not (driver/database-supports? (:engine database)
@@ -727,7 +751,7 @@
         (throw (ex-info (tru "Persisting models not enabled for database")
                         {:status-code 400
                          :database    (:name database)})))
-      (when-not dataset
+      (when-not (card/model? card)
         (throw (ex-info (tru "Card is not a model") {:status-code 400})))
       (when-let [persisted-info (persisted-info/turn-on-model! api/*current-user-id* card)]
         (task.persist-refresh/schedule-refresh-for-individual! persisted-info))
@@ -739,7 +763,7 @@
   {card-id ms/PositiveInt}
   (api/let-404 [card           (t2/select-one Card :id card-id)
                 persisted-info (t2/select-one PersistedInfo :card_id card-id)]
-    (when (not (:dataset card))
+    (when (not (card/model? card))
       (throw (ex-info (trs "Cannot refresh a non-model question") {:status-code 400})))
     (when (:archived card)
       (throw (ex-info (trs "Cannot refresh an archived model") {:status-code 400})))
@@ -811,127 +835,33 @@
    query     ms/NonBlankString}
   (param-values (api/read-check Card card-id) param-key query))
 
-(defn- scan-and-sync-table!
-  [database table]
-  (sync-fields/sync-fields-for-table! database table)
-  (future
-    (sync/sync-table! table)))
-
-(defn- csv-stats [^File csv-file]
-  (with-open [reader (bom/bom-reader csv-file)]
-    (let [rows (csv/read-csv reader)]
-      {:size-mb     (/ (.length csv-file) 1048576.0)
-       :num-columns (count (first rows))
-       :num-rows    (count (rest rows))})))
-
-(defn- can-upload-error
-  "Returns an ExceptionInfo object if the user cannot upload to the given database and schema. Returns nil otherwise."
-  [db schema-name]
-  (let [driver (driver.u/database->driver db)]
-    (cond
-      (not (public-settings/uploads-enabled))
-      (ex-info (tru "Uploads are not enabled.")
-               {:status-code 422})
-      (premium-features/sandboxed-user?)
-      (ex-info (tru "Uploads are not permitted for sandboxed users.")
-               {:status-code 403})
-      (not (driver/database-supports? driver :uploads nil))
-      (ex-info (tru "Uploads are not supported on {0} databases." (str/capitalize (name driver)))
-               {:status-code 422})
-      (and (str/blank? schema-name)
-           (driver/database-supports? driver :schemas db))
-      (ex-info (tru "A schema has not been set.")
-               {:status-code 422})
-      (not (perms/set-has-full-permissions? @api/*current-user-permissions-set*
-                                            (perms/data-perms-path (u/the-id db) schema-name)))
-      (ex-info (tru "You don''t have permissions to do that.")
-               {:status-code 403})
-      (and (some? schema-name)
-           (not (driver.s/include-schema? db schema-name)))
-      (ex-info (tru "The schema {0} is not syncable." schema-name)
-               {:status-code 422}))))
-
-(defn- check-can-upload
-  "Throws an error if the user cannot upload to the given database and schema."
-  [db schema-name]
-  (when-let [error (can-upload-error db schema-name)]
-    (throw error)))
-
-(defn can-upload?
-  "Returns true if the user can upload to the given database and schema, and false otherwise."
-  [db schema-name]
-  (nil? (can-upload-error db schema-name)))
-
-(defn upload-csv!
-  "Main entry point for CSV uploading. Coordinates detecting the schema, inserting it into an appropriate database,
-  syncing and scanning the new data, and creating an appropriate model which is then returned. May throw validation or
-  DB errors."
-  [collection-id filename ^File csv-file]
-  {collection-id ms/PositiveInt}
-  (collection/check-write-perms-for-collection collection-id)
+(defn- from-csv!
+  "This helper function exists to make testing the POST /api/card/from-csv endpoint easier."
+  [{:keys [collection-id filename file]}]
   (try
-    (let [start-time        (System/currentTimeMillis)
-          db-id             (public-settings/uploads-database-id)
-          database          (or (t2/select-one Database :id db-id)
-                                (throw (Exception. (tru "The uploads database does not exist."))))
-          driver            (driver.u/database->driver database)
-          schema-name       (public-settings/uploads-schema-name)
-          _                 (check-can-upload database schema-name)
-          filename-prefix   (or (second (re-matches #"(.*)\.csv$" filename))
-                                filename)
-          table-name        (->> (str (public-settings/uploads-table-prefix) filename-prefix)
-                                 (upload/unique-table-name driver)
-                                 (u/lower-case-en))
-          schema+table-name (if (str/blank? schema-name)
-                              table-name
-                              (str schema-name "." table-name))
-          stats             (upload/load-from-csv! driver db-id schema+table-name csv-file)
-          ;; Sync immediately to create the Table and its Fields; the scan is settings-dependent and can be async
-          table             (sync-tables/create-or-reactivate-table! database {:name table-name :schema (not-empty schema-name)})
-          _set_is_upload    (t2/update! Table (u/the-id table) {:is_upload true})
-          _sync             (scan-and-sync-table! database table)
-          card              (card/create-card!
-                             {:collection_id          collection-id,
-                              :dataset                true
-                              :database_id            db-id
-                              :dataset_query          {:database db-id
-                                                       :query    {:source-table (u/the-id table)}
-                                                       :type     :query}
-                              :display                :table
-                              :name                   (humanization/name->human-readable-name filename-prefix)
-                              :visualization_settings {}}
-                             @api/*current-user*)
-          upload-seconds    (/ (- (System/currentTimeMillis) start-time)
-                               1000.0)]
-      (snowplow/track-event! ::snowplow/csv-upload-successful
-                             api/*current-user-id*
-                             (merge
-                              {:model-id (:id card)
-                               :upload-seconds upload-seconds}
-                              stats))
-      (.delete csv-file)
-      (hydrate-card-details card))
+    (let [model (upload/create-csv-upload! {:collection-id collection-id
+                                            :filename      filename
+                                            :file          file
+                                            :schema-name   (public-settings/uploads-schema-name)
+                                            :table-prefix  (public-settings/uploads-table-prefix)
+                                            :db-id         (or (public-settings/uploads-database-id)
+                                                               (throw (ex-info (tru "The uploads database is not configured.")
+                                                                               {:status-code 422})))})]
+      {:status 200
+       :body   (:id model)})
     (catch Throwable e
-      (snowplow/track-event! ::snowplow/csv-upload-failed
-                             api/*current-user-id*
-                             (csv-stats csv-file))
-      (.delete csv-file)
-      (throw e))))
+      {:status (or (-> e ex-data :status-code)
+                   500)
+       :body   {:message (or (ex-message e)
+                             (tru "There was an error uploading the file"))}})
+    (finally (io/delete-file file :silently))))
 
 (api/defendpoint ^:multipart POST "/from-csv"
   "Create a table and model populated with the values from the attached CSV. Returns the model ID if successful."
   [:as {raw-params :params}]
   ;; parse-long returns nil with "root" as the collection ID, which is what we want anyway
-  (try
-    (let [model-id (:id (upload-csv! (parse-long (get raw-params "collection_id"))
-                                     (get-in raw-params ["file" :filename])
-                                     (get-in raw-params ["file" :tempfile])))]
-      {:status 200
-       :body   model-id})
-    (catch Throwable e
-      {:status (or (-> e ex-data :status-code)
-                   500)
-       :body   {:message (or (ex-message e)
-                             (tru "There was an error uploading the file"))}})))
+  (from-csv! {:collection-id (parse-long (get raw-params "collection_id"))
+              :filename      (get-in raw-params ["file" :filename])
+              :file          (get-in raw-params ["file" :tempfile])}))
 
 (api/define-routes)

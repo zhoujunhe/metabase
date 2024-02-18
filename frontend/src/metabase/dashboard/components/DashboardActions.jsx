@@ -1,15 +1,13 @@
 import { t } from "ttag";
 
-import MetabaseSettings from "metabase/lib/settings";
 import Tooltip from "metabase/core/components/Tooltip";
 
 import { DashboardHeaderButton } from "metabase/dashboard/components/DashboardHeader/DashboardHeader.styled";
-import { DashboardSharingEmbeddingModalConnected } from "../containers/DashboardSharingEmbeddingModal.jsx";
+import { DashboardEmbedAction } from "metabase/dashboard/components/DashboardEmbedAction/DashboardEmbedAction";
 import {
   FullScreenButtonIcon,
   NightModeButtonIcon,
   RefreshWidgetButton,
-  ShareButton,
 } from "./DashboardActions.styled";
 
 export const getDashboardActions = (
@@ -33,9 +31,6 @@ export const getDashboardActions = (
     hasNightModeToggle,
   },
 ) => {
-  const isPublicLinksEnabled = MetabaseSettings.get("enable-public-sharing");
-  const isEmbeddingEnabled = MetabaseSettings.get("enable-embedding");
-
   const buttons = [];
 
   const isLoaded = !!dashboard;
@@ -48,7 +43,6 @@ export const getDashboardActions = (
       dashCard => !["text", "heading"].includes(dashCard.card.display),
     );
 
-  const canShareDashboard = hasCards;
   const canCreateSubscription = hasDataCards && canManageSubscriptions;
 
   const emailConfigured = formInput?.channels?.email?.configured || false;
@@ -71,47 +65,23 @@ export const getDashboardActions = (
             disabled={!canManageSubscriptions}
             onClick={onSharingClick}
             aria-label="subscriptions"
-            data-metabase-event="Dashboard;Subscriptions"
           />
         </Tooltip>,
       );
     }
 
-    if (canShareDashboard) {
-      buttons.push(
-        <DashboardSharingEmbeddingModalConnected
-          key="dashboard-embed"
-          additionalClickActions={() => self.refs.popover.close()}
-          dashboard={dashboard}
-          enabled={
-            !isEditing &&
-            !isFullscreen &&
-            ((isPublicLinksEnabled && (isAdmin || dashboard.public_uuid)) ||
-              (isEmbeddingEnabled && isAdmin))
-          }
-          isLinkEnabled={canShareDashboard}
-          linkText={
-            <Tooltip
-              isLinkEnabled={canShareDashboard}
-              tooltip={
-                canShareDashboard
-                  ? t`Sharing`
-                  : t`Add data to share this dashboard`
-              }
-            >
-              <ShareButton icon="share" canShareDashboard={canShareDashboard} />
-            </Tooltip>
-          }
-        />,
-      );
-    }
+    buttons.push(
+      <DashboardEmbedAction
+        key="dashboard-embed-action"
+        dashboard={dashboard}
+      />,
+    );
   }
 
   if (!isEditing && !isEmpty) {
     buttons.push(
       <RefreshWidgetButton
         key="refresh"
-        data-metabase-event="Dashboard;Refresh Menu Open"
         period={refreshPeriod}
         setRefreshElapsedHook={setRefreshElapsedHook}
         onChangePeriod={onRefreshPeriodChange}
@@ -125,7 +95,7 @@ export const getDashboardActions = (
         key="night"
         tooltip={isNightMode ? t`Daytime mode` : t`Nighttime mode`}
       >
-        <span data-metabase-event={"Dashboard;Night Mode;" + !isNightMode}>
+        <span>
           <DashboardHeaderButton
             icon={
               <NightModeButtonIcon
@@ -146,9 +116,7 @@ export const getDashboardActions = (
         key="fullscreen"
         tooltip={isFullscreen ? t`Exit fullscreen` : t`Enter fullscreen`}
       >
-        <span
-          data-metabase-event={"Dashboard;Fullscreen Mode;" + !isFullscreen}
-        >
+        <span>
           <DashboardHeaderButton
             icon={<FullScreenButtonIcon isFullscreen={isFullscreen} />}
             onClick={e => onFullscreenChange(!isFullscreen, !e.altKey)}

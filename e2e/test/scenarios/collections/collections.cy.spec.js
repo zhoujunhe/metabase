@@ -150,7 +150,9 @@ describe("scenarios > collection defaults", () => {
       // 2. Ensure we show the helpful tooltip with the full (long) collection name
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Fifth collection with a very long name").realHover();
-      popover().contains("Fifth collection with a very long name");
+      cy.findByRole("tooltip", {
+        name: /Fifth collection with a very long name/,
+      });
     });
 
     it("should be usable on mobile screen sizes (metabase#15006)", () => {
@@ -202,7 +204,7 @@ describe("scenarios > collection defaults", () => {
         });
     });
 
-    popover().within(() => {
+    cy.findByRole("tooltip").within(() => {
       cy.findByRole("link").should("include.text", "link");
       cy.findByRole("link").should("not.include.text", "[link]");
     });
@@ -583,7 +585,7 @@ describe("scenarios > collection defaults", () => {
     });
 
     it("should allow to x-ray models from collection views", () => {
-      cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { dataset: true });
+      cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { type: "model" });
       cy.visit("/collection/root");
 
       openEllipsisMenuFor("Orders");

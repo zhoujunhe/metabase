@@ -29,16 +29,19 @@ import {
 
 import { getMetadata } from "metabase/selectors/metadata";
 import { showAutoApplyFiltersToast } from "metabase/dashboard/actions/parameters";
+import { IS_EMBED_PREVIEW } from "metabase/lib/embed";
 import { getParameterValuesBySlug } from "metabase-lib/parameters/utils/parameter-values";
 import { applyParameters } from "metabase-lib/queries/utils/card";
 import {
   getDashboardComplete,
+  getDashCardBeforeEditing,
   getParameterValues,
   getLoadingDashCards,
   getCanShowAutoApplyFiltersToast,
   getDashboardById,
   getDashCardById,
   getSelectedTabId,
+  getQuestions,
 } from "../selectors";
 
 import {
@@ -195,7 +198,7 @@ export const fetchDashboard = createAsyncThunk(
         );
         result = {
           ...result,
-          id: dashId,
+          id: IS_EMBED_PREVIEW ? result.id : dashId,
           dashcards: result.dashcards.map(dc => ({
             ...dc,
             dashboard_id: dashId,
@@ -264,7 +267,13 @@ export const fetchDashboard = createAsyncThunk(
       }
 
       const metadata = getMetadata(getState());
-      const parameters = getDashboardUiParameters(result, metadata);
+      const questions = getQuestions(getState());
+      const parameters = getDashboardUiParameters(
+        result.dashcards,
+        result.parameters,
+        metadata,
+        questions,
+      );
 
       const parameterValuesById = preserveParameters
         ? getParameterValues(getState())
@@ -275,7 +284,7 @@ export const fetchDashboard = createAsyncThunk(
       return {
         entities,
         dashboard: result,
-        dashboardId: dashId,
+        dashboardId: result.id,
         parameterValues: parameterValuesById,
         preserveParameters,
       };
@@ -324,9 +333,9 @@ export const fetchCardData = createThunkAction(
         dashcard && dashcard.parameter_mappings,
       );
 
+      const lastResult = getIn(dashcardData, [dashcard.id, card.id]);
       if (!reload) {
         // if reload not set, check to see if the last result has the same query dict and return that
-        const lastResult = getIn(dashcardData, [dashcard.id, card.id]);
         if (
           lastResult &&
           equals(
@@ -344,7 +353,16 @@ export const fetchCardData = createThunkAction(
 
       cancelFetchCardData(card.id, dashcard.id);
 
-      if (clearCache) {
+      // When dashcard parameters change, we need to clean previous (stale)
+      // state so that the loader spinner shows as expected (#33767)
+      const hasParametersChanged =
+        !lastResult ||
+        !equals(
+          getDatasetQueryParams(lastResult.json_query).parameters,
+          getDatasetQueryParams(datasetQuery).parameters,
+        );
+
+      if (clearCache || hasParametersChanged) {
         // clears the card data to indicate the card is reloading
         dispatch(clearCardData(card.id, dashcard.id));
       }
@@ -420,24 +438,38 @@ export const fetchCardData = createThunkAction(
           ),
         );
       } else {
-        // new dashcards and new additional series cards aren't yet saved to the dashboard, so they need to be run using the card query endpoint
-        const endpoint =
-          isNewDashcard(dashcard) || isNewAdditionalSeriesCard(card, dashcard)
-            ? CardApi.query
-            : DashboardApi.cardQuery;
+        const dashcardBeforeEditing = getDashCardBeforeEditing(
+          getState(),
+          dashcard.id,
+        );
+        const hasReplacedCard =
+          dashcard.card_id != null &&
+          dashcardBeforeEditing &&
+          dashcardBeforeEditing.card_id !== dashcard.card_id;
 
-        result = await fetchDataOrError(
-          maybeUsePivotEndpoint(endpoint, card)(
-            {
+        const shouldUseCardQueryEndpoint =
+          isNewDashcard(dashcard) ||
+          isNewAdditionalSeriesCard(card, dashcard) ||
+          hasReplacedCard;
+
+        // new dashcards and new additional series cards aren't yet saved to the dashboard, so they need to be run using the card query endpoint
+        const endpoint = shouldUseCardQueryEndpoint
+          ? CardApi.query
+          : DashboardApi.cardQuery;
+
+        const requestBody = shouldUseCardQueryEndpoint
+          ? { cardId: card.id, ignore_cache: ignoreCache }
+          : {
               dashboardId: dashcard.dashboard_id,
               dashcardId: dashcard.id,
               cardId: card.id,
               parameters: datasetQuery.parameters,
               ignore_cache: ignoreCache,
               dashboard_id: dashcard.dashboard_id,
-            },
-            queryOptions,
-          ),
+            };
+
+        result = await fetchDataOrError(
+          maybeUsePivotEndpoint(endpoint, card)(requestBody, queryOptions),
         );
       }
 

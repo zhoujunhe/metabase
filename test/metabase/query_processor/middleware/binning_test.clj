@@ -12,6 +12,7 @@
    [metabase.lib.test-util.macros :as lib.tu.macros]
    [metabase.query-processor :as qp]
    [metabase.query-processor.middleware.binning :as binning]
+   [metabase.query-processor.preprocess :as qp.preprocess]
    [metabase.query-processor.store :as qp.store]
    [metabase.test :as mt]))
 
@@ -185,26 +186,26 @@
                                              :condition    [:= $product-id &Products.products.id]
                                              :fields       [&Products.products.price]}]
                                    :fields [[:field %id {:base-type :type/BigInteger}]]})
-              source-metadata   (qp/query->expected-cols source-card-query)
+              source-metadata   (qp.preprocess/query->expected-cols source-card-query)
               query             (-> (lib/query meta/metadata-provider source-card-query)
                                     lib/append-stage
-                                    (lib/aggregate (lib/count)))]
-          (let [people-longitude (m/find-first #(= (:id %) (meta/id :people :longitude))
-                                               (lib/breakoutable-columns query))
-                _                (is (some? people-longitude))
-                binning-strategy (m/find-first #(= (:display-name %) "Bin every 20 degrees")
-                                               (lib/available-binning-strategies query people-longitude))
-                _                (is (some? binning-strategy))
-                query            (-> query
-                                     (lib/breakout (lib/with-binning people-longitude binning-strategy)))
-                legacy-query     (-> (lib.convert/->legacy-MBQL query)
-                                     (assoc-in [:query :source-metadata] source-metadata))]
-            (is (=? {:query {:breakout [[:field
-                                         "People__LONGITUDE"
-                                         {:base-type :type/Float,
-                                          :binning   {:strategy  :bin-width
-                                                      :bin-width 20.0
-                                                      :min-value -180.0
-                                                      :max-value -60.0
-                                                      :num-bins  6}}]]}}
-                    (binning/update-binning-strategy legacy-query)))))))))
+                                    (lib/aggregate (lib/count)))
+              people-longitude (m/find-first #(= (:id %) (meta/id :people :longitude))
+                                             (lib/breakoutable-columns query))
+              _                (is (some? people-longitude))
+              binning-strategy (m/find-first #(= (:display-name %) "Bin every 20 degrees")
+                                             (lib/available-binning-strategies query people-longitude))
+              _                (is (some? binning-strategy))
+              query            (-> query
+                                   (lib/breakout (lib/with-binning people-longitude binning-strategy)))
+              legacy-query     (-> (lib.convert/->legacy-MBQL query)
+                                   (assoc-in [:query :source-metadata] source-metadata))]
+          (is (=? {:query {:breakout [[:field
+                                       "People__LONGITUDE"
+                                       {:base-type :type/Float,
+                                        :binning   {:strategy  :bin-width
+                                                    :bin-width 20.0
+                                                    :min-value -180.0
+                                                    :max-value -60.0
+                                                    :num-bins  6}}]]}}
+                  (binning/update-binning-strategy legacy-query))))))))

@@ -13,11 +13,10 @@
    [metabase.lib.metadata.protocols :as lib.metadata.protocols]
    [metabase.lib.schema.common :as lib.schema.common]
    [metabase.lib.schema.id :as lib.schema.id]
-   [metabase.query-processor :as qp]
+   [metabase.query-processor.preprocess :as qp.preprocess]
    [metabase.query-processor.store :as qp.store]
    [metabase.util :as u]
-   #_{:clj-kondo/ignore [:deprecated-namespace]}
-   [metabase.util.honeysql-extensions :as hx]
+   [metabase.util.honey-sql-2 :as h2x]
    [metabase.util.i18n :refer [trs tru]]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
@@ -87,7 +86,7 @@
   [driver {database-id :database, :as query}]
   (qp.store/with-metadata-provider database-id
     ;; catch errors in the query
-    (qp/preprocess query)
+    (qp.preprocess/preprocess query)
     (sql.qp/mbql->honeysql driver query)))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
@@ -121,8 +120,7 @@
                      (let [col-name                         (u/qualified-name col-name)
                            {base-type :base_type :as field} (get column->field col-name)]
                        (if-let [sql-type (type->sql-type base-type)]
-                         (sql.qp/with-driver-honey-sql-version driver
-                           (hx/cast sql-type value))
+                         (h2x/cast sql-type value)
                          (try
                            (sql.qp/->honeysql driver [:value value field])
                            (catch Exception e

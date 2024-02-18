@@ -18,13 +18,14 @@ import RowChart from "./visualizations/RowChart";
 import PieChart from "./visualizations/PieChart";
 import AreaChart from "./visualizations/AreaChart";
 import ComboChart from "./visualizations/ComboChart";
-import MapViz from "./visualizations/Map";
+import { Map } from "./visualizations/Map";
 import ScatterPlot from "./visualizations/ScatterPlot";
 import Funnel from "./visualizations/Funnel";
 import Gauge from "./visualizations/Gauge";
 import ObjectDetail from "./visualizations/ObjectDetail";
 import PivotTable from "./visualizations/PivotTable";
 import { Heading } from "./visualizations/Heading";
+import { DashCardPlaceholder } from "./visualizations/DashCardPlaceholder";
 
 export default function () {
   registerVisualization(Scalar);
@@ -32,8 +33,6 @@ export default function () {
   registerVisualization(Progress);
   registerVisualization(Gauge);
   registerVisualization(Table);
-  registerVisualization(Text);
-  registerVisualization(LinkViz);
   registerVisualization(LineChart);
   registerVisualization(AreaChart);
   registerVisualization(BarChart);
@@ -42,11 +41,16 @@ export default function () {
   registerVisualization(RowChart);
   registerVisualization(ScatterPlot);
   registerVisualization(PieChart);
-  registerVisualization(MapViz);
+  registerVisualization(Map);
   registerVisualization(Funnel);
   registerVisualization(ObjectDetail);
   registerVisualization(PivotTable);
+
   registerVisualization(ActionViz);
+  registerVisualization(DashCardPlaceholder);
   registerVisualization(Heading);
+  registerVisualization(LinkViz);
+  registerVisualization(Text);
+
   setDefaultVisualization(Table);
 }

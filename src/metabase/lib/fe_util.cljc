@@ -8,6 +8,7 @@
    [metabase.lib.schema :as lib.schema]
    [metabase.lib.schema.common :as lib.schema.common]
    [metabase.lib.schema.expression :as lib.schema.expression]
+   [metabase.lib.schema.id :as lib.schema.id]
    [metabase.lib.schema.temporal-bucketing :as lib.schema.temporal-bucketing]
    [metabase.lib.temporal-bucket :as lib.temporal-bucket]
    [metabase.lib.util :as lib.util]
@@ -85,6 +86,9 @@
       [:= _ (x :guard temporal?) (y :guard (some-fn int? string?))]
       (lib.temporal-bucket/describe-temporal-pair x y)
 
+      [:!= _ (x :guard temporal?) (y :guard (some-fn int? string?))]
+      (i18n/tru "Excludes {0}" (lib.temporal-bucket/describe-temporal-pair x y))
+
       [:< _ (x :guard temporal?) (y :guard string?)]
       (i18n/tru "Before {0}" (->temporal-name y))
 
@@ -105,3 +109,44 @@
 
       _
       (lib.metadata.calculation/display-name query stage-number filter-clause))))
+
+(defn- query-dependents
+  [metadata-providerable query-or-join]
+  (let [base-stage (first (:stages query-or-join))
+        database-id (:database query-or-join -1)]
+    (concat
+     (when (pos? database-id)
+       [{:type :database, :id database-id}
+        {:type :schema,   :id database-id}])
+     ;; cf. frontend/src/metabase-lib/queries/NativeQuery.ts
+     (when (= (:lib/type base-stage) :mbql.stage/native)
+       (for [{tag-type :type, [dim-tag _opts id] :dimension} (vals (:template-tags base-stage))
+             :when (and (= tag-type :dimension)
+                        (= dim-tag :field)
+                        (integer? id))]
+         {:type :field, :id id}))
+     ;; cf. frontend/src/metabase-lib/Question.ts and frontend/src/metabase-lib/queries/StructuredQuery.ts
+     (when-let [card-id (:source-card base-stage)]
+       [{:type :table, :id (str "card__" card-id)}])
+     (when-let [table-id (:source-table base-stage)]
+       [{:type :table, :id table-id}])
+     (for [stage (:stages query-or-join)
+           join (:joins stage)
+           dependent (query-dependents metadata-providerable join)]
+       dependent))))
+
+(def ^:private DependentItem
+  [:and
+   [:map
+    [:type [:enum :database :schema :table :field]]]
+   [:multi {:dispatch :type}
+    [:database [:map [:id ::lib.schema.id/database]]]
+    [:schema   [:map [:id ::lib.schema.id/database]]]
+    [:table    [:map [:id [:or ::lib.schema.id/table :string]]]]
+    [:field    [:map [:id ::lib.schema.id/field]]]]])
+
+(mu/defn dependent-metadata :- [:sequential DependentItem]
+  "Return the IDs and types of entities the metadata about is required
+  for the FE to function properly."
+  [query :- ::lib.schema/query]
+  (into [] (distinct) (query-dependents query query)))

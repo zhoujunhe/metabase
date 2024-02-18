@@ -7,12 +7,12 @@ const webpack = require("webpack");
 
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
-const HtmlWebpackHarddiskPlugin = require("html-webpack-harddisk-plugin");
 const TerserPlugin = require("terser-webpack-plugin");
 const WebpackNotifierPlugin = require("webpack-notifier");
 const ReactRefreshPlugin = require("@pmmmwh/react-refresh-webpack-plugin");
 
 const fs = require("fs");
+const path = require("path");
 
 const ASSETS_PATH = __dirname + "/resources/frontend_client/app/assets";
 const FONTS_PATH = __dirname + "/resources/frontend_client/app/fonts";
@@ -31,6 +31,7 @@ const E2E_PATH = __dirname + "/e2e";
 const WEBPACK_BUNDLE = process.env.WEBPACK_BUNDLE || "development";
 const devMode = WEBPACK_BUNDLE !== "production";
 const useFilesystemCache = process.env.FS_CACHE === "true";
+const edition = process.env.MB_EDITION || "oss";
 const shouldUseEslint =
   process.env.WEBPACK_BUNDLE !== "production" &&
   process.env.USE_ESLINT === "true";
@@ -182,6 +183,11 @@ const config = (module.exports = {
   cache: useFilesystemCache
     ? {
         type: "filesystem",
+        cacheDirectory: path.resolve(
+          __dirname,
+          "node_modules/.cache/",
+          edition === "oss" ? "webpack-oss" : "webpack-ee",
+        ),
         buildDependencies: {
           // invalidates the cache on configuration change
           config: [__filename],
@@ -193,9 +199,14 @@ const config = (module.exports = {
     splitChunks: {
       cacheGroups: {
         vendors: {
-          test: /[\\/]node_modules[\\/]/,
+          test: /[\\/]node_modules[\\/](?!sql-formatter[\\/])/,
           chunks: "all",
           name: "vendor",
+        },
+        sqlFormatter: {
+          test: /[\\/]node_modules[\\/]sql-formatter[\\/]/,
+          chunks: "all",
+          name: "sql-formatter",
         },
       },
     },
@@ -219,7 +230,6 @@ const config = (module.exports = {
       chunksSortMode: "manual",
       chunks: ["vendor", "styles", "app-main"],
       template: __dirname + "/resources/frontend_client/index_template.html",
-      alwaysWriteToDisk: true,
     }),
     new HtmlWebpackPlugin({
       filename: "../../public.html",
@@ -233,9 +243,6 @@ const config = (module.exports = {
       chunks: ["vendor", "styles", "app-embed"],
       template: __dirname + "/resources/frontend_client/index_template.html",
     }),
-    new HtmlWebpackHarddiskPlugin({
-      outputPath: __dirname + "/resources/frontend_client/app/dist",
-    }),
     new webpack.BannerPlugin({
       banner:
         "/*\n* This file is subject to the terms and conditions defined in\n * file 'LICENSE.txt', which is part of this source code package.\n */\n",
@@ -243,9 +250,15 @@ const config = (module.exports = {
     new NodePolyfillPlugin(), // for crypto, among others
     new webpack.EnvironmentPlugin({
       WEBPACK_BUNDLE: "development",
+      MB_LOG_ANALYTICS: "false",
     }),
     // https://github.com/remarkjs/remark/discussions/903
     new webpack.ProvidePlugin({ process: "process/browser.js" }),
+    // https://github.com/metabase/metabase/issues/35374
+    new webpack.NormalModuleReplacementPlugin(
+      /.\/use-popover.js/,
+      `${SRC_PATH}/ui/components/overlays/Popover/use-popover`,
+    ),
   ],
 });
 
@@ -297,6 +310,7 @@ if (WEBPACK_BUNDLE === "hot") {
         warnings: true,
         errorDetails: false,
       },
+      writeToDisk: true,
     },
     // if webpack doesn't reload UI after code change in development
     // watchOptions: {
@@ -308,9 +322,7 @@ if (WEBPACK_BUNDLE === "hot") {
   };
 
   config.watchOptions = {
-    ignored: [
-      CLJS_SRC_PATH_DEV + "/**",
-    ],
+    ignored: [CLJS_SRC_PATH_DEV + "/**"],
   };
 
   config.plugins.unshift(

@@ -59,6 +59,8 @@ function convertActionToQuestionCard(
 ): Card<NativeDatasetQuery> {
   return {
     id: action.id,
+    created_at: action.created_at,
+    updated_at: action.updated_at,
     name: action.name,
     description: action.description,
     dataset_query: action.dataset_query,
@@ -67,6 +69,7 @@ function convertActionToQuestionCard(
       action.visualization_settings as VisualizationSettings,
 
     dataset: false,
+    type: "question",
     can_write: true,
     public_uuid: null,
     collection_id: null,
@@ -75,6 +78,8 @@ function convertActionToQuestionCard(
     last_query_start: null,
     average_query_time: null,
     archived: false,
+    enable_embedding: false,
+    initially_published_at: null,
   };
 }
 
@@ -135,7 +140,10 @@ function QueryActionContextProvider({
 
   const [question, setQuestion] = useState(initialQuestion);
 
-  const query = useMemo(() => question.query() as NativeQuery, [question]);
+  const query = useMemo(
+    () => question.legacyQuery() as NativeQuery,
+    [question],
+  );
 
   const [formSettings, setFormSettings] = useState(initialFormSettings);
 
@@ -190,11 +198,12 @@ function QueryActionContextProvider({
     ({ isEditable }: EditorBodyProps) => (
       <QueryActionEditor
         query={query}
+        question={question}
         isEditable={isEditable}
         onChangeQuestionQuery={handleQueryChange}
       />
     ),
-    [query, handleQueryChange],
+    [query, question, handleQueryChange],
   );
 
   const isDirty = useMemo(() => {

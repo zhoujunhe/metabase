@@ -74,6 +74,18 @@ Get PNG rendering of a Card with `id`.
 
 *  **`id`** value must be an integer greater than zero.
 
+## `GET /api/pulse/preview_dashboard/:id`
+
+Get HTML rendering of a Dashboard with `id`.
+
+  This endpoint relies on a custom middleware defined in `metabase.pulse.preview/style-tag-nonce-middleware` to
+  allow the style tag to render properly, given our Content Security Policy setup. This middleware is attached to these
+  routes at the bottom of this namespace using `metabase.api.common/define-routes`.
+
+### PARAMS:
+
+*  **`id`** value must be an integer greater than zero.
+
 ## `POST /api/pulse/`
 
 Create a new `Pulse`.
@@ -82,7 +94,7 @@ Create a new `Pulse`.
 
 *  **`name`** value must be a non-blank string.
 
-*  **`cards`** one or more value must be a map with the following keys `(collection_id, description, display, id, include_csv, include_xls, name, dashboard_id, parameter_mappings)`, or value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`.
+*  **`cards`** one or more value must be a map with the following keys `(collection_id, description, display, id, include_csv, include_xls, name, dashboard_id, parameter_mappings)`, or value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`., or value must be a map with the keys `include_csv`, `include_xls`, and `dashboard_card_id`.
 
 *  **`channels`** one or more map
 
@@ -104,7 +116,7 @@ Test send an unsaved pulse.
 
 *  **`name`** value must be a non-blank string.
 
-*  **`cards`** one or more value must be a map with the following keys `(collection_id, description, display, id, include_csv, include_xls, name, dashboard_id, parameter_mappings)`, or value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`.
+*  **`cards`** one or more value must be a map with the following keys `(collection_id, description, display, id, include_csv, include_xls, name, dashboard_id, parameter_mappings)`, or value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`., or value must be a map with the keys `include_csv`, `include_xls`, and `dashboard_card_id`.
 
 *  **`channels`** one or more map
 
@@ -136,7 +148,7 @@ Update a Pulse with `id`.
 
 *  **`id`** value must be an integer greater than zero.
 
-*  **`cards`** nullable one or more value must be a map with the following keys `(collection_id, description, display, id, include_csv, include_xls, name, dashboard_id, parameter_mappings)`, or value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`.
+*  **`cards`** nullable one or more value must be a map with the following keys `(collection_id, description, display, id, include_csv, include_xls, name, dashboard_id, parameter_mappings)`, or value must be a map with the keys `id`, `include_csv`, `include_xls`, and `dashboard_card_id`., or value must be a map with the keys `include_csv`, `include_xls`, and `dashboard_card_id`.
 
 *  **`pulse-updates`**
 

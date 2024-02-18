@@ -29,7 +29,6 @@
             User]]
    [metabase.test :as mt]
    [metabase.test.fixtures :as fixtures]
-   [metabase.test.util.random :as tu.random]
    [toucan2.core :as t2]
    [toucan2.execute :as t2.execute]))
 
@@ -60,8 +59,8 @@
   [email]
   (first (t2/insert-returning-instances! (t2/table-name User)
                                          :email        email
-                                         :first_name   (tu.random/random-name)
-                                         :last_name    (tu.random/random-name)
+                                         :first_name   (mt/random-name)
+                                         :last_name    (mt/random-name)
                                          :password     (str (random-uuid))
                                          :date_joined  :%now
                                          :is_active    true
@@ -192,36 +191,36 @@
                                                                             :password    "superstrong"
                                                                             :date_joined :%now}))
             db-id    (first (t2/insert-returning-pks! (t2/table-name Database) {:name       "db"
-                                                                                 :engine     "postgres"
-                                                                                 :created_at :%now
-                                                                                 :updated_at :%now
-                                                                                 :settings    "{\"database-enable-actions\":true}"
-                                                                                 :details    "{}"}))
+                                                                                :engine     "postgres"
+                                                                                :created_at :%now
+                                                                                :updated_at :%now
+                                                                                :settings    "{\"database-enable-actions\":true}"
+                                                                                :details    "{}"}))
             table-id (first (t2/insert-returning-pks! (t2/table-name Table) {:db_id      db-id
-                                                                              :name       "Table"
-                                                                              :created_at :%now
-                                                                              :updated_at :%now
-                                                                              :active     true}))
+                                                                             :name       "Table"
+                                                                             :created_at :%now
+                                                                             :updated_at :%now
+                                                                             :active     true}))
             model-id (first (t2/insert-returning-pks! (t2/table-name Card) {:name                   "My Saved Question"
-                                                                             :created_at             :%now
-                                                                             :updated_at             :%now
-                                                                             :creator_id             user-id
-                                                                             :table_id               table-id
-                                                                             :display                "table"
-                                                                             :dataset_query          "{}"
-                                                                             :visualization_settings "{}"
-                                                                             :database_id            db-id
-                                                                             :collection_id          nil}))
+                                                                            :created_at             :%now
+                                                                            :updated_at             :%now
+                                                                            :creator_id             user-id
+                                                                            :table_id               table-id
+                                                                            :display                "table"
+                                                                            :dataset_query          "{}"
+                                                                            :visualization_settings "{}"
+                                                                            :database_id            db-id
+                                                                            :collection_id          nil}))
             _        (t2/insert! (t2/table-name Action) {:name       "Update user name"
                                                          :type       "implicit"
                                                          :model_id   model-id
                                                          :archived   false
                                                          :created_at :%now
                                                          :updated_at :%now})]
-       (is (thrown? clojure.lang.ExceptionInfo
-                    (t2/delete! Database :id db-id)))
-       (migrate!)
-       (is (t2/delete! Database :id db-id))))))
+        (is (thrown? clojure.lang.ExceptionInfo
+                     (t2/delete! Database :id db-id)))
+        (migrate!)
+        (is (t2/delete! Database :id db-id))))))
 
 (deftest split-data-permission-test
   (testing "Migration v46.00-080: split existing v1 data permission paths into v2 data and query permission paths"
@@ -367,7 +366,7 @@
 
 (deftest migrate-grid-from-18-to-24-test
   (impl/test-migrations ["v47.00-031" "v47.00-032"] [migrate!]
-    (let [user         (create-raw-user! (tu.random/random-email))
+    (let [user         (create-raw-user! (mt/random-email))
           dashboard-id (first (t2/insert-returning-pks! :model/Dashboard {:name       "A dashboard"
                                                                           :creator_id (:id user)}))
           ;; this layout is from magic dashboard for order table
@@ -458,8 +457,8 @@
 
 (deftest add-revision-most-recent-test
   (testing "Migrations v48.00-008-v48.00-009: add `revision.most_recent`"
-    (impl/test-migrations ["v48.00-007" "v48.00-009"] [migrate!]
-      (let [user-id          (:id (create-raw-user! (tu.random/random-email)))
+    (impl/test-migrations ["v48.00-007"] [migrate!]
+      (let [user-id          (:id (create-raw-user! (mt/random-email)))
             old              (t/minus (t/local-date-time) (t/hours 1))
             rev-dash-1-old (first (t2/insert-returning-pks! (t2/table-name :model/Revision)
                                                             {:model       "dashboard"
@@ -542,7 +541,7 @@
           (is (not (contains? (t2/select-one :model/Collection :id collection-id) :color))))))))
 
 (deftest audit-v2-views-test
-  (testing "Migrations v48.00-029 - v48.00-040"
+  (testing "Migrations v48.00-029 - end"
     ;; Use an open-ended migration range so that we can detect if any migrations added after these views broke the view
     ;; queries
     (impl/test-migrations ["v48.00-029"] [migrate!]
@@ -561,8 +560,9 @@
         (migrate!)
         (doseq [view-name new-view-names]
           (testing (str "View " view-name " should be created")
-            (is (= [] (t2/query (str "SELECT 1 FROM " view-name))))))
-
+            ;; Just assert that something was returned by the query and no exception was thrown
+            (is (partial= [] (t2/query (str "SELECT 1 FROM " view-name))))))
+        #_#_ ;; TODO: this is commented out temporarily because it flakes for MySQL (metabase#37434)
         (migrate! :down 47)
         (testing "Views should be removed when downgrading"
           (doseq [view-name new-view-names]
@@ -676,8 +676,7 @@
 (deftest audit-v2-downgrade-test
   (testing "Migration v48.00-050, and v48.00-54"
     (impl/test-migrations "v48.00-054" [migrate!]
-      (let [{:keys [^javax.sql.DataSource data-source]} mdb.connection/*application-db*
-            _db-audit-id (first (t2/insert-returning-pks! (t2/table-name :model/Database)
+      (let [_db-audit-id (first (t2/insert-returning-pks! (t2/table-name :model/Database)
                                                           {:name       "Audit DB"
                                                            :is_audit   true
                                                            :details    "{}"
@@ -700,14 +699,14 @@
                                                                 :first_name "Metabase Internal User"
                                                                 :email "internal@metabase.com"
                                                                 :password (str (random-uuid))}))
-            original-db (t2/query {:datasource data-source} "SELECT * FROM metabase_database")
-            original-collections (t2/query {:datasource data-source}    "SELECT * FROM collection")
+            original-db-names (t2/select-fn-set :name :metabase_database)
+            original-collections (t2/select-fn-set :name :collection)
             check-before (fn []
-                           (is (partial= (set (map :name original-db))
-                                         (set (map :name (t2/query {:datasource data-source} "SELECT name FROM metabase_database")))))
-                           (is (partial= (set (map :name original-collections))
-                                         (set (map :name (t2/query {:datasource data-source} "SELECT name FROM collection")))))
-                           (is (= 1 (count (t2/query "SELECT * FROM core_user WHERE id = 13371338")))))]
+                           (is (partial= original-db-names
+                                         (t2/select-fn-set :name :metabase_database)))
+                           (is (partial= original-collections
+                                         (t2/select-fn-set :name :collection)))
+                           (is (= 1 (t2/count :core_user :id 13371338))))]
 
         (check-before) ;; Verify that data is inserted correctly
         (migrate!) ;; no-op forward migration
@@ -716,8 +715,90 @@
         (migrate! :down 47)
 
         ;; Verify that rollback deleted the correct rows
-        (is (= 1 (count (t2/query "SELECT * FROM metabase_database"))))
-        (is (= 1 (count (t2/query "SELECT * FROM collection"))))
-        (is (= 0 (count (t2/query "SELECT * FROM metabase_database WHERE is_audit = TRUE"))))
-        (is (= 0 (count (t2/query "SELECT * FROM collection WHERE type = 'instance_analytics'"))))
-        (is (= 0 (count (t2/query "SELECT * FROM core_user WHERE id = 13371338"))))))))
+        (is (= 1 (t2/count :metabase_database)))
+        (is (= 1 (t2/count :collection)))
+        (is (= 0 (t2/count :metabase_database :is_audit true)))
+        (is (= 0 (t2/count :collection :type "instance_analytics")))
+        (is (= 0 (t2/count :core_user :id 13371338)))))))
+
+(deftest remove-legacy-pulse-tests
+  (testing "v49.00-000"
+    (impl/test-migrations "v49.00-000" [migrate!]
+      (let [user-id (:id (create-raw-user! (mt/random-email)))
+            alert-id (first (t2/insert-returning-pks! :pulse {:name            "An Alert"
+                                                              :creator_id      user-id
+                                                              :dashboard_id    nil
+                                                              :collection_id   nil
+                                                              :alert_condition "rows"
+                                                              :parameters      "[]"
+                                                              :created_at      :%now
+                                                              :updated_at      :%now}))
+            dashboard-id (first (t2/insert-returning-pks! :report_dashboard {:name       "A dashboard"
+                                                                             :creator_id user-id
+                                                                             :parameters "[]"
+                                                                             :created_at :%now
+                                                                             :updated_at :%now}))
+            dash-subscription-id (first (t2/insert-returning-pks! :pulse {:name            "A dashboard subscription"
+                                                                          :creator_id      user-id
+                                                                          :dashboard_id    dashboard-id
+                                                                          :collection_id   nil
+                                                                          :alert_condition "rows"
+                                                                          :parameters      "[]"
+                                                                          :created_at      :%now
+                                                                          :updated_at      :%now}))
+            legacy-pulse-id (first (t2/insert-returning-pks! :pulse {:name            "A legacy pulse"
+                                                                     :creator_id      user-id
+                                                                     :collection_id   nil
+                                                                     :alert_condition nil
+                                                                     :parameters      "[]"
+                                                                     :created_at      :%now
+                                                                     :updated_at      :%now}))]
+        (migrate!)
+        (is (t2/exists? :pulse :id dash-subscription-id))
+        (is (t2/exists? :pulse :id alert-id))
+        (is (not (t2/exists? :pulse :id legacy-pulse-id)))))))
+
+(deftest no-tiny-int-columns
+  (mt/test-driver :mysql
+    (testing "All boolean columns in mysql, mariadb should be bit(1)"
+      (is (= [{:table_name "DATABASECHANGELOGLOCK" :column_name "LOCKED"}] ;; outlier because this is liquibase's table
+             (t2/query
+              (format "SELECT table_name, column_name FROM information_schema.columns WHERE data_type LIKE 'tinyint%%' AND table_schema = '%s';"
+                      (-> (mdb.connection/data-source) .getConnection .getCatalog))))))))
+
+(deftest index-database-changelog-test
+  (testing "we should have an unique constraint on databasechangelog.(id,author,filename)"
+    (impl/test-migrations "v49.00-000" [migrate!]
+      (migrate!)
+      (is (pos?
+             (:count
+              (t2/query-one
+               (case (mdb.connection/db-type)
+                 :postgres "SELECT COUNT(*) as count FROM pg_indexes WHERE
+                           tablename = 'databasechangelog' AND indexname = 'idx_databasechangelog_id_author_filename';"
+                 :mysql    "SELECT COUNT(*) as count FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_NAME = 'DATABASECHANGELOG' AND INDEX_NAME = 'idx_databasechangelog_id_author_filename';"
+                 ;; h2 has a strange way of naming constraint
+                 :h2       "SELECT COUNT(*) as count FROM information_schema.indexes
+                           WHERE TABLE_NAME = 'DATABASECHANGELOG' AND INDEX_NAME = 'IDX_DATABASECHANGELOG_ID_AUTHOR_FILENAME_INDEX_1';"))))))))
+
+(deftest enable-public-sharing-default-test
+  (testing "enable-public-sharing is not set for new instances"
+    (impl/test-migrations "v49.2024-02-09T13:55:26" [migrate!]
+      (migrate!)
+      (is (nil?
+           (t2/select-one-fn :value (t2/table-name :model/Setting) :key "enable-public-sharing")))))
+
+  (testing "enable-public-sharing defaults to false for already-initalized instances"
+    (impl/test-migrations "v49.2024-02-09T13:55:26" [migrate!]
+      (create-raw-user! (mt/random-email))
+      (migrate!)
+      (is (= "false"
+             (t2/select-one-fn :value (t2/table-name :model/Setting) :key "enable-public-sharing")))))
+
+  (testing "enable-public-sharing remains true if already set"
+    (impl/test-migrations "v49.2024-02-09T13:55:26" [migrate!]
+      (create-raw-user! (mt/random-email))
+      (t2/insert! (t2/table-name :model/Setting) :key "enable-public-sharing" :value "true")
+      (migrate!)
+      (is (= "true"
+             (t2/select-one-fn :value (t2/table-name :model/Setting) :key "enable-public-sharing"))))))

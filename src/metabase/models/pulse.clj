@@ -173,15 +173,23 @@
   "Schema for valid values of `:alert_condition` for Alerts."
   [:enum "rows" "goal"])
 
+(def CardBase
+  "Schema for the map we use to internally represent the base elements of a Card used for Notifications. id is not
+  required since the card may be a placeholder."
+  (mu/with-api-error-message
+    [:map
+     [:include_csv                        ms/BooleanValue]
+     [:include_xls                        ms/BooleanValue]
+     [:dashboard_card_id {:optional true} [:maybe ms/PositiveInt]]]
+    (deferred-tru "value must be a map with the keys `{0}`, `{1}`, and `{2}`." "include_csv" "include_xls" "dashboard_card_id")))
+
 (def CardRef
   "Schema for the map we use to internally represent the fact that a Card is in a Notification and the details about its
   presence there."
   (mu/with-api-error-message
-    [:map
-     [:id                                 ms/PositiveInt]
-     [:include_csv                        ms/BooleanValue]
-     [:include_xls                        ms/BooleanValue]
-     [:dashboard_card_id {:optional true} [:maybe ms/PositiveInt]]]
+    [:merge CardBase
+     [:map
+      [:id ms/PositiveInt]]]
     (deferred-tru "value must be a map with the keys `{0}`, `{1}`, `{2}`, and `{3}`." "id" "include_csv" "include_xls" "dashboard_card_id")))
 
 (def HybridPulseCard
@@ -202,16 +210,8 @@
                         "dashboard_id" "parameter_mappings"]))))
 
 (def CoercibleToCardRef
-  "Schema for functions accepting either a `HybridPulseCard` or `CardRef`."
-  [:or HybridPulseCard CardRef]
-  #_(s/conditional
-     (fn check-hybrid-pulse-card [maybe-map]
-       (and (map? maybe-map)
-            (some #(contains? maybe-map %) [:name :description :display :collection_id
-                                            :dashboard_id :parameter_mappings])))
-     HybridPulseCard
-     :else
-     CardRef))
+  "Schema for functions accepting either a `HybridPulseCard`, `CardRef`, or `CardBase`."
+  [:or HybridPulseCard CardRef CardBase])
 
 ;;; --------------------------------------------------- Hydration ----------------------------------------------------
 
@@ -220,6 +220,11 @@
   "Return the PulseChannels associated with this `notification`."
   [notification-or-id]
   (t2/select PulseChannel, :pulse_id (u/the-id notification-or-id)))
+
+(def ^:dynamic *allow-hydrate-archived-cards*
+  "By default the :cards hydration method only return active cards,
+  but in cases we need to send email after a card is archived, we need to be able to hydrate archived card as well."
+  false)
 
 (mu/defn ^:private cards* :- [:sequential HybridPulseCard]
   [notification-or-id]
@@ -233,7 +238,8 @@
     :left-join [[:report_dashboardcard :dc] [:= :pc.dashboard_card_id :dc.id]]
     :where     [:and
                 [:= :p.id (u/the-id notification-or-id)]
-                [:= :c.archived false]]
+                (when-not *allow-hydrate-archived-cards*
+                  [:= :c.archived false])]
     :order-by [[:pc.position :asc]]}))
 
 (mi/define-simple-hydration-method cards

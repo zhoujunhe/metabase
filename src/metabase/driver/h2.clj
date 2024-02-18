@@ -17,7 +17,6 @@
    [metabase.plugins.classloader :as classloader]
    [metabase.query-processor.error-type :as qp.error-type]
    [metabase.query-processor.store :as qp.store]
-   [metabase.upload :as upload]
    [metabase.util :as u]
    [metabase.util.honey-sql-2 :as h2x]
    [metabase.util.i18n :refer [deferred-tru tru]]
@@ -50,10 +49,6 @@
 ;;; this will prevent the H2 driver from showing up in the list of options when adding a new Database.
 (defmethod driver/superseded-by :h2 [_driver] :deprecated)
 
-(defmethod sql.qp/honey-sql-version :h2
-  [_driver]
-  2)
-
 (defn- get-field
   "Returns value of private field. This function is used to bypass field protection to instantiate
    a low-level H2 Parser object in order to detect DDL statements in queries."
@@ -79,7 +74,8 @@
                               :datetime-diff             true
                               :now                       true
                               :test/jvm-timezone-setting false
-                              :uploads                   true}]
+                              :uploads                   true
+                              :index-info                true}]
   (defmethod driver/database-supports? [:h2 feature]
     [_driver _feature _database]
     supported?))
@@ -316,15 +312,10 @@
     message))
 
 (defmethod driver/db-default-timezone :h2
-  [driver database]
-  (sql-jdbc.execute/do-with-connection-with-options
-   driver database nil
-   (fn [^java.sql.Connection conn]
-     (with-open [stmt (.prepareStatement conn "select current_timestamp();")
-                 rset (.executeQuery stmt)]
-       (when (.next rset)
-         (when-let [zoned-date-time (.getObject rset 1 java.time.ZonedDateTime)]
-           (t/zone-id zoned-date-time)))))))
+  [_driver _database]
+  ;; Based on this answer https://stackoverflow.com/a/18883531 and further experiments, h2 uses timezone of the jvm
+  ;; where the driver is loaded.
+  (System/getProperty "user.timezone"))
 
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
@@ -573,15 +564,17 @@
 (defmethod driver/upload-type->database-type :h2
   [_driver upload-type]
   (case upload-type
-    ::upload/varchar-255              [:varchar]
-    ::upload/text                     [:varchar]
-    ::upload/int                      [:bigint]
-    ::upload/auto-incrementing-int-pk [:bigint :generated-always :as :identity :primary-key]
-    ::upload/float                    [(keyword "DOUBLE PRECISION")]
-    ::upload/boolean                  [:boolean]
-    ::upload/date                     [:date]
-    ::upload/datetime                 [:timestamp]
-    ::upload/offset-datetime          [:timestamp-with-time-zone]))
+    :metabase.upload/varchar-255              [:varchar]
+    :metabase.upload/text                     [:varchar]
+    :metabase.upload/int                      [:bigint]
+    :metabase.upload/auto-incrementing-int-pk [:bigint :generated-always :as :identity]
+    :metabase.upload/float                    [(keyword "DOUBLE PRECISION")]
+    :metabase.upload/boolean                  [:boolean]
+    :metabase.upload/date                     [:date]
+    :metabase.upload/datetime                 [:timestamp]
+    :metabase.upload/offset-datetime          [:timestamp-with-time-zone]))
+
+(defmethod driver/create-auto-pk-with-append-csv? :h2 [_driver] true)
 
 (defmethod driver/table-name-length-limit :h2
   [_driver]

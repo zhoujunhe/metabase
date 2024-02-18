@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { t } from "ttag";
 import _ from "underscore";
 
-import type { IconName, IconProps } from "metabase/core/components/Icon";
+import type { IconName, IconProps } from "metabase/ui";
 import { Tree } from "metabase/components/tree";
 import TippyPopoverWithTrigger from "metabase/components/PopoverWithTrigger/TippyPopoverWithTrigger";
 
@@ -102,6 +102,30 @@ function MainNavbarView({
             >
               {t`Home`}
             </PaddedSidebarLink>
+            {hasDataAccess && (
+              <>
+                <PaddedSidebarLink
+                  icon="database"
+                  url={BROWSE_URL}
+                  isSelected={nonEntityItem?.url?.startsWith(BROWSE_URL)}
+                  onClick={onItemSelect}
+                >
+                  {t`Browse data`}
+                </PaddedSidebarLink>
+                {!hasOwnDatabase && isAdmin && (
+                  <AddYourOwnDataLink
+                    icon="add"
+                    url={ADD_YOUR_OWN_DATA_URL}
+                    isSelected={nonEntityItem?.url?.startsWith(
+                      ADD_YOUR_OWN_DATA_URL,
+                    )}
+                    onClick={onItemSelect}
+                  >
+                    {t`Add your own data`}
+                  </AddYourOwnDataLink>
+                )}
+              </>
+            )}
           </ul>
         </SidebarSection>
 
@@ -127,40 +151,9 @@ function MainNavbarView({
             onSelect={onItemSelect}
             TreeNode={SidebarCollectionLink}
             role="tree"
+            aria-label="collection-tree"
           />
         </SidebarSection>
-
-        {hasDataAccess && (
-          <SidebarSection>
-            <SidebarHeadingWrapper>
-              <SidebarHeading>{t`Data`}</SidebarHeading>
-            </SidebarHeadingWrapper>
-            <ul>
-              <PaddedSidebarLink
-                icon="database"
-                url={BROWSE_URL}
-                isSelected={nonEntityItem?.url?.startsWith(BROWSE_URL)}
-                onClick={onItemSelect}
-                data-metabase-event="NavBar;Data Browse"
-              >
-                {t`Browse data`}
-              </PaddedSidebarLink>
-              {!hasOwnDatabase && isAdmin && (
-                <AddYourOwnDataLink
-                  icon="add"
-                  url={ADD_YOUR_OWN_DATA_URL}
-                  isSelected={nonEntityItem?.url?.startsWith(
-                    ADD_YOUR_OWN_DATA_URL,
-                  )}
-                  onClick={onItemSelect}
-                  data-metabase-event="NavBar;Add your own data"
-                >
-                  {t`Add your own data`}
-                </AddYourOwnDataLink>
-              )}
-            </ul>
-          </SidebarSection>
-        )}
       </div>
       <WhatsNewNotification />
     </SidebarContentRoot>

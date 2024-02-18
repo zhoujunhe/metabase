@@ -26,7 +26,6 @@
             Table
             User]]
    [metabase.models.interface :as mi]
-   [metabase.public-settings.premium-features-test :as premium-features-test]
    [metabase.query-processor :as qp]
    [metabase.query-processor.middleware.permissions :as qp.perms]
    [metabase.shared.models.visualization-settings :as mb.viz]
@@ -75,7 +74,7 @@
 (defn- card-query-results [card]
   (let [query (:dataset_query card)]
     (binding [qp.perms/*card-id* nil]
-      (qp/process-query (assoc query :async? false) {:card-id (:id card)}))))
+      (qp/process-query (assoc-in query [:info :card-id] (:id card))))))
 
 (defn- query-res-match
   "Checks that the queries for a card match between original (pre-dump) and new (after load). For now, just checks the
@@ -325,10 +324,10 @@
                                :sparksql  ; foreign-keys is not supported by this driver
                                ;; foreign-keys is not supported by the below driver even though it has joins
                                :bigquery-cloud-sdk))
-      (premium-features-test/with-premium-features #{:serialization}
+      (mt/with-premium-features #{:serialization}
         (let [fingerprint (ts/with-world
                             (v1-dump! dump-dir {:user        (:email (test.users/fetch-user :crowberto))
-                                               :only-db-ids #{db-id}})
+                                                :only-db-ids #{db-id}})
                             {:query-results (gather-orig-results [card-id
                                                                   card-arch-id
                                                                   card-id-root

@@ -13,12 +13,15 @@
    [medley.core :as m]
    [metabase.db.connection :as mdb.connection]
    [metabase.driver :as driver]
+   [metabase.driver.test-util :as driver.tu]
    [metabase.lib.metadata :as lib.metadata]
    [metabase.lib.metadata.jvm :as lib.metadata.jvm]
    [metabase.lib.test-util :as lib.tu]
    [metabase.query-processor :as qp]
+   [metabase.query-processor.compile :as qp.compile]
    [metabase.query-processor.middleware.add-implicit-joins
     :as qp.add-implicit-joins]
+   [metabase.query-processor.preprocess :as qp.preprocess]
    [metabase.query-processor.store :as qp.store]
    [metabase.query-processor.timezone :as qp.timezone]
    [metabase.test.data :as data]
@@ -205,7 +208,7 @@
        (qp/process-query
          {:database db-id
           :type     :native
-          :native   (qp/compile
+          :native   (qp.compile/compile
                       {:database db-id
                        :type     :query
                        :query    {:source-table table-id
@@ -417,13 +420,12 @@
            (nest-query {:database 1, :type :native, :native {:query "wow"}} 2)))))
 
 (defn- fk-mappings []
-  (if (str/includes? (:name (data/db)) "sample")
-    {[:orders :product_id]  [:products :id]
-     [:orders :user_id]     [:people :id]
-     [:reviews :product_id] [:products :id]}
-    {[:checkins :user_id]   [:users :id]
-     [:checkins :venue_id]  [:venues :id]
-     [:venues :category_id] [:categories :id]}))
+  {[:checkins :user_id]   [:users :id]
+   [:checkins :venue_id]  [:venues :id]
+   [:orders :product_id]  [:products :id]
+   [:orders :user_id]     [:people :id]
+   [:reviews :product_id] [:products :id]
+   [:venues :category_id] [:categories :id]})
 
 (def ^:dynamic *enable-fk-support-for-disabled-drivers-in-tests*
   "Whether to enable `:foreign-keys` in drivers like `:bigquery-cloud-sdk` that don't have formal FKs
@@ -459,7 +461,7 @@
 
 (defmacro with-mock-fks-for-drivers-without-fk-constraints
   "Execute `body` with test-data `checkins.user_id`, `checkins.venue_id`, and `venues.category_id` (for `test-data`) or
-  other relevant columns (for `sample-database`) marked as foreign keys and with `:foreign-keys` a supported feature
+  other relevant columns (for `test-data`) marked as foreign keys and with `:foreign-keys` a supported feature
   when testing against BigQuery or similar drivers that do not support Foreign Key constraints. (We still let people
   mark FKs manually.) The macro helps replicate the situation where somebody has manually marked FK relationships."
   {:style/indent 0}
@@ -497,9 +499,10 @@
    (lib.tu/metadata-provider-with-cards-for-queries parent-metadata-provider queries)))
 
 (mu/defn metadata-provider-with-cards-with-metadata-for-queries :- lib.metadata/MetadataProvider
-  "Like [[metadata-provider-with-cards-for-queries]], but includes the results of [[qp/query->expected-cols]] as
-  `:result-metadata` for each Card. The metadata provider is built up progressively, meaning metadata for previous Cards
-  is available when calculating metadata for subsequent Cards."
+  "Like [[metadata-provider-with-cards-for-queries]], but includes the results
+  of [[metabase.query-processor.preprocess/query->expected-cols]] as `:result-metadata` for each Card. The metadata
+  provider is built up progressively, meaning metadata for previous Cards is available when calculating metadata for
+  subsequent Cards."
   ([queries]
    (metadata-provider-with-cards-with-metadata-for-queries
     (lib.metadata.jvm/application-database-metadata-provider (data/id))
@@ -519,7 +522,7 @@
      (fn [metadata-provider {query :dataset-query, :as card}]
        (qp.store/with-metadata-provider metadata-provider
          (let [result-metadata (if (= (:type query) :query)
-                                 (qp/query->expected-cols query)
+                                 (qp.preprocess/query->expected-cols query)
                                  (actual-query-results query))
                card            (assoc card :result-metadata result-metadata)]
            (lib.tu/mock-metadata-provider metadata-provider {:cards [card]})))))
@@ -542,7 +545,7 @@
 
 (deftest ^:parallel metadata-provider-with-cards-with-metadata-for-queries-native-query-test
   (let [provider (metadata-provider-with-cards-with-metadata-for-queries
-                  [(data/native-query (qp/compile (data/mbql-query venues)))])]
+                  [(data/native-query (qp.compile/compile (data/mbql-query venues)))])]
     (is (partial= {:id              1
                    :name            "Card 1"
                    :dataset-query   {:type :native}
@@ -581,14 +584,10 @@
   "Impl for `with-report-timezone-id`."
   [timezone-id thunk]
   {:pre [((some-fn nil? string?) timezone-id)]}
-  ;; This will fail if the app DB isn't initialized yet. That's fine — there's no DBs to notify if the app DB isn't
-  ;; set up.
-  (try
-    (#'driver/notify-all-databases-updated)
-    (catch Throwable _))
-  (binding [qp.timezone/*report-timezone-id-override* (or timezone-id ::nil)]
-    (testing (format "\nreport timezone id = %s" timezone-id)
-      (thunk))))
+  (driver.tu/wrap-notify-all-databases-updated
+    (binding [qp.timezone/*report-timezone-id-override* (or timezone-id ::nil)]
+      (testing (format "\nreport timezone id = %s" (pr-str timezone-id))
+        (thunk)))))
 
 (defmacro with-report-timezone-id
   "Override the `report-timezone` Setting and execute `body`. Intended primarily for REPL and test usage."

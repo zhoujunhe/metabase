@@ -37,7 +37,7 @@
     (let [fa-fieldspec "ga:name"]
       (is (= fa-fieldspec ((#'interesting/fieldspec-matcher fa-fieldspec) {:name fa-fieldspec})))))
   (testing "The fieldspec-matcher does not match on ID columns."
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (let [id-field (field! :products :id)]
         ;; the id-field does have a type...
         (is (true? (magic.util/field-isa? id-field :type/*)))
@@ -46,7 +46,7 @@
         ;; ...unless you're looking explicitly for a primary key
         (is (true? ((#'interesting/fieldspec-matcher :type/PK) id-field))))))
   (testing "The fieldspec-matcher should match fields by their fieldspec"
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (let [price-field (field! :products :price)
             latitude-field (field! :people :latitude)
             created-at-field (field! :people :created_at)
@@ -56,20 +56,20 @@
         (is (true? ((#'interesting/fieldspec-matcher :type/CreationTimestamp) created-at-field)))
         (is (true? ((#'interesting/fieldspec-matcher :type/*) created-at-field))))))
   (testing "The name-regex-matcher should return fields with string/regex matches"
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (let [price-field (field! :products :price)
             category-field (field! :products :category)
             ice-pred (#'interesting/name-regex-matcher "ice")]
         (is (some? (ice-pred price-field)))
         (is (nil? (ice-pred category-field))))))
   (testing "The max-cardinality-matcher should return fields with cardinality <= the specified cardinality"
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (let [category-field (field! :products :category)]
         (is (false? ((#'interesting/max-cardinality-matcher 3) category-field)))
         (is (true? ((#'interesting/max-cardinality-matcher 4) category-field)))
         (is (true? ((#'interesting/max-cardinality-matcher 100) category-field))))))
   (testing "Roll the above together and test filter-fields"
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (let [category-field (field! :products :category)
             price-field (field! :products :price)
             latitude-field (field! :people :latitude)
@@ -240,7 +240,6 @@
                          quantity-dim
                          unmatched-dim]
           bindings      (vals (#'interesting/candidate-bindings context dimensions))]
-      bindings
       (testing "3 results are returned - one for each matched field group"
         (is (= 3 (count bindings))))
       (testing "The return data shape is a vector for each field, each of which is a vector of
@@ -403,7 +402,7 @@
 
 (deftest candidate-binding-inner-shape-test
   (testing "Ensure we have examples to understand the shape returned from candidate-bindings"
-    (mt/dataset sample-dataset
+    (mt/dataset test-data
       (testing "A model with a single field that matches all potential bindings"
         (let [source-query {:database (mt/id)
                             :query    {:source-table (mt/id :people)
@@ -537,7 +536,7 @@
                    (select-keys candidate-bindings [(mt/id :people :latitude)]))))))))))
 
 (deftest grounded-metrics-test
-  (mt/dataset sample-dataset
+  (mt/dataset test-data
     (let [test-metrics [{:metric ["count"], :score 100, :metric-name "Count"}
                         {:metric ["distinct" ["dimension" "FK"]], :score 100, :metric-name "CountDistinctFKs"}
                         {:metric ["/"
@@ -545,9 +544,9 @@
                                   ["dimension" "Income"]], :score 100, :metric-name "AvgDiscount"}
                         {:metric ["sum" ["dimension" "GenericNumber"]], :score 100, :metric-name "Sum"}
                         {:metric ["avg" ["dimension" "GenericNumber"]], :score 100, :metric-name "Avg"}]
-          {total-id :id :as total-field} {:id 1 :name "TOTAL"}
-          {discount-id :id :as discount-field} {:id 2 :name "DISCOUNT"}
-          {income-id :id :as income-field} {:id 3 :name "INCOME"}]
+          total-field {:id 1 :name "TOTAL"}
+          discount-field {:id 2 :name "DISCOUNT"}
+          income-field {:id 3 :name "INCOME"}]
       (testing "When no dimensions are provided, we produce grounded dimensionless metrics"
         (is (= [{:metric-name       "Count"
                  :metric-title      "Count"
@@ -558,10 +557,10 @@
                  test-metrics
                  {"Count" {:matches []}}))))
       (testing "When we can match on a dimension, we produce every matching metric (2 for GenericNumber)"
-        (is (=? [{:metric-name       "Sum"
-                  :metric-definition {:aggregation [["sum" [:field total-id nil]]]}}
-                 {:metric-name       "Avg"
-                  :metric-definition {:aggregation [["avg" [:field total-id nil]]]}}]
+        (is (=? [{:metric-name       "Sum",
+                  :metric-definition {:aggregation [["sum" "TOTAL"]]}}
+                 {:metric-name       "Avg",
+                  :metric-definition {:aggregation [["avg" "TOTAL"]]}}]
                 (interesting/grounded-metrics
                   ;; Drop Count
                   (rest test-metrics)
@@ -570,17 +569,17 @@
       (testing "The addition of Discount doesn't add more matches as we need
                  Income as well to add the metric that uses Discount"
         (is (=? [{:metric-name       "Sum"
-                  :metric-definition {:aggregation [["sum" [:field total-id nil]]]}}
+                  :metric-definition {:aggregation [["sum" "TOTAL"]]}}
                  {:metric-name       "Avg"
-                  :metric-definition {:aggregation [["avg" [:field total-id nil]]]}}]
+                  :metric-definition {:aggregation [["avg" "TOTAL"]]}}]
                 (interesting/grounded-metrics
                   (rest test-metrics)
                   {"Count"         {:matches []}
                    "GenericNumber" {:matches [total-field]}
                    "Discount"      {:matches [discount-field]}}))))
       (testing "Discount and Income will add the satisfied AvgDiscount grounded metric"
-        (is (=? [{:metric-name "AvgDiscount",
-                  :metric-definition {:aggregation [["/" [:field discount-id nil] [:field income-id nil]]]}}
+        (is (=? [{:metric-name       "AvgDiscount",
+                  :metric-definition {:aggregation [["/" "DISCOUNT" "INCOME"]]}}
                  {:metric-name "Sum"}
                  {:metric-name "Avg"}]
                 (interesting/grounded-metrics

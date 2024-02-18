@@ -28,7 +28,6 @@
    [metabase.query-processor.store :as qp.store]
    [metabase.query-processor.timezone :as qp.timezone]
    [metabase.query-processor.util.add-alias-info :as add]
-   [metabase.query-processor.writeback :as qp.writeback]
    [metabase.upload :as upload]
    [metabase.util :as u]
    [metabase.util.honey-sql-2 :as h2x]
@@ -54,19 +53,20 @@
 
 (defmethod driver/display-name :mysql [_] "MySQL")
 
-(doseq [[feature supported?] {:persist-models          true
-                              :convert-timezone        true
-                              :datetime-diff           true
-                              :now                     true
-                              :regex                   false
-                              :percentile-aggregations false
-                              :full-join               false
-                              :uploads                 true
-                              :schemas                 false
+(doseq [[feature supported?] {:persist-models                         true
+                              :convert-timezone                       true
+                              :datetime-diff                          true
+                              :now                                    true
+                              :regex                                  false
+                              :percentile-aggregations                false
+                              :full-join                              false
+                              :uploads                                true
+                              :schemas                                false
                               ;; MySQL LIKE clauses are case-sensitive or not based on whether the collation of the server and the columns
                               ;; themselves. Since this isn't something we can really change in the query itself don't present the option to the
                               ;; users in the UI
-                              :case-sensitivity-string-filter-options false}]
+                              :case-sensitivity-string-filter-options false
+                              :index-info                             true}]
   (defmethod driver/database-supports? [:mysql feature] [_driver _feature _db] supported?))
 
 ;; This is a bit of a lie since the JSON type was introduced for MySQL since 5.7.8.
@@ -86,9 +86,16 @@
   [database]
   (-> database :dbms_version :flavor (= "MariaDB")))
 
+(defn mariadb-connection?
+  "Returns true if the database is MariaDB."
+  [driver conn]
+  (->> conn (sql-jdbc.sync/dbms-version driver) :flavor (= "MariaDB")))
+
 (defmethod driver/database-supports? [:mysql :table-privileges]
-  [driver _feat db]
-  (and (= driver :mysql) (not (mariadb? db))))
+  [_driver _feat _db]
+  ;; Disabled completely due to errors when dealing with partial revokes (metabase#38499)
+  false
+  #_(and (= driver :mysql) (not (mariadb? db))))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                             metabase.driver impls                                              |
@@ -131,6 +138,28 @@
   (when ((get-method driver/can-connect? :sql-jdbc) driver details)
     (warn-on-unsupported-versions driver details)
     true))
+
+(declare table-names->privileges)
+(declare privilege-grants-for-user)
+
+(defmethod sql-jdbc.sync/current-user-table-privileges :mysql
+  [driver conn & {:as _options}]
+  ;; MariaDB doesn't allow users to query the privileges of roles a user might have (unless they have select privileges
+  ;; for the mysql database), so we can't query the full privileges of the current user.
+  (when-not (mariadb-connection? driver conn)
+    (let [sql->tuples (fn [sql] (drop 1 (jdbc/query conn sql {:as-arrays? true})))
+          db-name     (ffirst (sql->tuples "SELECT DATABASE()"))
+          table-names (map first (sql->tuples "SHOW TABLES"))]
+      (for [[table-name privileges] (table-names->privileges (privilege-grants-for-user conn "CURRENT_USER()")
+                                                             db-name
+                                                             table-names)]
+        {:role   nil
+         :schema nil
+         :table  table-name
+         :select (contains? privileges :select)
+         :update (contains? privileges :update)
+         :insert (contains? privileges :insert)
+         :delete (contains? privileges :delete)}))))
 
 (def default-ssl-cert-details
   "Server SSL certificate chain, in PEM format."
@@ -225,10 +254,6 @@
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                           metabase.driver.sql impls                                            |
 ;;; +----------------------------------------------------------------------------------------------------------------+
-
-(defmethod sql.qp/honey-sql-version :mysql
-  [_driver]
-  2)
 
 (defmethod sql.qp/unix-timestamp->honeysql [:mysql :seconds] [_ _ expr]
   [:from_unixtime expr])
@@ -648,12 +673,14 @@
     ::upload/varchar-255              [[:varchar 255]]
     ::upload/text                     [:text]
     ::upload/int                      [:bigint]
-    ::upload/auto-incrementing-int-pk [:bigint :not-null :auto-increment :primary-key]
+    ::upload/auto-incrementing-int-pk [:bigint :not-null :auto-increment]
     ::upload/float                    [:double]
     ::upload/boolean                  [:boolean]
     ::upload/date                     [:date]
-    ::upload/datetime                 [:timestamp]
+    ::upload/datetime                 [:datetime]
     ::upload/offset-datetime          [:timestamp]))
+
+(defmethod driver/create-auto-pk-with-append-csv? :mysql [_driver] true)
 
 (defmethod driver/table-name-length-limit :mysql
   [_driver]
@@ -672,7 +699,7 @@
   to calculate one by hand."
   [driver database ^OffsetDateTime offset-time]
   (let [zone-id (t/zone-id (driver/db-default-timezone driver database))]
-    (t/local-date-time offset-time zone-id )))
+    (t/local-date-time offset-time zone-id)))
 
 (defmulti ^:private value->string
   "Convert a value into a string that's safe for insertion"
@@ -759,7 +786,12 @@
           (with-open [^java.io.Writer writer (jio/writer file-path)]
             (doseq [value (interpose \newline tsvs)]
               (.write writer (str value))))
-          (qp.writeback/execute-write-sql! db-id sql))
+          (sql-jdbc.execute/do-with-connection-with-options
+           driver
+           db-id
+           nil
+           (fn [conn]
+             (jdbc/execute! {:connection conn} sql))))
         (finally
           (.delete temp-file))))))
 
@@ -853,7 +885,7 @@
   (let [{global-grants   :global
          database-grants :database
          table-grants    :table} (group-by :level privilege-grants)
-        lower-database-name (u/lower-case-en database-name)
+        lower-database-name  (u/lower-case-en database-name)
         all-table-privileges (set/union (:privilege-types (first global-grants))
                                         (:privilege-types (m/find-first #(= (:object %) (str "`" lower-database-name "`.*"))
                                                                         database-grants)))
@@ -868,23 +900,3 @@
                   (when-let [privileges (not-empty (set/union all-table-privileges (get table-privileges table-name)))]
                     [table-name privileges])))
           table-names)))
-
-(defmethod driver/current-user-table-privileges :mysql
-  [_driver database]
-  ;; MariaDB doesn't allow users to query the privileges of roles a user might have (unless they have select privileges
-  ;; for the mysql database), so we can't query the full privileges of the current user.
-  (when-not (mariadb? database)
-    (let [conn-spec   (sql-jdbc.conn/db->pooled-connection-spec database)
-          table-names (->> (jdbc/query conn-spec "SHOW TABLES" {:as-arrays? true})
-                           (drop 1)
-                           (map first))]
-      (for [[table-name privileges] (table-names->privileges (privilege-grants-for-user conn-spec "CURRENT_USER()")
-                                                             (:name database)
-                                                             table-names)]
-        {:role   nil
-         :schema nil
-         :table  table-name
-         :select (contains? privileges :select)
-         :update (contains? privileges :update)
-         :insert (contains? privileges :insert)
-         :delete (contains? privileges :delete)}))))

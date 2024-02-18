@@ -4,9 +4,11 @@ import { push, replace } from "react-router-redux";
 
 import { createThunkAction } from "metabase/lib/redux";
 import { equals } from "metabase/lib/utils";
+import { getLocation } from "metabase/selectors/routing";
 
 import { isEqualCard } from "metabase/lib/card";
 
+import * as Lib from "metabase-lib";
 import { isAdHocModelQuestion } from "metabase-lib/metadata/utils/models";
 import {
   getCard,
@@ -39,8 +41,7 @@ export const popState = createThunkAction(
 
     const zoomedObjectId = getZoomedObjectId(getState());
     if (zoomedObjectId) {
-      const { locationBeforeTransitions = {} } = getState().routing;
-      const { state, query } = locationBeforeTransitions;
+      const { state, query } = getLocation(getState());
       const previouslyZoomedObjectId = state?.objectId || query?.objectId;
 
       if (
@@ -137,9 +138,10 @@ export const updateUrl = createThunkAction(
           (!isAdHocModel && question.isDirtyComparedTo(originalQuestion));
       }
 
+      const { isNative } = Lib.queryDisplayInfo(question.query());
       // prevent clobbering of hash when there are fake parameters on the question
       // consider handling this in a more general way, somehow
-      if (question.isStructured() && question.parameters().length > 0) {
+      if (!isNative && question.parameters().length > 0) {
         dirty = true;
       }
 

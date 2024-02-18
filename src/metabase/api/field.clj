@@ -4,6 +4,8 @@
    [compojure.core :refer [DELETE GET POST PUT]]
    [metabase.api.common :as api]
    [metabase.db.metadata-queries :as metadata-queries]
+   [metabase.db.util :as mdb.u]
+   [metabase.lib.schema.metadata :as lib.schema.metadata]
    [metabase.models.dimension :refer [Dimension]]
    [metabase.models.field :as field :refer [Field]]
    [metabase.models.field-values :as field-values :refer [FieldValues]]
@@ -11,7 +13,7 @@
    [metabase.models.params.chain-filter :as chain-filter]
    [metabase.models.params.field-values :as params.field-values]
    [metabase.models.permissions :as perms]
-   [metabase.models.table :as table :refer [Table]]
+   [metabase.models.table :refer [Table]]
    [metabase.query-processor :as qp]
    [metabase.related :as related]
    [metabase.server.middleware.offset-paging :as mw.offset-paging]
@@ -140,7 +142,7 @@
    semantic_type      [:maybe ms/FieldSemanticOrRelationTypeKeywordOrString]
    coercion_strategy  [:maybe ms/CoercionStrategyKeywordOrString]
    visibility_type    [:maybe FieldVisibilityType]
-   has_field_values   [:maybe (into [:enum] (map name field/has-field-values-options))]
+   has_field_values   [:maybe ::lib.schema.metadata/column.has-field-values]
    settings           [:maybe ms/Map]
    nfc_path           [:maybe [:sequential ms/NonBlankString]]
    json_unfolding     [:maybe :boolean]}
@@ -267,10 +269,10 @@
      :has_more_values (not (str/blank? query))
      :field_id        field-id}))
 
-;; TODO -- not sure `has_field_values` actually has to be `:list` -- see code above.
 (api/defendpoint GET "/:id/values"
-  "If a Field's value of `has_field_values` is `:list`, return a list of all the distinct values of the Field (or remapped Field), and (if
-  defined by a User) a map of human-readable remapped values."
+  "If a Field's value of `has_field_values` is `:list`, return a list of all the distinct values of the Field (or
+  remapped Field), and (if defined by a User) a map of human-readable remapped values. If `has_field_values` is not
+  `:list`, checks whether we should create FieldValues for this Field; if so, creates and returns them."
   [id]
   {id ms/PositiveInt}
   (let [field (api/read-check (t2/select-one Field :id id))]
@@ -296,23 +298,6 @@
       [400 "If remapped values are specified, they must be specified for all field values"])
     has-human-readable-values?))
 
-(defn- update-field-values! [field-value-id value-pairs]
-  (let [human-readable-values? (validate-human-readable-pairs value-pairs)]
-    (api/check-500 (pos? (t2/update! FieldValues field-value-id
-                                     {:values (map first value-pairs)
-                                      :human_readable_values (when human-readable-values?
-                                                               (map second value-pairs))})))))
-
-(defn- create-field-values!
-  [field-or-id value-pairs]
-  (let [human-readable-values? (validate-human-readable-pairs value-pairs)]
-    (t2/insert! FieldValues
-                :type :full
-                :field_id (u/the-id field-or-id)
-                :values (map first value-pairs)
-                :human_readable_values (when human-readable-values?
-                                         (map second value-pairs)))))
-
 (api/defendpoint POST "/:id/values"
   "Update the fields values and human-readable values for a `Field` whose semantic type is
   `category`/`city`/`state`/`country` or whose base type is `type/Boolean`. The human-readable values are optional."
@@ -323,9 +308,13 @@
     (api/check (field-values/field-should-have-field-values? field)
       [400 (str "You can only update the human readable values of a mapped values of a Field whose value of "
                 "`has_field_values` is `list` or whose 'base_type' is 'type/Boolean'.")])
-    (if-let [field-value-id (t2/select-one-pk FieldValues, :field_id id :type :full)]
-      (update-field-values! field-value-id value-pairs)
-      (create-field-values! field value-pairs)))
+    (let [human-readable-values? (validate-human-readable-pairs value-pairs)
+          update-map             {:values                (map first value-pairs)
+                                  :human_readable_values (when human-readable-values?
+                                                           (map second value-pairs))}
+          updated-pk             (mdb.u/update-or-insert! FieldValues {:field_id (u/the-id field), :type :full}
+                                   (constantly update-map))]
+      (api/check-500 (pos? updated-pk))))
   {:status :success})
 
 (api/defendpoint POST "/:id/rescan_values"

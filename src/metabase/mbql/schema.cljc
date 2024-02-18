@@ -1174,7 +1174,7 @@
     ;; are allowed to be specified for it.
     [:widget-type WidgetType]
     ;; optional map to be appended to filter clause
-    [:options {:optional true} [:map-of :keyword :any]]]])
+    [:options {:optional true} [:maybe [:map-of :keyword :any]]]]])
 
 (def raw-value-template-tag-types
   "Set of valid values of `:type` for raw value template tags."
@@ -1630,18 +1630,19 @@
    [:type ParameterType]
    ;; TODO -- these definitely SHOULD NOT be optional but a ton of tests aren't passing them in like they should be.
    ;; At some point we need to go fix those tests and then make these keys required
-   [:id      {:optional true} NonBlankString]
-   [:target  {:optional true} ParameterTarget]
+   [:id       {:optional true} NonBlankString]
+   [:target   {:optional true} ParameterTarget]
    ;; not specified if the param has no value. TODO - make this stricter; type of `:value` should be validated based
    ;; on the [[ParameterType]]
-   [:value   {:optional true} :any]
+   [:value    {:optional true} :any]
    ;; the name of the parameter we're trying to set -- this is actually required now I think, or at least needs to get
    ;; merged in appropriately
-   [:name    {:optional true} NonBlankString]
+   [:name     {:optional true} NonBlankString]
    ;; The following are not used by the code in this namespace but may or may not be specified depending on what the
    ;; code that constructs the query params is doing. We can go ahead and ignore these when present.
-   [:slug    {:optional true} NonBlankString]
-   [:default {:optional true} :any]])
+   [:slug     {:optional true} NonBlankString]
+   [:default  {:optional true} :any]
+   [:required {:optional true} :any]])
 
 (def ParameterList
   "Schema for a list of `:parameters` as passed in to a query."
@@ -1684,14 +1685,14 @@
    ;; results? Used by [[metabase.query-processor.middleware.format-rows]]; default `false`
    [:format-rows? {:optional true} :boolean]
    ;; disable the MBQL->native middleware. If you do this, the query will not work at all, so there are no cases where
-   ;; you should set this yourself. This is only used by the [[metabase.query-processor/preprocess]] function to get
-   ;; the fully pre-processed query without attempting to convert it to native.
+   ;; you should set this yourself. This is only used by the [[metabase.query-processor.preprocess/preprocess]]
+   ;; function to get the fully pre-processed query without attempting to convert it to native.
    [:disable-mbql->native? {:optional true} :boolean]
    ;; Disable applying a default limit on the query results. Handled in the `add-default-limit` middleware.
    ;; If true, this will override the `:max-results` and `:max-results-bare-rows` values in [[Constraints]].
    [:disable-max-results? {:optional true} :boolean]
-   ;; Userland queries are ones ran as a result of an API call, Pulse, or the like. Special handling is done in the
-   ;; `process-userland-query` middleware for such queries -- results are returned in a slightly different format, and
+   ;; Userland queries are ones ran as a result of an API call, Pulse, or the like. Special handling is done in
+   ;; certain userland-only middleware for such queries -- results are returned in a slightly different format, and
    ;; QueryExecution entries are normally saved, unless you pass `:no-save` as the option.
    [:userland-query? {:optional true} [:maybe :boolean]]
    ;; Whether to add some default `max-results` and `max-results-bare-rows` constraints. By default, none are added,
@@ -1715,28 +1716,28 @@
    :action
    :ad-hoc
    :collection
-   :csv-download
-   :dashboard
-   :embedded-dashboard
-   :embedded-question
-   :json-download
    :map-tiles
+   :pulse
+   :dashboard
+   :question
+   :csv-download
+   :xlsx-download
+   :json-download
    :public-dashboard
    :public-question
-   :pulse
-   :question
-   :xlsx-download])
+   :embedded-dashboard
+   :embedded-question
+   :embedded-csv-download
+   :embedded-xlsx-download
+   :embedded-json-download])
 
 (def ^:private Hash
   #?(:clj bytes?
      :cljs :any))
 
-;; TODO - this schema is somewhat misleading because if you use a function like
-;; `qp/process-query-and-save-with-max-results-constraints!` some of these keys (e.g. `:context`) are in fact required
-(def ^:private Info
-  "Schema for query `:info` dictionary, which is used for informational purposes to record information about how a query
-  was executed in QueryExecution and other places. It is considered bad form for middleware to change its behavior
-  based on this information, don't do it!"
+;; TODO - this schema is somewhat misleading because if you use a function
+;; like [[metabase.query-processor/userland-query]] some of these keys (e.g. `:context`) are in fact required
+(mr/def ::Info
   [:map
    ;; These keys are nice to pass in if you're running queries on the backend and you know these values. They aren't
    ;; used for permissions checking or anything like that so don't try to be sneaky
@@ -1751,10 +1752,16 @@
    ;; Metadata for datasets when querying the dataset. This ensures that user edits to dataset metadata are blended in
    ;; with runtime computed metadata so that edits are saved.
    [:metadata/dataset-metadata {:optional true} [:maybe [:sequential [:map-of :any :any]]]]
-   ;; `:hash` gets added automatically by `process-query-and-save-execution!`, so don't try passing
-   ;; these in yourself. In fact, I would like this a lot better if we could take these keys out of `:info` entirely
-   ;; and have the code that saves QueryExceutions figure out their values when it goes to save them
+   ;; `:hash` gets added automatically for userland queries (see [[metabase.query-processor/userland-query]]), so
+   ;; don't try passing these in yourself. In fact, I would like this a lot better if we could take these keys xout of
+   ;; `:info` entirely and have the code that saves QueryExceutions figure out their values when it goes to save them
    [:query-hash                {:optional true} [:maybe Hash]]])
+
+(def Info
+  "Schema for query `:info` dictionary, which is used for informational purposes to record information about how a query
+  was executed in QueryExecution and other places. It is considered bad form for middleware to change its behavior
+  based on this information, don't do it!"
+  [:ref ::Info])
 
 
 ;;; --------------------------------------------- Metabase [Outer] Query ---------------------------------------------

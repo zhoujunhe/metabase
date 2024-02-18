@@ -34,7 +34,7 @@ dataset_query:
         - v_users
         - full_name
       - base-type: type/Text
-        join-alias: Question 1
+        join-alias: People - User
     - - field
       - - Internal Metabase Database
         - public
@@ -51,32 +51,7 @@ dataset_query:
       - base-type: type/Text
     - card-create
     joins:
-    - alias: Question 1
-      condition:
-      - =
-      - - field
-        - - Internal Metabase Database
-          - public
-          - v_audit_log
-          - user_id
-        - base-type: type/Integer
-      - - field
-        - - Internal Metabase Database
-          - public
-          - v_users
-          - user_id
-        - base-type: type/Integer
-          join-alias: Question 1
-      fields:
-      - - field
-        - - Internal Metabase Database
-          - public
-          - v_users
-          - full_name
-        - base-type: type/Text
-          join-alias: Question 1
-      source-table: 0wVIfjBJWclD0lKeABYYl
-    - alias: Question 34
+    - alias: Group Members - User
       condition:
       - =
       - - field
@@ -91,9 +66,25 @@ dataset_query:
           - v_group_members
           - user_id
         - base-type: type/Integer
-          join-alias: Question 34
-      fields: all
+          join-alias: Group Members - User
       source-table: lTp-ATFsCUFEr9I0fMEaO
+      strategy: left-join
+    - alias: People - User
+      condition:
+      - =
+      - - field
+        - - Internal Metabase Database
+          - public
+          - v_group_members
+          - user_id
+        - base-type: type/Integer
+          join-alias: Group Members - User
+      - - field
+        - user_id
+        - base-type: type/Integer
+          join-alias: People - User
+      source-table: 0wVIfjBJWclD0lKeABYYl
+      strategy: left-join
     order-by:
     - - desc
       - - aggregation
@@ -106,6 +97,8 @@ visualization_settings:
     '["name","count"]':
       column_title: Questions created
       show_mini_bar: true
+    ? '["ref",["field",["Internal Metabase Database","public","v_users","full_name"],{"base-type":"type/Text","join-alias":"People - User"}]]'
+    : column_title: Person Name
     ? '["ref",["field",["Internal Metabase Database","public","v_users","full_name"],{"base-type":"type/Text","join-alias":"Question 1"}]]'
     : column_title: User
   table.cell_column: model_id
@@ -118,7 +111,7 @@ visualization_settings:
       - v_users
       - full_name
     - base-type: type/Text
-      join-alias: Question 1
+      join-alias: People - User
     name: full_name
   - enabled: true
     fieldRef:
@@ -140,3 +133,4 @@ serdes/meta:
   label: most_active_creators
   model: Card
 metabase_version: null
+type: question

@@ -108,7 +108,7 @@ type Value = null | boolean | StringLiteral | NumericLiteral | DatetimeLiteral;
 type OrderableValue = NumericLiteral | DatetimeLiteral;
 
 type RelativeDatetimePeriod = "current" | "last" | "next" | number;
-type RelativeDatetimeUnit =
+export type RelativeDatetimeUnit =
   | "minute"
   | "hour"
   | "day"
@@ -367,19 +367,6 @@ type ExpressionOperand =
   | Expression;
 
 type FieldsClause = ConcreteFieldReference[];
-
-type DependentTable = {
-  id: number | string;
-  type: "table";
-  foreignTables?: boolean;
-};
-
-type DependentField = {
-  id: number;
-  type: "field";
-};
-
-export type DependentMetadataItem = DependentTable | DependentField;
 
 export type TagName = string;
 export type TemplateTagReference = ["template-tag", TagName];

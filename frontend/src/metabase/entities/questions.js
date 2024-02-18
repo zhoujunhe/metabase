@@ -18,6 +18,8 @@ import {
   SOFT_RELOAD_CARD,
 } from "metabase/query_builder/actions";
 
+import { PLUGIN_MODERATION } from "metabase/plugins";
+
 import { canonicalCollectionId } from "metabase/collections/utils";
 import forms from "./questions/forms";
 
@@ -128,6 +130,7 @@ const Questions = createEntity({
     "name",
     "cache_ttl",
     "dataset",
+    "type",
     "dataset_query",
     "display",
     "description",
@@ -152,9 +155,20 @@ const Questions = createEntity({
 });
 
 export function getIcon(question) {
+  const type = PLUGIN_MODERATION.getQuestionIcon(question);
+
+  if (type) {
+    return {
+      name: type.icon,
+      color: type.color ? color(type.color) : undefined,
+      tooltip: type.tooltip,
+    };
+  }
+
   if (question.dataset || question.model === "dataset") {
     return { name: "model" };
   }
+
   const visualization = require("metabase/visualizations").default.get(
     question.display,
   );

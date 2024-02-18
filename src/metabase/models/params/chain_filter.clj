@@ -79,6 +79,8 @@
    [metabase.models.params.field-values :as params.field-values]
    [metabase.models.table :as table]
    [metabase.query-processor :as qp]
+   [metabase.query-processor.middleware.permissions :as qp.perms]
+   [metabase.query-processor.preprocess :as qp.preprocess]
    [metabase.types :as types]
    [metabase.util :as u]
    [metabase.util.i18n :refer [tru]]
@@ -430,7 +432,7 @@
     (log/debugf "Chain filter MBQL query:\n%s" (u/pprint-to-str 'magenta mbql-query))
     (try
       (let [query-limit (get-in mbql-query [:query :limit])
-            values      (qp/process-query mbql-query (constantly conj) nil)]
+            values      (qp/process-query mbql-query (constantly conj))]
         {:values          values
          ;; It's unlikely that we don't have a query-limit, but better safe than sorry and default it true
          ;; so that calling chain-filter-search on the same field will search from DB.
@@ -517,6 +519,13 @@
     field-id
     (field-values/field-should-have-field-values? field-id)))
 
+(defn- check-field-value-query-permissions
+  "Check query permissions against the chain-filter-mbql-query (private #196)"
+  [field-id constraints options]
+  (->> (chain-filter-mbql-query field-id constraints options)
+       qp.preprocess/preprocess
+       qp.perms/check-query-permissions*))
+
 (defn- cached-field-values [field-id constraints {:keys [limit]}]
   ;; TODO: why don't we remap the human readable values here?
   (let [{:keys [values has_more_values]}
@@ -561,7 +570,9 @@
          (update :values add-human-readable-values v->human-readable))
 
      (and (use-cached-field-values? field-id) (nil? @the-remapped-field-id))
-     (cached-field-values field-id constraints options)
+     (do
+       (check-field-value-query-permissions field-id constraints options)
+       (cached-field-values field-id constraints options))
 
      ;; This is Field->Field remapping e.g. `venue.category_id `-> `category.name `;
      ;; search by `category.name` but return tuples of `[venue.category_id category.name]`.
@@ -669,20 +680,22 @@
         v->human-readable     (delay (human-readable-remapping-map field-id))
         the-remapped-field-id (delay (remapped-field-id field-id))]
     (cond
-     (str/blank? query)
-     (apply chain-filter field-id constraints options)
+      (str/blank? query)
+      (apply chain-filter field-id constraints options)
 
-     (some? @v->human-readable)
-     (human-readable-values-remapped-chain-filter-search field-id @v->human-readable constraints query options)
+      (some? @v->human-readable)
+      (human-readable-values-remapped-chain-filter-search field-id @v->human-readable constraints query options)
 
-     (and (search-cached-field-values? field-id constraints) (nil? @the-remapped-field-id))
-     (cached-field-values-search field-id query constraints options)
+      (and (search-cached-field-values? field-id constraints) (nil? @the-remapped-field-id))
+      (do
+        (check-field-value-query-permissions field-id constraints options)
+        (cached-field-values-search field-id query constraints options))
 
-     (some? @the-remapped-field-id)
-     (unremapped-chain-filter-search @the-remapped-field-id constraints query (assoc options :original-field-id field-id))
+      (some? @the-remapped-field-id)
+      (unremapped-chain-filter-search @the-remapped-field-id constraints query (assoc options :original-field-id field-id))
 
-     :else
-     (unremapped-chain-filter-search field-id constraints query options))))
+      :else
+      (unremapped-chain-filter-search field-id constraints query options))))
 
 ;;; ------------------ Filterable Field IDs (powers GET /api/dashboard/params/valid-filter-fields) -------------------
 

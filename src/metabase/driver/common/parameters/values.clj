@@ -16,7 +16,7 @@
    [metabase.lib.schema.template-tag :as lib.schema.template-tag]
    [metabase.mbql.schema :as mbql.s]
    [metabase.models.native-query-snippet :refer [NativeQuerySnippet]]
-   [metabase.query-processor :as qp]
+   [metabase.query-processor.compile :as qp.compile]
    [metabase.query-processor.error-type :as qp.error-type]
    [metabase.query-processor.store :as qp.store]
    [metabase.query-processor.util.persisted-cache :as qp.persistence]
@@ -133,9 +133,9 @@
                                          (nil? (:value param)))
                                        matching-params))]
     (cond
-      ;; if we have matching parameter(s) that all have actual values, return those.
-      (and (seq matching-params) (every? :value matching-params))
-      (normalize-params matching-params)
+      ;; if we have matching parameter(s) with at least one actual value, return them.
+      (and (seq matching-params) (some :value matching-params))
+      (normalize-params (filter :value matching-params))
       ;; If a FieldFilter has value=nil, return a [[params/no-value]]
       ;; so that this filter can be substituted with "1 = 1" regardless of whether or not this tag has default value
       (and (not (:required tag)) nil-value?)
@@ -190,7 +190,7 @@
                       {:query (qp.persistence/persisted-info-native-query
                                (u/the-id (lib.metadata/database (qp.store/metadata-provider)))
                                persisted-info)})
-                    (qp/compile query)))))
+                    (qp.compile/compile query)))))
       (catch ExceptionInfo e
         (throw (ex-info
                 (tru "The sub-query from referenced question #{0} failed with the following error: {1}"

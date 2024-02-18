@@ -6,6 +6,7 @@
    [java-time.api :as t]
    [metabase.analytics.snowplow :as snowplow]
    [metabase.config :as config]
+   [metabase.embed.settings :as embed.settings]
    [metabase.models.setting :refer [defsetting]]
    [metabase.public-settings :as public-settings]
    [metabase.server.request.util :as request.u]
@@ -119,8 +120,8 @@
 
 (defn- embedding-app-origin
   []
-  (when (and (public-settings/enable-embedding) (public-settings/embedding-app-origin))
-    (public-settings/embedding-app-origin)))
+  (when (and (embed.settings/enable-embedding) (embed.settings/embedding-app-origin))
+    (embed.settings/embedding-app-origin)))
 
 (defn- content-security-policy-header-with-frame-ancestors
   [allow-iframes? nonce]
@@ -167,10 +168,11 @@
     "X-Content-Type-Options"            "nosniff"}))
 
 (defn- add-security-headers* [request response]
-  (update response :headers merge (security-headers
-                                   :nonce          (:nonce request)
-                                   :allow-iframes? ((some-fn request.u/public? request.u/embed?) request)
-                                   :allow-cache?   (request.u/cacheable? request))))
+  ;; merge is other way around so that handler can override headers
+  (update response :headers #(merge %2 %1) (security-headers
+                                            :nonce          (:nonce request)
+                                            :allow-iframes? ((some-fn request.u/public? request.u/embed?) request)
+                                            :allow-cache?   (request.u/cacheable? request))))
 
 (defn add-security-headers
   "Middleware that adds HTTP security and cache-busting headers."

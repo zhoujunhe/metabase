@@ -1,11 +1,10 @@
 import { useCallback, useState } from "react";
-import type { User } from "metabase-types/api";
 import { SearchBar } from "metabase/nav/components/search/SearchBar";
-import ProfileLink from "../ProfileLink";
+import { ProfileLink } from "../ProfileLink";
 import CollectionBreadcrumbs from "../../containers/CollectionBreadcrumbs";
 import QuestionLineage from "../../containers/QuestionLineage";
-import AppBarToggle from "./AppBarToggle";
-import AppBarLogo from "./AppBarLogo";
+import { AppBarToggle } from "./AppBarToggle";
+import { AppBarLogo } from "./AppBarLogo";
 import {
   AppBarHeader,
   AppBarLogoContainer,
@@ -18,7 +17,6 @@ import {
 } from "./AppBarSmall.styled";
 
 export interface AppBarSmallProps {
-  currentUser: User;
   isNavBarOpen?: boolean;
   isNavBarEnabled?: boolean;
   isLogoVisible?: boolean;
@@ -32,7 +30,6 @@ export interface AppBarSmallProps {
 }
 
 const AppBarSmall = ({
-  currentUser,
   isNavBarOpen,
   isNavBarEnabled,
   isLogoVisible,
@@ -52,10 +49,6 @@ const AppBarSmall = ({
     isLogoVisible || isNavBarEnabled || isSearchVisible || isProfileLinkVisible;
   const isSubheaderVisible = !isNavBarVisible && isInfoVisible;
 
-  const handleLogoClick = useCallback(() => {
-    onCloseNavbar();
-  }, [onCloseNavbar]);
-
   const handleSearchActive = useCallback(() => {
     setSearchActive(true);
     onCloseNavbar();
@@ -71,13 +64,12 @@ const AppBarSmall = ({
         <AppBarHeader isSubheaderVisible={isSubheaderVisible}>
           <AppBarMainContainer>
             <AppBarToggleContainer>
-              {isNavBarEnabled && (
-                <AppBarToggle
-                  isSmallAppBar
-                  isNavBarOpen={isNavBarVisible}
-                  onToggleClick={onToggleNavbar}
-                />
-              )}
+              <AppBarToggle
+                isSmallAppBar
+                isNavBarEnabled={isNavBarEnabled}
+                isNavBarOpen={isNavBarVisible}
+                onToggleClick={onToggleNavbar}
+              />
             </AppBarToggleContainer>
             <AppBarSearchContainer>
               {isSearchVisible && (
@@ -89,7 +81,7 @@ const AppBarSmall = ({
             </AppBarSearchContainer>
             {isProfileLinkVisible && (
               <AppBarProfileLinkContainer>
-                <ProfileLink user={currentUser} onLogout={onLogout} />
+                <ProfileLink onLogout={onLogout} />
               </AppBarProfileLinkContainer>
             )}
           </AppBarMainContainer>
@@ -97,7 +89,8 @@ const AppBarSmall = ({
             <AppBarLogo
               isSmallAppBar
               isLogoVisible={isLogoVisible}
-              onLogoClick={handleLogoClick}
+              isNavBarEnabled={isNavBarEnabled}
+              onLogoClick={onCloseNavbar}
             />
           </AppBarLogoContainer>
         </AppBarHeader>

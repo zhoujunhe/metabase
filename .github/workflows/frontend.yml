@@ -21,9 +21,9 @@ jobs:
       frontend_all: ${{ steps.changes.outputs.frontend_all }}
       e2e_specs: ${{ steps.changes.outputs.e2e_specs }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Test which files changed
-        uses: dorny/paths-filter@v2.11.1
+        uses: dorny/paths-filter@v3.0.0
         id: changes
         with:
           token: ${{ github.token }}
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Prepare front-end environment
         uses: ./.github/actions/prepare-frontend
       - name: Prepare back-end environment
@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Prepare front-end environment
         uses: ./.github/actions/prepare-frontend
       - name: Prepare back-end environment
@@ -72,8 +72,11 @@ jobs:
     if: github.event.pull_request.draft == false && needs.files-changed.outputs.frontend_all == 'true'
     runs-on: buildjet-2vcpu-ubuntu-2204
     timeout-minutes: 60
+    env:
+      JEST_JUNIT_OUTPUT_DIR: ./target/junit
+      JEST_JUNIT_OUTPUT_NAME: test-report-frontend-unit.xml
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Prepare front-end environment
         uses: ./.github/actions/prepare-frontend
       - name: Prepare back-end environment
@@ -92,6 +95,17 @@ jobs:
         with:
           files: ./coverage/lcov.info
           flags: front-end
+      - name: Upload Test Results
+        uses: ./.github/actions/upload-test-results
+        if: always()
+        with:
+          input-path: ./target/junit
+          output-name: frontend-unit
+          bucket: ${{ vars.AWS_S3_TEST_RESULTS_BUCKET }}
+          aws-access-key-id: ${{ secrets.AWS_TEST_RESULTS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_TEST_RESULTS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+          trunk-api-token: ${{ secrets.TRUNK_API_TOKEN }}
 
   fe-tests-timezones:
     needs: files-changed
@@ -99,7 +113,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Prepare front-end environment
         uses: ./.github/actions/prepare-frontend
       - name: Prepare back-end environment

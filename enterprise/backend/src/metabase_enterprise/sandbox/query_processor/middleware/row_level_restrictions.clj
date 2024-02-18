@@ -20,7 +20,7 @@
    [metabase.models.permissions-group-membership
     :refer [PermissionsGroupMembership]]
    [metabase.models.query.permissions :as query-perms]
-   [metabase.plugins.classloader :as classloader]
+   [metabase.permissions.util :as perms.u]
    [metabase.public-settings.premium-features :refer [defenterprise]]
    [metabase.query-processor.error-type :as qp.error-type]
    [metabase.query-processor.middleware.fetch-source-query
@@ -135,8 +135,7 @@
                         :type     :query
                         :query    source-query}
           preprocessed (binding [*current-user-id* nil]
-                         (classloader/require 'metabase.query-processor)
-                         ((resolve 'metabase.query-processor/preprocess) query))]
+                         ((requiring-resolve 'metabase.query-processor.preprocess/preprocess) query))]
       (select-keys (:query preprocessed) [:source-query :source-metadata]))
     (catch Throwable e
       (throw (ex-info (tru "Error preprocessing source query when applying GTAP: {0}" (ex-message e))
@@ -156,7 +155,7 @@
 (mu/defn ^:private mbql-query-metadata :- [:+ :map]
   [inner-query]
   (binding [*current-user-id* nil]
-    ((requiring-resolve 'metabase.query-processor/query->expected-cols)
+    ((requiring-resolve 'metabase.query-processor.preprocess/query->expected-cols)
      {:database (u/the-id (lib.metadata/database (qp.store/metadata-provider)))
       :type     :query
       :query    inner-query})))
@@ -257,7 +256,7 @@
    (remove nil?)
    set))
 
-(mu/defn ^:private sandbox->perms-set :- [:set perms/PathSchema]
+(mu/defn ^:private sandbox->perms-set :- [:set perms.u/PathSchema]
   "Calculate the set of permissions needed to run the query associated with a sandbox; this set of permissions is excluded
   during the normal QP perms check.
 
@@ -322,7 +321,7 @@
 
 (defn- expected-cols [query]
   (binding [*current-user-id* nil]
-    ((requiring-resolve 'metabase.query-processor/query->expected-cols) query)))
+    ((requiring-resolve 'metabase.query-processor.preprocess/query->expected-cols) query)))
 
 (defn- gtapped-query
   "Apply GTAPs to `query` and return the updated version of `query`."

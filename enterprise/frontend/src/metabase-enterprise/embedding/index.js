@@ -24,7 +24,7 @@ if (hasPremiumFeature("embedding")) {
           ...sections[SLUG]["settings"],
           {
             key: "embedding-app-origin",
-            display_name: t`Embedding the entire Metabase app`,
+            display_name: t`Authorized origins`,
             description: <EmbeddingAppOriginDescription />,
             placeholder: "https://*.example.com",
             type: "string",
@@ -33,6 +33,7 @@ if (hasPremiumFeature("embedding")) {
           },
           {
             key: "session-cookie-samesite",
+            display_name: t`SameSite cookie setting`,
             description: <EmbeddingAppSameSiteCookieDescription />,
             type: "select",
             options: [
@@ -44,6 +45,7 @@ if (hasPremiumFeature("embedding")) {
               {
                 value: "strict",
                 name: t`Strict (not recommended)`,
+                // eslint-disable-next-line no-literal-metabase-strings -- Metabase settings
                 description: t`Never allows cookies to be sent on a cross-site request. Warning: this will prevent users from following external links to Metabase.`,
               },
               {

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { t } from "ttag";
 import _ from "underscore";
 
-import { Icon } from "metabase/core/components/Icon";
+import { Icon } from "metabase/ui";
 
 import type Question from "metabase-lib/Question";
 import * as ML_Urls from "metabase-lib/urls";
@@ -18,7 +18,8 @@ interface Props {
 
 function ModelRelationships({ model, mainTable }: Props) {
   const relatedTables = useMemo(() => {
-    const tablesMainTablePointsTo = model.table()?.foreignTables() || [];
+    const tablesMainTablePointsTo =
+      model.legacyQueryTable()?.foreignTables() || [];
     const tablesPointingToMainTable = mainTable?.connectedTables() || [];
     return _.uniq(
       [...tablesMainTablePointsTo, ...tablesPointingToMainTable],

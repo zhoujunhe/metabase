@@ -20,6 +20,7 @@ import {
   editDashboard,
   getDashboardCard,
   saveDashboard,
+  getNotebookStep,
 } from "e2e/support/helpers";
 
 import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
@@ -191,7 +192,7 @@ describe("scenarios > models", () => {
   });
 
   it("allows to turn a model back into a saved question", () => {
-    cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { dataset: true });
+    cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { type: "model" });
     cy.intercept("PUT", `/api/card/${ORDERS_QUESTION_ID}`).as("cardUpdate");
     cy.visit(`/model/${ORDERS_QUESTION_ID}`);
 
@@ -221,7 +222,7 @@ describe("scenarios > models", () => {
   });
 
   it("redirects to /model URL when opening a model with /question URL", () => {
-    cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { dataset: true });
+    cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { type: "model" });
     // Important - do not use visitQuestion(ORDERS_QUESTION_ID) here!
     cy.visit("/question/" + ORDERS_QUESTION_ID);
     cy.wait("@dataset");
@@ -233,7 +234,7 @@ describe("scenarios > models", () => {
   describe("data picker", () => {
     beforeEach(() => {
       cy.intercept("GET", "/api/search*").as("search");
-      cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { dataset: true });
+      cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { type: "model" });
     });
 
     it("transforms the data picker", () => {
@@ -299,14 +300,19 @@ describe("scenarios > models", () => {
       cy.findAllByRole("option").should("have.length", 4);
       selectFromDropdown("Products");
 
-      // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-      cy.findByText("Add filters to narrow your answer").click();
-      selectFromDropdown("Products", { force: true });
-      selectFromDropdown("Price", { force: true });
-      selectFromDropdown("Equal to");
-      selectFromDropdown("Less than");
-      cy.findByPlaceholderText("Enter a number").type("50");
-      cy.button("Add filter").click();
+      getNotebookStep("filter")
+        .findByText("Add filters to narrow your answer")
+        .click();
+      popover().within(() => {
+        cy.findByText("Product").click();
+        cy.findByText("Price").click();
+        cy.findByDisplayValue("Equal to").click();
+      });
+      cy.findByRole("listbox").findByText("Less than").click();
+      popover().within(() => {
+        cy.findByPlaceholderText("Enter a number").type("50");
+        cy.button("Add filter").click();
+      });
 
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Pick the metric you want to see").click();
@@ -342,7 +348,7 @@ describe("scenarios > models", () => {
     beforeEach(() => {
       cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, {
         name: "Orders Model",
-        dataset: true,
+        type: "model",
       });
     });
 
@@ -487,7 +493,7 @@ describe("scenarios > models", () => {
     cy.createNativeQuestion({
       native: { query: "SELECT * FROM products" },
     }).then(({ body: { id: modelId } }) => {
-      cy.request("PUT", `/api/card/${modelId}`, { dataset: true }).then(() => {
+      cy.request("PUT", `/api/card/${modelId}`, { type: "model" }).then(() => {
         cy.visit(`/model/${modelId}/query`);
         cy.get(".ace_editor:not(.ace_autocomplete)")
           .should("be.visible")
@@ -504,7 +510,7 @@ describe("scenarios > models", () => {
     cy.intercept("POST", "/api/card/*/query").as("cardQuery");
     cy.createNativeQuestion({
       name: "TEST MODEL",
-      dataset: true,
+      type: "model",
       native: {
         query: "select * from orders",
       },
@@ -549,7 +555,7 @@ describe("scenarios > models", () => {
         "source-table": ORDERS_ID,
         limit: 5,
       },
-      dataset: true,
+      type: "model",
     };
 
     beforeEach(() => {

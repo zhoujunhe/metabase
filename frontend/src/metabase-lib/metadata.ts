@@ -1,6 +1,7 @@
 import * as ML from "cljs/metabase.lib.js";
 import * as ML_MetadataCalculation from "cljs/metabase.lib.metadata.calculation";
-import type { DatabaseId, FieldReference, TableId } from "metabase-types/api";
+import type { DatabaseId, DatasetColumn, TableId } from "metabase-types/api";
+import type Field from "./metadata/Field";
 import type Metadata from "./metadata/Metadata";
 import type {
   AggregationClause,
@@ -17,9 +18,13 @@ import type {
   ClauseDisplayInfo,
   ColumnDisplayInfo,
   ColumnGroup,
+  ColumnGroupDisplayInfo,
   ColumnMetadata,
+  DependentItem,
   DrillThru,
   DrillThruDisplayInfo,
+  FilterOperator,
+  FilterOperatorDisplayInfo,
   JoinConditionOperator,
   JoinConditionOperatorDisplayInfo,
   JoinStrategy,
@@ -29,18 +34,24 @@ import type {
   MetricDisplayInfo,
   OrderByClause,
   OrderByClauseDisplayInfo,
+  Query,
+  SegmentMetadata,
+  SegmentDisplayInfo,
   TableDisplayInfo,
   TableMetadata,
-  Query,
+  QueryDisplayInfo,
 } from "./types";
 
 export function metadataProvider(
-  databaseId: DatabaseId,
+  databaseId: DatabaseId | null,
   metadata: Metadata,
 ): MetadataProvider {
   return ML.metadataProvider(databaseId, metadata);
 }
 
+/**
+ * @deprecated use displayInfo instead
+ */
 export function displayName(query: Query, clause: Clause): string {
   return ML_MetadataCalculation.display_name(query, clause);
 }
@@ -54,7 +65,7 @@ declare function DisplayInfoFn(
   query: Query,
   stageIndex: number,
   columnGroup: ColumnGroup,
-): ColumnDisplayInfo | TableDisplayInfo;
+): ColumnGroupDisplayInfo;
 declare function DisplayInfoFn(
   query: Query,
   stageIndex: number,
@@ -120,6 +131,16 @@ declare function DisplayInfoFn(
   stageIndex: number,
   drillThru: DrillThru,
 ): DrillThruDisplayInfo;
+declare function DisplayInfoFn(
+  query: Query,
+  stageIndex: number,
+  filterOperator: FilterOperator,
+): FilterOperatorDisplayInfo;
+declare function DisplayInfoFn(
+  query: Query,
+  stageIndex: number,
+  segment: SegmentMetadata,
+): SegmentDisplayInfo;
 
 // x can be any sort of opaque object, e.g. a clause or metadata map. Values returned depend on what you pass in, but it
 // should always have display_name... see :metabase.lib.metadata.calculation/display-info schema
@@ -142,39 +163,11 @@ export function describeTemporalUnit(
   return ML.describe_temporal_unit(n, unit);
 }
 
-type IntervalAmount = number | "current" | "next" | "last";
-
-export function describeTemporalInterval(
-  n: IntervalAmount,
-  unit?: string,
-): string {
-  return ML.describe_temporal_interval(n, unit);
-}
-
-export function describeRelativeDatetime(
-  n: IntervalAmount,
-  unit?: string,
-): string {
-  return ML.describe_relative_datetime(n, unit);
-}
-
 export function tableOrCardMetadata(
   queryOrMetadataProvider: Query | MetadataProvider,
   tableID: TableId,
 ): CardMetadata | TableMetadata {
   return ML.table_or_card_metadata(queryOrMetadataProvider, tableID);
-}
-
-/**
- * Given a sequence of `columns` (column metadatas), return the one that is the best fit for `legacyRef`.
- */
-export function findColumnForLegacyRef(
-  query: Query,
-  stageIndex: number,
-  legacyRef: FieldReference, // actually this will work for expression and aggregation references as well.
-  columns: ColumnMetadata[],
-): ColumnMetadata | null {
-  return ML.find_column_for_legacy_ref(query, stageIndex, legacyRef, columns);
 }
 
 export function visibleColumns(
@@ -191,6 +184,25 @@ export function returnedColumns(
   return ML.returned_columns(query, stageIndex);
 }
 
-export function isColumnMetadata(arg: unknown): arg is ColumnMetadata {
-  return ML.is_column_metadata(arg);
+export function fromLegacyColumn(
+  query: Query,
+  stageIndex: number,
+  columnOrField: DatasetColumn | Field,
+): ColumnMetadata {
+  return ML.legacy_column__GT_metadata(query, stageIndex, columnOrField);
+}
+
+export function queryDisplayInfo(query: Query): QueryDisplayInfo {
+  /**
+   * Even though it seems weird to pass the same query two times,
+   * this function follows the same pattern as the other display_info overloads.
+   * The first two parameters are always a query, and a stage index.
+   * The third parameter is what you would like to have the info about.
+   * It just only happens that the thing we're examining is (again) the query itself.
+   */
+  return ML.display_info(query, -1, query);
+}
+
+export function dependentMetadata(query: Query): DependentItem[] {
+  return ML.dependent_metadata(query);
 }

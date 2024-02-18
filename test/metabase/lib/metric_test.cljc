@@ -16,14 +16,18 @@
    :aggregation  [[:sum [:field (meta/id :venues :price) nil]]]
    :filter       [:= [:field (meta/id :venues :price) nil] 4]})
 
+(def ^:private metrics-db
+  {:metrics [{:id          metric-id
+              :name        "Sum of Cans"
+              :table-id    (meta/id :venues)
+              :definition  metric-definition
+              :description "Number of toucans plus number of pelicans"}]})
+
 (def ^:private metadata-provider
-  (lib.tu/mock-metadata-provider
-   meta/metadata-provider
-   {:metrics [{:id          metric-id
-               :name        "Sum of Cans"
-               :table-id    (meta/id :venues)
-               :definition  metric-definition
-               :description "Number of toucans plus number of pelicans"}]}))
+  (lib.tu/mock-metadata-provider meta/metadata-provider metrics-db))
+
+(def ^:private metadata-provider-with-cards
+  (lib.tu/mock-metadata-provider lib.tu/metadata-provider-with-mock-cards metrics-db))
 
 (def ^:private metric-clause
   [:metric {:lib/uuid (str (random-uuid))} metric-id])
@@ -34,6 +38,10 @@
 
 (def ^:private metric-metadata
   (lib.metadata/metric query-with-metric metric-id))
+
+(deftest ^:parallel uses-metric?-test
+  (is (lib/uses-metric? query-with-metric metric-id))
+  (is (not (lib/uses-metric? lib.tu/venues-query metric-id))))
 
 (deftest ^:parallel query-suggested-name-test
   (is (= "Venues, Sum of Cans"
@@ -119,7 +127,23 @@
                   (map #(lib/display-info query-with-metric %)
                        metrics)))))))
   (testing "query with different Table -- don't return Metrics"
-    (is (nil? (lib/available-metrics (lib/query metadata-provider (meta/table-metadata :orders)))))))
+    (is (nil? (lib/available-metrics (lib/query metadata-provider (meta/table-metadata :orders))))))
+  (testing "for subsequent stages -- don't return Metrics (#37173)"
+    (let [query (lib/append-stage (lib/query metadata-provider (meta/table-metadata :venues)))]
+      (is (nil? (lib/available-metrics query)))
+      (are [stage-number] (nil? (lib/available-metrics query stage-number))
+        1 -1)))
+  (testing "query with different source table joining the metrics table -- don't return Metrics"
+    (let [query (-> (lib/query metadata-provider (meta/table-metadata :categories))
+                    (lib/join (-> (lib/join-clause (lib/query metadata-provider (meta/table-metadata :venues))
+                                                   [(lib/= (meta/field-metadata :venues :price) 4)])
+                                  (lib/with-join-fields :all))))]
+      (is (nil? (lib/available-metrics query)))))
+  (testing "query based on a card -- don't return Metrics"
+    (doseq [card-key [:venues :venues/native]]
+      (let [query (lib/query metadata-provider-with-cards (card-key lib.tu/mock-cards))]
+        (is (not (lib/uses-metric? query metric-id)))
+        (is (nil? (lib/available-metrics (lib/append-stage query))))))))
 
 (deftest ^:parallel aggregate-with-metric-test
   (testing "Should be able to pass a Metric metadata to `aggregate`"
@@ -132,6 +156,7 @@
                       [:metric {:lib/uuid (str (random-uuid))} 100]]]
         (testing (pr-str (list 'lib/aggregate 'query metric))
           (let [query' (lib/aggregate query metric)]
+            (is (lib/uses-metric? query' metric-id))
             (is (=? {:lib/type :mbql/query
                      :stages   [{:lib/type     :mbql.stage/mbql
                                  :source-table (meta/id :venues)
@@ -150,13 +175,16 @@
 (deftest ^:parallel metric-type-of-test
   (let [query    (-> (lib/query metadata-provider (meta/table-metadata :venues))
                      (lib/aggregate [:metric {:lib/uuid (str (random-uuid))} 100]))]
+    (is (lib/uses-metric? query metric-id))
     (is (= :type/Integer
            (lib/type-of query [:metric {:lib/uuid (str (random-uuid))} 100])))))
 
 (deftest ^:parallel ga-metric-metadata-test
   (testing "Make sure we can calculate metadata for FAKE Google Analytics metric clauses"
-    (let [query (-> lib.tu/venues-query
-                    (lib/aggregate [:metric {:lib/uuid (str (random-uuid))} "ga:totalEvents"]))]
+    (let [metric-name "ga:totalEvents"
+          query (-> lib.tu/venues-query
+                    (lib/aggregate [:metric {:lib/uuid (str (random-uuid))} metric-name]))]
+      (is (lib/uses-metric? query metric-name))
       (is (=? [{:base-type                :type/*
                 :display-name             "[Unknown Metric]"
                 :effective-type           :type/*
