@@ -1,10 +1,17 @@
-import type { DatabaseId } from "./database";
+import type { EmbeddingParameters } from "metabase/public/lib/types";
+
+import type { Collection, CollectionId } from "./collection";
 import type { DashboardId, DashCardId } from "./dashboard";
+import type { DatabaseId } from "./database";
 import type { Field } from "./field";
 import type { Parameter } from "./parameters";
-import type { DatasetQuery, FieldReference, PublicDatasetQuery } from "./query";
+import type {
+  DatasetQuery,
+  DimensionReference,
+  FieldReference,
+  PublicDatasetQuery,
+} from "./query";
 import type { UserInfo } from "./user";
-import type { Collection } from "./collection";
 import type { SmartScalarComparison } from "./visualization-settings";
 
 export type CardType = "model" | "question";
@@ -12,22 +19,23 @@ export type CardType = "model" | "question";
 export interface Card<Q extends DatasetQuery = DatasetQuery>
   extends UnsavedCard<Q> {
   id: CardId;
+  created_at: string;
+  updated_at: string;
   name: string;
   description: string | null;
-  /**
-   * @deprecated Use "type" instead
-   */
-  dataset: boolean;
   type: CardType;
   public_uuid: string | null;
 
   /* Indicates whether static embedding for this card has been published */
   enable_embedding: boolean;
+  embedding_params: EmbeddingParameters | null;
   can_write: boolean;
+  initially_published_at: string | null;
 
   database_id?: DatabaseId;
   collection?: Collection | null;
   collection_id: number | null;
+  collection_position: number | null;
 
   result_metadata: Field[];
   moderation_reviews?: ModerationReview[];
@@ -98,12 +106,13 @@ export type PivotTableCollapsedRowsSetting = {
 
 export type TableColumnOrderSetting = {
   name: string;
+  key: string;
   enabled: boolean;
 
   // We have some corrupted visualization settings where both names are mixed
   // We should settle on `fieldRef`, make it required and remove `field_ref`
-  fieldRef?: FieldReference;
-  field_ref?: FieldReference;
+  fieldRef?: DimensionReference;
+  field_ref?: DimensionReference;
 };
 
 export type VisualizationSettings = {
@@ -173,11 +182,47 @@ export type CardFilterOption =
   | "using_model"
   | "archived";
 
-export interface CardQuery {
-  ignore_view?: boolean;
-}
-
-export interface CardListQuery {
+export interface ListCardsRequest {
   f?: CardFilterOption;
   model_id?: CardId;
+}
+
+export interface GetCardRequest {
+  id: CardId;
+  ignore_view?: boolean;
+  ignore_error?: boolean;
+}
+
+export interface CreateCardRequest {
+  name: string;
+  dataset_query: DatasetQuery;
+  display: string;
+  visualization_settings: VisualizationSettings;
+  type?: CardType;
+  parameters?: Parameter[];
+  parameter_mappings?: unknown;
+  description?: string;
+  collection_id?: CollectionId;
+  collection_position?: number;
+  result_metadata?: Field[];
+  cache_ttl?: number;
+}
+
+export interface UpdateCardRequest {
+  id: CardId;
+  name?: string;
+  parameters?: Parameter[];
+  dataset_query?: DatasetQuery;
+  type?: CardType;
+  display?: string;
+  description?: string;
+  visualization_settings?: VisualizationSettings;
+  archived?: boolean;
+  enable_embedding?: boolean;
+  embedding_params?: EmbeddingParameters;
+  collection_id?: CollectionId;
+  collection_position?: number;
+  result_metadata?: Field[];
+  cache_ttl?: number;
+  collection_preview?: boolean;
 }

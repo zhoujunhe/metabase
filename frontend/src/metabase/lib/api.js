@@ -1,14 +1,14 @@
+import EventEmitter from "events";
 import querystring from "querystring";
 
-import EventEmitter from "events";
-
-import { delay } from "metabase/lib/promise";
-import { isWithinIframe } from "metabase/lib/dom";
 import { isTest } from "metabase/env";
+import { isWithinIframe } from "metabase/lib/dom";
+import { delay } from "metabase/lib/promise";
 
 const ONE_SECOND = 1000;
 const MAX_RETRIES = 10;
 
+// eslint-disable-next-line no-literal-metabase-strings -- Not a user facing string
 const ANTI_CSRF_HEADER = "X-Metabase-Anti-CSRF-Token";
 
 let ANTI_CSRF_TOKEN = null;
@@ -31,6 +31,8 @@ const DEFAULT_OPTIONS = {
 
 export class Api extends EventEmitter {
   basename = "";
+  apiKey = "";
+  sessionToken = "";
 
   GET;
   POST;
@@ -89,7 +91,17 @@ export class Api extends EventEmitter {
           delete headers["Content-Type"];
         }
 
+        if (this.apiKey) {
+          headers["X-Api-Key"] = this.apiKey;
+        }
+
+        if (this.sessionToken) {
+          // eslint-disable-next-line no-literal-metabase-strings -- not a UI string
+          headers["X-Metabase-Session"] = this.sessionToken;
+        }
+
         if (isWithinIframe()) {
+          // eslint-disable-next-line no-literal-metabase-strings -- Not a user facing string
           headers["X-Metabase-Embedded"] = "true";
         }
 
@@ -234,7 +246,8 @@ export class Api extends EventEmitter {
     data,
     options,
   ) {
-    const controller = new AbortController();
+    const controller = options.controller || new AbortController();
+    const signal = options.signal ?? controller.signal;
     options.cancelled?.then(() => controller.abort());
 
     const requestUrl = new URL(this.basename + url, location.origin);
@@ -242,7 +255,7 @@ export class Api extends EventEmitter {
       method,
       headers,
       body: requestBody,
-      signal: controller.signal,
+      signal,
     });
 
     return fetch(request)
@@ -279,7 +292,7 @@ export class Api extends EventEmitter {
         });
       })
       .catch(error => {
-        if (controller.signal.aborted) {
+        if (signal.aborted) {
           throw { isCancelled: true };
         } else {
           throw error;

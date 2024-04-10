@@ -1,5 +1,6 @@
 import { queryDrill } from "metabase/querying";
-import type Question from "metabase-lib/Question";
+import type Question from "metabase-lib/v1/Question";
+
 import type {
   ClickAction,
   ClickObject,
@@ -24,7 +25,7 @@ export class Mode {
   }
 
   actionsForClick(
-    clicked: ClickObject | undefined,
+    clicked: ClickObject,
     settings: Record<string, any>,
     extraData?: Record<string, any>,
   ): ClickAction[] {

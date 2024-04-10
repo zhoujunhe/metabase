@@ -1,34 +1,33 @@
-import _ from "underscore";
 import { createSelector } from "@reduxjs/toolkit";
 import { createCachedSelector } from "re-reselect";
-
-import { getEmbedOptions, getIsEmbedded } from "metabase/selectors/embed";
-import { getMetadata } from "metabase/selectors/metadata";
-import { LOAD_COMPLETE_FAVICON } from "metabase/hoc/Favicon";
+import { createSelectorCreator, lruMemoize } from "reselect";
+import _ from "underscore";
 
 import {
   DASHBOARD_SLOW_TIMEOUT,
   SIDEBAR_NAME,
 } from "metabase/dashboard/constants";
-
+import { LOAD_COMPLETE_FAVICON } from "metabase/hoc/Favicon";
 import { getDashboardUiParameters } from "metabase/parameters/utils/dashboards";
 import { getParameterMappingOptions as _getParameterMappingOptions } from "metabase/parameters/utils/mapping-options";
-
+import type { EmbeddingParameterVisibility } from "metabase/public/lib/types";
+import { getEmbedOptions, getIsEmbedded } from "metabase/selectors/embed";
+import { getMetadata } from "metabase/selectors/metadata";
+import Question from "metabase-lib/v1/Question";
 import type {
-  Bookmark,
   Card,
   CardId,
-  QuestionDashboardCard,
   DashboardId,
   DashCardId,
+  DashboardCard,
 } from "metabase-types/api";
 import type {
   ClickBehaviorSidebarState,
   EditParameterSidebarState,
   State,
 } from "metabase-types/store";
-import Question from "metabase-lib/Question";
-import { isQuestionDashCard } from "./utils";
+
+import { isQuestionCard, isQuestionDashCard } from "./utils";
 
 type SidebarState = State["dashboard"]["sidebar"];
 
@@ -44,8 +43,10 @@ function isEditParameterSidebar(
   return sidebar.name === SIDEBAR_NAME.editParameter;
 }
 
+const createDeepEqualSelector = createSelectorCreator(lruMemoize, _.isEqual);
+
 export const getDashboardBeforeEditing = (state: State) =>
-  state.dashboard.isEditing;
+  state.dashboard.editingDashboard;
 
 export const getIsEditing = (state: State) =>
   Boolean(getDashboardBeforeEditing(state));
@@ -91,6 +92,10 @@ export const getIsAddParameterPopoverOpen = (state: State) =>
   state.dashboard.isAddParameterPopoverOpen;
 
 export const getSidebar = (state: State) => state.dashboard.sidebar;
+export const getIsSidebarOpen = createSelector(
+  [getSidebar],
+  sidebar => !!sidebar.name,
+);
 export const getIsSharing = createSelector(
   [getSidebar],
   sidebar => sidebar.name === SIDEBAR_NAME.sharing,
@@ -225,20 +230,6 @@ export const getDocumentTitle = (state: State) =>
 export const getIsNavigatingBackToDashboard = (state: State) =>
   state.dashboard.isNavigatingBackToDashboard;
 
-type IsBookmarkedSelectorProps = {
-  bookmarks: Bookmark[];
-  dashboardId: DashboardId;
-};
-
-export const getIsBookmarked = (
-  state: State,
-  { bookmarks, dashboardId }: IsBookmarkedSelectorProps,
-) =>
-  bookmarks.some(
-    bookmark =>
-      bookmark.type === "dashboard" && bookmark.item_id === dashboardId,
-  );
-
 export const getIsDirty = createSelector(
   [getDashboard, getDashcards],
   (dashboard, dashcards) => {
@@ -284,10 +275,8 @@ export const getEditingParameter = createSelector(
 );
 
 const getCard = (state: State, { card }: { card: Card }) => card;
-const getDashCard = (
-  state: State,
-  { dashcard }: { dashcard: QuestionDashboardCard },
-) => dashcard;
+const getDashCard = (state: State, { dashcard }: { dashcard: DashboardCard }) =>
+  dashcard;
 
 export const getParameterTarget = createSelector(
   [getEditingParameter, getCard, getDashCard],
@@ -324,7 +313,10 @@ export const getQuestions = (state: State) => {
         const cards = [dashcard.card, ...(dashcard.series ?? [])];
 
         for (const card of cards) {
-          acc[card.id] = getQuestionByCard(state, { card });
+          const question = getQuestionByCard(state, { card });
+          if (question) {
+            acc[card.id] = question;
+          }
         }
       }
 
@@ -336,8 +328,17 @@ export const getQuestions = (state: State) => {
   return questionsById;
 };
 
+// getQuestions selector returns an array with stable references to the questions
+// but array itself is always new, so it may cause troubles in re-renderings
+const getQuestionsMemoized = createDeepEqualSelector(
+  [getQuestions],
+  questions => {
+    return questions;
+  },
+);
+
 export const getParameters = createSelector(
-  [getDashboardComplete, getMetadata, getQuestions],
+  [getDashboardComplete, getMetadata, getQuestionsMemoized],
   (dashboard, metadata, questions) => {
     if (!dashboard || !metadata) {
       return [];
@@ -363,12 +364,12 @@ export const getMissingRequiredParameters = createSelector(
 );
 
 /**
- * It's a memoized version, it uses LRU cache per dashboard identified by id
+ * It's a memoized version, it uses LRU cache per card identified by id
  */
 export const getQuestionByCard = createCachedSelector(
   [(_state: State, props: { card: Card }) => props.card, getMetadata],
   (card, metadata) => {
-    return new Question(card, metadata);
+    return isQuestionCard(card) ? new Question(card, metadata) : undefined;
   },
 )((_state, props) => {
   return props.card.id;
@@ -382,6 +383,22 @@ export const getDashcardParameterMappingOptions = createCachedSelector(
 )((state, props) => {
   return props.card.id ?? props.dashcard.id;
 });
+
+// Embeddings might be published without passing embedding_params to the server,
+// in which case it's an empty object. We should treat such situations with
+// caution, assuming that an absent parameter is "disabled".
+export function getEmbeddedParameterVisibility(
+  state: State,
+  slug: string,
+): EmbeddingParameterVisibility | null {
+  const dashboard = getDashboard(state);
+  if (!dashboard?.enable_embedding) {
+    return null;
+  }
+
+  const embeddingParams = dashboard.embedding_params ?? {};
+  return embeddingParams[slug] ?? "disabled";
+}
 
 export const getIsHeaderVisible = createSelector(
   [getIsEmbedded, getEmbedOptions],
@@ -400,6 +417,13 @@ export const getTabs = createSelector([getDashboard], dashboard => {
   return dashboard.tabs?.filter(tab => !tab.isRemoved) ?? [];
 });
 
-export function getSelectedTabId(state: State) {
-  return state.dashboard.selectedTabId;
-}
+export const getSelectedTabId = createSelector(
+  [getDashboard, state => state.dashboard.selectedTabId],
+  (dashboard, selectedTabId) => {
+    if (dashboard && selectedTabId === null) {
+      return dashboard.tabs?.[0]?.id || null;
+    }
+
+    return selectedTabId;
+  },
+);

@@ -24,7 +24,7 @@
 (comment premium-features/keep-me)
 
 (defsetting application-name
-  (deferred-tru "This will replace the word \"Metabase\" wherever it appears.")
+  (deferred-tru "Replace the word “Metabase” wherever it appears.")
   :visibility :public
   :export?    true
   :type       :string
@@ -40,7 +40,7 @@
   []
   (if *compile-files*
     "Metabase"
-    (binding [setting/*disable-cache* true]
+    (binding [config/*disable-setting-cache* true]
       (application-name))))
 
 (defn- google-auth-enabled? []
@@ -101,7 +101,7 @@
   :export?    true)
 
 (defsetting custom-homepage
-  (deferred-tru "Pick a dashboard to serve as the homepage. If people lack permissions to view the selected dashboard, Metabase will redirect them to the default homepage. To revert to the default Metabase homepage, simply turn off the toggle.")
+  (deferred-tru "Pick one of your dashboards to serve as homepage. Users without dashboard access will be directed to the default homepage.")
   :default    false
   :type       :boolean
   :audit      :getter
@@ -112,14 +112,6 @@
   :type       :integer
   :visibility :public
   :audit      :getter)
-
-(defsetting dismissed-custom-dashboard-toast
-  (deferred-tru "Toggle which is true after a user has dismissed the custom dashboard toast.")
-  :user-local :only
-  :visibility :authenticated
-  :type       :boolean
-  :default    false
-  :audit      :never)
 
 (defsetting site-uuid
   ;; Don't i18n this docstring because it's not user-facing! :)
@@ -178,7 +170,7 @@
                 (try
                   (some-> (setting/get-value-of-type :string :site-url) normalize-site-url)
                   (catch clojure.lang.ExceptionInfo e
-                    (log/error e (trs "site-url is invalid; returning nil for now. Will be reset on next request.")))))
+                    (log/error e "site-url is invalid; returning nil for now. Will be reset on next request."))))
   :setter     (fn [new-value]
                 (let [new-value (some-> new-value normalize-site-url)
                       https?    (some-> new-value (str/starts-with?  "https:"))]
@@ -251,7 +243,7 @@
     :else landing-page))
 
 (defsetting landing-page
-  (deferred-tru "Default page to show people when they log in.")
+  (deferred-tru "Enter a URL of the landing page to show the user. This overrides the custom homepage setting above.")
   :visibility :public
   :export?    true
   :type       :string
@@ -268,7 +260,7 @@
 (defsetting enable-public-sharing
   (deferred-tru "Enable admins to create publicly viewable links (and embeddable iframes) for Questions and Dashboards?")
   :type       :boolean
-  :default    false
+  :default    true
   :visibility :authenticated
   :audit      :getter)
 
@@ -367,7 +359,7 @@
   :audit      :never)
 
 (defsetting loading-message
-  (deferred-tru "Message to show while a query is running.")
+  (deferred-tru "Choose the message to show while a query is running.")
   :visibility :public
   :export?    true
   :feature    :whitelabel
@@ -376,10 +368,7 @@
   :audit      :getter)
 
 (defsetting application-colors
-  (deferred-tru
-    (str "These are the primary colors used in charts and throughout {0}. "
-         "You might need to refresh your browser to see your changes take effect.")
-    (application-name-for-setting-descriptions))
+  (deferred-tru "Choose the colors used in the user interface throughout Metabase and others specifically for the charts. You need to refresh your browser to see your changes take effect.")
   :visibility :public
   :export?    true
   :type       :json
@@ -388,7 +377,7 @@
   :audit      :getter)
 
 (defsetting application-font
-  (deferred-tru "This will replace “Lato” as the font family.")
+  (deferred-tru "Replace “Lato” as the font family.")
   :visibility :public
   :export?    true
   :type       :string
@@ -420,7 +409,7 @@
   (or (:accent3 (application-colors)) "#EF8C8C"))
 
 (defsetting application-logo-url
-  (deferred-tru "For best results, use an SVG file with a transparent background.")
+  (deferred-tru "Upload a file to replace the Metabase logo on the top bar.")
   :visibility :public
   :export?    true
   :type       :string
@@ -429,7 +418,7 @@
   :default    "app/assets/img/logo.svg")
 
 (defsetting application-favicon-url
-  (deferred-tru "The url or image that you want to use as the favicon.")
+  (deferred-tru "Upload a file to use as the favicon.")
   :visibility :public
   :export?    true
   :type       :string
@@ -446,14 +435,73 @@
   :feature    :whitelabel
   :default    true)
 
-(defsetting show-lighthouse-illustration
-  (deferred-tru "Display the lighthouse illustration on the home and login pages.")
+(defsetting login-page-illustration
+  (deferred-tru "Options for displaying the illustration on the login page.")
   :visibility :public
   :export?    true
-  :type       :boolean
+  :type       :string
   :audit      :getter
   :feature    :whitelabel
-  :default    true)
+  :default    "default")
+
+(defsetting login-page-illustration-custom
+  (deferred-tru "The custom illustration for the login page.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel)
+
+(defsetting landing-page-illustration
+  (deferred-tru "Options for displaying the illustration on the landing page.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel
+  :default    "default")
+
+(defsetting landing-page-illustration-custom
+  (deferred-tru "The custom illustration for the landing page.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel)
+
+(defsetting no-data-illustration
+  (deferred-tru "Options for displaying the illustration when there are no results after running a question.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel
+  :default    "default")
+
+(defsetting no-data-illustration-custom
+  (deferred-tru "The custom illustration for when there are no results after running a question.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel)
+
+(defsetting no-object-illustration
+  (deferred-tru "Options for displaying the illustration when there are no results after searching.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel
+  :default    "default")
+
+(defsetting no-object-illustration-custom
+  (deferred-tru "The custom illustration for when there are no results after searching.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel)
 
 (def ^:private help-link-options
   #{:metabase :hidden :custom})
@@ -678,7 +726,8 @@
                       :sso_jwt                        (premium-features/enable-sso-jwt?)
                       :sso_ldap                       (premium-features/enable-sso-ldap?)
                       :sso_saml                       (premium-features/enable-sso-saml?)
-                      :whitelabel                     (premium-features/enable-whitelabeling?)})
+                      :whitelabel                     (premium-features/enable-whitelabeling?)
+                      :llm_autodescription            (premium-features/enable-llm-autodescription?)})
   :doc        false)
 
 (defsetting redirect-all-requests-to-https

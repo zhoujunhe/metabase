@@ -292,6 +292,17 @@
                                           (walk/keywordize-keys v)
                                           (js->clj v :keywordize-keys true))
       :has-field-values                 (keyword v)
+
+      ;; Field refs are JS arrays, which we do not alter but do need to clone.
+      ;; Why? Come sit by the fire, it's story time:
+      ;; Sometimes in the FE the input `DatasetColumn` object is coming from the Redux store, where it has been deeply
+      ;; frozen (Object.freeze()) by the immer library.
+      ;; `:metadata/column` values (which contain such a :field-ref) are sometimes used as a map key, which calls
+      ;; [[cljs.core/hash]], which for a vanilla JS array uses goog.getUid() to mutate a uid number onto the array with
+      ;; a key like `closure_uid_123456789` (the number is randomized at load time).
+      ;; If the array has been frozen, that mutation will throw. So we clone the `:field-ref` array on its way into CLJS
+      ;; land, and avoid the issue.
+      :field-ref                        (to-array v)
       :lib/source                       (case v
                                           "aggregation" :source/aggregations
                                           "breakout"    :source/breakouts
@@ -368,7 +379,7 @@
       :fields          (parse-fields v)
       :visibility-type (keyword v)
       :dataset-query   (js->clj v :keywordize-keys true)
-      :dataset         v
+      :type            (keyword v)
       ;; this is not complete, add more stuff as needed.
       v)))
 
@@ -413,7 +424,7 @@
 
 (defmethod lib-type :metric
   [_object-type]
-  :metadata/metric)
+  :metadata/legacy-metric)
 
 (defmethod excluded-keys :metric
   [_object-type]
@@ -473,7 +484,7 @@
 (defn- card [metadata card-id]
   (some-> metadata :cards deref (get card-id) deref))
 
-(defn- metric [metadata metric-id]
+(defn- legacy-metric [metadata metric-id]
   (some-> metadata :metrics deref (get metric-id) deref))
 
 (defn- segment [metadata segment-id]
@@ -491,7 +502,7 @@
         :when             (and a-field (= (:table-id a-field) table-id))]
     a-field))
 
-(defn- metrics [metadata table-id]
+(defn- legacy-metrics [metadata table-id]
   (for [[_id metric-delay] (some-> metadata :metrics deref)
         :let               [a-metric (some-> metric-delay deref)]
         :when              (and a-metric (= (:table-id a-metric) table-id))]
@@ -514,17 +525,17 @@
   (let [metadata (parse-metadata unparsed-metadata)]
     (log/debug "Created metadata provider for metadata")
     (reify lib.metadata.protocols/MetadataProvider
-      (database [_this]             (database metadata database-id))
-      (table    [_this table-id]    (table    metadata table-id))
-      (field    [_this field-id]    (field    metadata field-id))
-      (metric   [_this metric-id]   (metric   metadata metric-id))
-      (segment  [_this segment-id]  (segment  metadata segment-id))
-      (card     [_this card-id]     (card     metadata card-id))
-      (tables   [_this]             (tables   metadata database-id))
-      (fields   [_this table-id]    (fields   metadata table-id))
-      (metrics  [_this table-id]    (metrics  metadata table-id))
-      (segments [_this table-id]    (segments metadata table-id))
-      (setting  [_this setting-key] (setting  setting-key unparsed-metadata))
+      (database       [_this]             (database       metadata database-id))
+      (table          [_this table-id]    (table          metadata table-id))
+      (field          [_this field-id]    (field          metadata field-id))
+      (legacy-metric  [_this metric-id]   (legacy-metric  metadata metric-id))
+      (segment        [_this segment-id]  (segment        metadata segment-id))
+      (card           [_this card-id]     (card           metadata card-id))
+      (tables         [_this]             (tables         metadata database-id))
+      (fields         [_this table-id]    (fields         metadata table-id))
+      (legacy-metrics [_this table-id]    (legacy-metrics metadata table-id))
+      (segments       [_this table-id]    (segments       metadata table-id))
+      (setting        [_this setting-key] (setting        setting-key unparsed-metadata))
 
       ;; for debugging: call [[clojure.datafy/datafy]] on one of these to parse all of our metadata and see the whole
       ;; thing at once.

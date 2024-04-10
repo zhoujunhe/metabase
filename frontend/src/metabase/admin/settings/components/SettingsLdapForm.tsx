@@ -1,13 +1,16 @@
 import { useCallback, useMemo } from "react";
+import { connect } from "react-redux";
 import { t } from "ttag";
 import _ from "underscore";
-import { connect } from "react-redux";
-import * as Yup from "yup";
 import type { TestConfig } from "yup";
+import * as Yup from "yup";
 
+import GroupMappingsWidget from "metabase/admin/settings/containers/GroupMappingsWidget";
 import { updateLdapSettings } from "metabase/admin/settings/settings";
-
-import { Stack, Group, Radio } from "metabase/ui";
+import type { SettingElement } from "metabase/admin/settings/types";
+import Breadcrumbs from "metabase/components/Breadcrumbs";
+import { FormSection } from "metabase/containers/FormikForm";
+import CS from "metabase/css/core/index.css";
 import {
   Form,
   FormErrorMessage,
@@ -17,11 +20,9 @@ import {
   FormSwitch,
   FormTextInput,
 } from "metabase/forms";
-import Breadcrumbs from "metabase/components/Breadcrumbs";
-import { FormSection } from "metabase/containers/FormikForm";
-import GroupMappingsWidget from "metabase/admin/settings/containers/GroupMappingsWidget";
+import { PLUGIN_LDAP_FORM_FIELDS } from "metabase/plugins";
+import { Group, Radio, Stack } from "metabase/ui";
 import type { SettingValue } from "metabase-types/api";
-import type { SettingElement } from "metabase/admin/settings/types";
 
 const testParentheses: TestConfig<string | null | undefined> = {
   name: "test-parentheses",
@@ -76,14 +77,52 @@ export const SettingsLdapFormView = ({
       placeholder: setting.is_env_setting
         ? t`Using ${setting.env_name}`
         : setting.placeholder || setting.default,
+      default: setting.default,
       required: setting.required,
       autoFocus: setting.autoFocus,
     }));
   }, [settings]);
 
+  const defaultableAttrs = useMemo(() => {
+    return new Set(PLUGIN_LDAP_FORM_FIELDS.defaultableFormFieldAttributes);
+  }, []);
+
+  const ldapAttributes = useMemo(
+    () => [
+      ...PLUGIN_LDAP_FORM_FIELDS.formFieldAttributes,
+
+      // Server Settings
+      "ldap-host",
+      "ldap-port",
+      "ldap-security",
+      "ldap-bind-dn",
+      "ldap-password",
+
+      // User Schema
+      "ldap-user-base",
+      "ldap-user-filter",
+
+      // Attributes
+      "ldap-attribute-email",
+      "ldap-attribute-firstname",
+      "ldap-attribute-lastname",
+
+      // Group Schema
+      "ldap-group-sync",
+      "ldap-group-base",
+      "ldap-group-membership-filter",
+      "ldap-sync-admin-group",
+    ],
+    [],
+  );
   const attributeValues = useMemo(() => {
-    return getAttributeValues(settingValues);
-  }, [settingValues]);
+    return getAttributeValues(
+      ldapAttributes,
+      settings,
+      settingValues,
+      defaultableAttrs,
+    );
+  }, [settings, settingValues, ldapAttributes, defaultableAttrs]);
 
   const handleSubmit = useCallback(
     values => {
@@ -106,11 +145,15 @@ export const SettingsLdapFormView = ({
       {({ dirty }) => (
         <Form m="0 1rem" maw="32.5rem">
           <Breadcrumbs
-            className="mb3"
+            className={CS.mb3}
             crumbs={[
               [t`Authentication`, "/admin/settings/authentication"],
               [t`LDAP`],
             ]}
+          />
+          <PLUGIN_LDAP_FORM_FIELDS.UserProvisioning
+            fields={fields}
+            settings={settings}
           />
           <FormSection title={"Server Settings"}>
             <Stack spacing="md">
@@ -176,32 +219,20 @@ export const SettingsLdapFormView = ({
   );
 };
 
-const LDAP_ATTRS = [
-  // Server Settings
-  "ldap-host",
-  "ldap-port",
-  "ldap-security",
-  "ldap-bind-dn",
-  "ldap-password",
-
-  // User Schema
-  "ldap-user-base",
-  "ldap-user-filter",
-
-  // Attributes
-  "ldap-attribute-email",
-  "ldap-attribute-firstname",
-  "ldap-attribute-lastname",
-
-  // Group Schema
-  "ldap-group-sync",
-  "ldap-group-base",
-  "ldap-group-membership-filter",
-  "ldap-sync-admin-group",
-];
-
-const getAttributeValues = (values: SettingValues) => {
-  return Object.fromEntries(LDAP_ATTRS.map(key => [key, values[key]]));
+const getAttributeValues = (
+  ldapAttributes: string[],
+  settings: Record<string, LdapFormSettingElement>,
+  values: SettingValues,
+  defaultableAttrs: Set<string>,
+) => {
+  return Object.fromEntries(
+    ldapAttributes.map(key => [
+      key,
+      defaultableAttrs.has(key)
+        ? values[key] ?? settings[key]?.default
+        : values[key],
+    ]),
+  );
 };
 
 const mapDispatchToProps = {

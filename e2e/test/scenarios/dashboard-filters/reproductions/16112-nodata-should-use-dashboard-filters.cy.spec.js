@@ -1,10 +1,10 @@
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
   restore,
   popover,
   visitDashboard,
   editDashboard,
 } from "e2e/support/helpers";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 
 const { REVIEWS, REVIEWS_ID } = SAMPLE_DATABASE;
 
@@ -101,7 +101,7 @@ describe("issues 15119 and 16112", () => {
     popover().contains("adam").click();
     cy.button("Add filter").click();
 
-    cy.get(".DashCard").should("contain", "adam");
+    cy.findByTestId("dashcard-container").should("contain", "adam");
     cy.location("search").should("eq", "?reviewer=adam&rating=");
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
@@ -110,8 +110,8 @@ describe("issues 15119 and 16112", () => {
     popover().contains("5").click();
     cy.button("Add filter").click();
 
-    cy.get(".DashCard").should("contain", "adam");
-    cy.get(".DashCard").should("contain", "5");
+    cy.findByTestId("dashcard-container").should("contain", "adam");
+    cy.findByTestId("dashcard-container").should("contain", "5");
     cy.location("search").should("eq", "?reviewer=adam&rating=5");
   });
 });

@@ -1,7 +1,11 @@
-import { createAction, createThunkAction } from "metabase/lib/redux";
 import Questions from "metabase/entities/questions";
+import {
+  DEFAULT_CARD_SIZE,
+  GRID_WIDTH,
+  getPositionForNewDashCard,
+} from "metabase/lib/dashboard_grid";
+import { createAction, createThunkAction } from "metabase/lib/redux";
 import { getDefaultSize } from "metabase/visualizations";
-
 import type {
   Card,
   CardId,
@@ -12,12 +16,13 @@ import type {
   VirtualCard,
 } from "metabase-types/api";
 import type { Dispatch, GetState } from "metabase-types/store";
-import {
-  DEFAULT_CARD_SIZE,
-  getPositionForNewDashCard,
-} from "metabase/lib/dashboard_grid";
 
-import { trackCardCreated, trackQuestionReplaced } from "../analytics";
+import {
+  trackCardCreated,
+  trackQuestionReplaced,
+  trackSectionAdded,
+} from "../analytics";
+import type { SectionLayout } from "../sections";
 import { getDashCardById, getDashboardId } from "../selectors";
 import {
   createDashCard,
@@ -25,9 +30,11 @@ import {
   generateTemporaryDashcardId,
   isVirtualDashCard,
 } from "../utils";
+
 import { autoWireParametersToNewCard } from "./auto-wire-parameters/actions";
 import {
   ADD_CARD_TO_DASH,
+  ADD_MANY_CARDS_TO_DASH,
   REMOVE_CARD_FROM_DASH,
   UNDO_REMOVE_CARD_FROM_DASH,
   setDashCardAttributes,
@@ -36,7 +43,7 @@ import { cancelFetchCardData, fetchCardData } from "./data-fetching";
 import { loadMetadataForDashboard } from "./metadata";
 import { getExistingDashCards } from "./utils";
 
-type NewDashCardOpts = {
+export type NewDashCardOpts = {
   dashId: DashboardId;
   tabId: DashboardTabId | null;
 };
@@ -56,6 +63,9 @@ export const MARK_NEW_CARD_SEEN = "metabase/dashboard/MARK_NEW_CARD_SEEN";
 export const markNewCardSeen = createAction(MARK_NEW_CARD_SEEN);
 
 const _addDashCard = createAction<NewDashboardCard>(ADD_CARD_TO_DASH);
+const _addManyDashCards = createAction<NewDashboardCard[]>(
+  ADD_MANY_CARDS_TO_DASH,
+);
 
 export const addDashCardToDashboard =
   ({ dashId, tabId, dashcardOverrides }: AddDashCardOpts) =>
@@ -89,6 +99,41 @@ export const addDashCardToDashboard =
     dispatch(_addDashCard(dashcard));
 
     return dashcard;
+  };
+
+export type AddSectionOpts = NewDashCardOpts & {
+  sectionLayout: SectionLayout;
+};
+
+export const addSectionToDashboard =
+  ({ dashId, tabId, sectionLayout }: AddSectionOpts) =>
+  (dispatch: Dispatch, getState: GetState) => {
+    const dashboardState = getState().dashboard;
+    const dashcards = getExistingDashCards(
+      dashboardState.dashboards,
+      dashboardState.dashcards,
+      dashId,
+      tabId,
+    );
+
+    const position = getPositionForNewDashCard(
+      dashcards,
+      GRID_WIDTH,
+      30, // just plenty of vertical space to fit a section
+    );
+
+    const sectionDashcards = sectionLayout
+      .getLayout(position)
+      .map(dashcardOverrides =>
+        createDashCard({
+          dashboard_id: dashId,
+          dashboard_tab_id: tabId ?? null,
+          ...dashcardOverrides,
+        }),
+      );
+
+    dispatch(_addManyDashCards(sectionDashcards));
+    trackSectionAdded(dashId, sectionLayout.id);
   };
 
 type AddCardToDashboardOpts = NewDashCardOpts & {
@@ -167,11 +212,6 @@ export const replaceCard =
   async (dispatch: Dispatch, getState: GetState) => {
     const dashboardId = getDashboardId(getState());
 
-    let dashcard = getDashCardById(getState(), dashcardId);
-    if (isVirtualDashCard(dashcard)) {
-      return;
-    }
-
     await dispatch(Questions.actions.fetch({ id: nextCardId }));
     const card = Questions.selectors
       .getObject(getState(), { entityId: nextCardId })
@@ -190,7 +230,7 @@ export const replaceCard =
       }),
     );
 
-    dashcard = getDashCardById(getState(), dashcardId);
+    const dashcard = getDashCardById(getState(), dashcardId);
 
     dispatch(fetchCardData(card, dashcard, { reload: true, clearCache: true }));
     await dispatch(loadMetadataForDashboard([dashcard]));

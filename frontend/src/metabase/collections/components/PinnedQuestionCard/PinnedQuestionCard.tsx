@@ -1,20 +1,24 @@
+import cx from "classnames";
 import { t } from "ttag";
+
+import ActionMenu from "metabase/collections/components/ActionMenu";
 import {
   isFullyParameterized,
   isPreviewShown,
 } from "metabase/collections/utils";
-import Visualization from "metabase/visualizations/components/Visualization";
-import type { Bookmark, Collection, CollectionItem } from "metabase-types/api";
-import ActionMenu from "metabase/collections/components/ActionMenu";
+import CS from "metabase/css/core/index.css";
 import type { IconName } from "metabase/ui";
-import type Database from "metabase-lib/metadata/Database";
-import PinnedQuestionLoader from "./PinnedQuestionLoader";
+import Visualization from "metabase/visualizations/components/Visualization";
+import type Database from "metabase-lib/v1/metadata/Database";
+import type { Bookmark, Collection, CollectionItem } from "metabase-types/api";
+
 import {
   CardActionMenuContainer,
   CardPreviewSkeleton,
   CardRoot,
   CardStaticSkeleton,
 } from "./PinnedQuestionCard.styled";
+import PinnedQuestionLoader from "./PinnedQuestionLoader";
 
 export interface PinnedQuestionCardProps {
   item: CollectionItem;
@@ -60,7 +64,7 @@ const PinnedQuestionCard = ({
     <CardRoot
       to={item.getUrl()}
       isPreview={isPreview}
-      className="hover-parent hover--visibility"
+      className={cx(CS.hoverParent, CS.hoverVisibility)}
     >
       {!isPreview && positionedActionMenu}
       {isPreview ? (

@@ -1,13 +1,13 @@
+import userEvent from "@testing-library/user-event";
+import fetchMock from "fetch-mock";
 import { Route } from "react-router";
 import _ from "underscore";
-import fetchMock from "fetch-mock";
-import userEvent from "@testing-library/user-event";
-import { fireEvent, renderWithProviders, screen } from "__support__/ui";
-import { createMockEntitiesState } from "__support__/store";
 
+import { createMockEntitiesState } from "__support__/store";
+import { fireEvent, renderWithProviders, screen } from "__support__/ui";
 import MetabaseSettings from "metabase/lib/settings";
 import { getMetadata } from "metabase/selectors/metadata";
-
+import Question from "metabase-lib/v1/Question";
 import { COMMON_DATABASE_FEATURES } from "metabase-types/api/mocks";
 import {
   createSampleDatabase,
@@ -16,7 +16,6 @@ import {
   ORDERS_ID,
 } from "metabase-types/api/mocks/presets";
 import { createMockState } from "metabase-types/store/mocks";
-import Question from "metabase-lib/Question";
 
 import { ViewTitleHeader } from "./ViewHeader";
 
@@ -392,11 +391,11 @@ describe("ViewHeader", () => {
           });
         });
 
-        it("calls save function on title update", () => {
+        it("calls save function on title update", async () => {
           const { onSave } = setup({ card });
           const title = screen.getByTestId("saved-question-header-title");
-          userEvent.clear(title);
-          userEvent.type(title, "New Title{enter}");
+          await userEvent.clear(title);
+          await userEvent.type(title, "New Title{enter}");
           expect(title).toHaveValue("New Title");
           title.blur();
           expect(onSave).toHaveBeenCalled();
@@ -416,7 +415,7 @@ describe("ViewHeader", () => {
 describe("ViewHeader | Ad-hoc GUI question", () => {
   it("does not open details sidebar on table name click", () => {
     const { question, onOpenModal } = setupAdHoc();
-    const tableName = question.table().displayName();
+    const tableName = question.legacyQueryTable().displayName();
 
     fireEvent.click(screen.getByText(tableName));
 

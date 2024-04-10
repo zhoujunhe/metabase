@@ -1,3 +1,10 @@
+import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+import {
+  ORDERS_DASHBOARD_DASHCARD_ID,
+  ORDERS_DASHBOARD_ID,
+  ORDERS_QUESTION_ID,
+} from "e2e/support/cypress_sample_instance_data";
 import {
   popover,
   restore,
@@ -30,15 +37,17 @@ import {
   getTextCardDetails,
   openDashboardMenu,
   openEmbedModalFromMenu,
+  assertDashboardFixedWidth,
+  assertDashboardFullWidth,
+  createDashboardWithTabs,
+  entityPickerModal,
+  collectionOnTheGoModal,
 } from "e2e/support/helpers";
-
-import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+import { GRID_WIDTH } from "metabase/lib/dashboard_grid";
 import {
-  ORDERS_DASHBOARD_DASHCARD_ID,
-  ORDERS_DASHBOARD_ID,
-  ORDERS_QUESTION_ID,
-} from "e2e/support/cypress_sample_instance_data";
+  createMockVirtualCard,
+  createMockVirtualDashCard,
+} from "metabase-types/api/mocks";
 
 const { ORDERS, ORDERS_ID, PRODUCTS, PEOPLE, PEOPLE_ID } = SAMPLE_DATABASE;
 
@@ -62,12 +71,20 @@ describe("scenarios > dashboard", () => {
       appBar().findByText("New").click();
       popover().findByText("Dashboard").should("be.visible").click();
 
+      cy.log(
+        "pressing escape should only close the entity picker modal, not the new dashboard modal",
+      );
+      modal().findByTestId("collection-picker-button").click();
+      entityPickerModal().findByText("Select a collection");
+      cy.realPress("Escape");
+      modal().findByText("New dashboard").should("be.visible");
+
       cy.log("Create a new dashboard");
       modal().within(() => {
         // Without waiting for this, the test was constantly flaking locally.
         cy.findByText("Our analytics");
 
-        cy.findByLabelText("Name").type(dashboardName);
+        cy.findByPlaceholderText(/name of your dashboard/i).type(dashboardName);
         cy.findByLabelText("Description").type(dashboardDescription, {
           delay: 0,
         });
@@ -100,9 +117,9 @@ describe("scenarios > dashboard", () => {
       });
 
       queryBuilderHeader().findByText("Save").click();
-      modal().within(() => {
+      cy.findByTestId("save-question-modal").within(modal => {
         cy.findByLabelText("Name").clear().type(newQuestionName);
-        cy.button("Save").click();
+        cy.findByText("Save").click();
       });
       cy.wait("@createQuestion");
       modal().within(() => {
@@ -137,24 +154,38 @@ describe("scenarios > dashboard", () => {
         appBar().findByText("New").click();
         popover().findByText("Dashboard").should("be.visible").click();
         const NEW_DASHBOARD = "Foo";
-        modal().within(() => {
+        cy.findByTestId("new-dashboard-modal").then(modal => {
           cy.findByRole("heading", { name: "New dashboard" });
           cy.findByLabelText("Name").type(NEW_DASHBOARD).blur();
-          cy.findByTestId("select-button")
+          cy.findByTestId("collection-picker-button")
             .should("have.text", "Our analytics")
             .click();
         });
-        popover().findByText("New collection").click({ force: true });
+        entityPickerModal()
+          .findByText("Create a new collection")
+          .click({ force: true });
         const NEW_COLLECTION = "Bar";
-        modal().within(() => {
-          cy.findByRole("heading", { name: "New collection" });
-          cy.findByLabelText("Name").type(NEW_COLLECTION).blur();
-          cy.button("Create").click();
+        collectionOnTheGoModal().within(() => {
+          cy.findByText("Create a new collection");
+          cy.findByPlaceholderText(/My new collection/)
+            .type(NEW_COLLECTION)
+            .blur();
+          cy.findByText("Create").click();
           cy.wait("@createCollection");
+        });
+        entityPickerModal().within(() => {
+          cy.findByText(NEW_COLLECTION).click();
+          cy.button("Select").click();
+        });
+        modal().within(() => {
           cy.findByText("New dashboard");
-          cy.findByTestId("select-button").should("have.text", NEW_COLLECTION);
+          cy.findByTestId("collection-picker-button").should(
+            "have.text",
+            NEW_COLLECTION,
+          );
           cy.button("Create").click();
         });
+
         saveDashboard();
         cy.findByTestId("app-bar").findByText(NEW_COLLECTION);
       },
@@ -168,7 +199,9 @@ describe("scenarios > dashboard", () => {
       cy.log("Save new question from an ad-hoc query");
       openProductsTable();
       cy.findByTestId("qb-header").findByText("Save").click();
-      modal().button("Save").click();
+      cy.findByTestId("save-question-modal").within(modal => {
+        cy.findByText("Save").click();
+      });
       cy.wait("@saveQuestion");
 
       cy.log("Add this new question to a dashboard created on the fly");
@@ -279,8 +312,8 @@ describe("scenarios > dashboard", () => {
         cy.findByTestId("edit-bar").button("Cancel").click();
         openDashboardMenu();
         popover().findByText("Move").click();
-        modal().within(() => {
-          cy.findByRole("heading", { name: myPersonalCollection }).click();
+        entityPickerModal().within(() => {
+          cy.findByText("Bobby Tables's Personal Collection").click();
           cy.button("Move").click();
         });
 
@@ -297,8 +330,8 @@ describe("scenarios > dashboard", () => {
         cy.findByTestId("edit-bar").button("Cancel").click();
         openDashboardMenu();
         popover().findByText("Move").click();
-        modal().within(() => {
-          cy.findByRole("heading", { name: "Our analytics" }).click();
+        entityPickerModal().within(() => {
+          cy.findByText("Our analytics").click();
           cy.button("Move").click();
         });
 
@@ -541,7 +574,7 @@ describe("scenarios > dashboard", () => {
       cy.findByText("State").click();
     });
     cy.icon("close");
-    cy.get(".Button--primary").contains("Done").click();
+    cy.button("Done").click();
 
     saveDashboard();
 
@@ -595,7 +628,7 @@ describe("scenarios > dashboard", () => {
       cy.findByText("All Options").click();
     });
     // and connect it to the card
-    selectDashboardFilter(cy.get(".DashCard"), "Created At");
+    selectDashboardFilter(cy.findByTestId("dashcard-container"), "Created At");
 
     // add second filter
     cy.icon("filter").click();
@@ -603,7 +636,7 @@ describe("scenarios > dashboard", () => {
       cy.findByText("ID").click();
     });
     // and connect it to the card
-    selectDashboardFilter(cy.get(".DashCard"), "Product ID");
+    selectDashboardFilter(cy.findByTestId("dashcard-container"), "Product ID");
 
     // add third filter
     cy.icon("filter").click();
@@ -612,7 +645,7 @@ describe("scenarios > dashboard", () => {
       cy.findByText("Starts with").click();
     });
     // and connect it to the card
-    selectDashboardFilter(cy.get(".DashCard"), "Category");
+    selectDashboardFilter(cy.findByTestId("dashcard-container"), "Category");
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Save").click();
@@ -1043,6 +1076,79 @@ describeWithSnowplow("scenarios > dashboard", () => {
       );
     });
   });
+
+  it("should allow the creator to change the dashboard width to 'fixed' or 'full'", () => {
+    const TAB_1 = {
+      id: 1,
+      name: "Tab 1",
+    };
+    const TAB_2 = {
+      id: 2,
+      name: "Tab 2",
+    };
+    const DASHBOARD_TEXT_FILTER = {
+      id: "94f9e513",
+      name: "Text filter",
+      slug: "filter-text",
+      type: "string/contains",
+    };
+
+    createDashboardWithTabs({
+      tabs: [TAB_1, TAB_2],
+      parameters: [{ ...DASHBOARD_TEXT_FILTER, default: "Example Input" }],
+      dashcards: [
+        createMockVirtualDashCard({
+          id: -1,
+          dashboard_tab_id: TAB_1.id,
+          size_x: GRID_WIDTH,
+          parameter_mappings: [
+            { parameter_id: "94f9e513", target: ["text-tag", "Name"] },
+          ],
+          card: createMockVirtualCard({ display: "text" }),
+          visualization_settings: {
+            text: "Top: {{Name}}",
+          },
+        }),
+        createMockVirtualDashCard({
+          id: -2,
+          size_x: GRID_WIDTH,
+          dashboard_tab_id: TAB_1.id,
+          card: createMockVirtualCard({ display: "text" }),
+          visualization_settings: {
+            text: "Bottom",
+          },
+        }),
+      ],
+    }).then(dashboard => visitDashboard(dashboard.id));
+
+    // new dashboards should default to 'fixed' width
+    assertDashboardFixedWidth();
+
+    // toggle full-width
+    editDashboard();
+    cy.findByLabelText("Toggle width").click();
+    popover().findByText("Full width").click();
+    assertDashboardFullWidth();
+    expectGoodSnowplowEvent({
+      event: "dashboard_width_toggled",
+      full_width: true,
+    });
+
+    // confirm it saves the state after saving and refreshing
+    saveDashboard();
+    cy.reload();
+    assertDashboardFullWidth();
+
+    // toggle back to fixed
+    editDashboard();
+    cy.findByLabelText("Toggle width").click();
+    popover().findByText("Full width").click();
+    assertDashboardFixedWidth();
+    expectGoodSnowplowEvent({
+      event: "dashboard_width_toggled",
+      full_width: false,
+    });
+  });
 });
 
 function checkOptionsForFilter(filter) {
@@ -1053,8 +1159,7 @@ function checkOptionsForFilter(filter) {
     .and("not.contain", "Dashboard filters");
 
   // Get rid of the open popover to be able to select another filter
-  // Uses force: true because the popover is covering this text. This happens
-  // after we introduce the database prompt banner.
+  // Uses force: true because the popover is covering this text.
   cy.findByText("Pick one or more filters to update").click({ force: true });
 }
 

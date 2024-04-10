@@ -1,6 +1,10 @@
 import { css } from "@emotion/react";
 import styled from "@emotion/styled";
+
+import DashboardS from "metabase/css/dashboard.module.css";
 import { color } from "metabase/lib/colors";
+
+import { FIXED_WIDTH } from "./Dashboard/Dashboard.styled";
 
 interface DashboardCardProps {
   isAnimationDisabled?: boolean;
@@ -25,7 +29,7 @@ export const DashboardCardContainer = styled.div<DashboardCardProps>`
     z-index: 2;
   }
 
-  .Card {
+  .${DashboardS.Card} {
     position: absolute;
     top: 0;
     left: 0;
@@ -62,4 +66,19 @@ export const DashboardCardContainer = styled.div<DashboardCardProps>`
   .leaflet-container:hover .leaflet-control-container {
     opacity: 1;
   }
+`;
+
+export const DashboardGridContainer = styled.div<{
+  isFixedWidth: boolean;
+}>`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  ${({ isFixedWidth }) =>
+    isFixedWidth &&
+    css`
+      margin: 0 auto;
+      max-width: ${FIXED_WIDTH};
+    `}
 `;

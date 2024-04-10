@@ -1,30 +1,29 @@
-import { useCallback, useEffect, useState } from "react";
-import { t } from "ttag";
-import { connect } from "react-redux";
-
 import { DndContext, useSensor, PointerSensor } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
 import {
   restrictToVerticalAxis,
   restrictToParentElement,
 } from "@dnd-kit/modifiers";
-
-import { Sortable } from "metabase/core/components/Sortable";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { useCallback, useEffect, useState } from "react";
+import { connect } from "react-redux";
+import { t } from "ttag";
 
 import CollapseSection from "metabase/components/CollapseSection";
-import { Icon } from "metabase/ui";
+import { Sortable } from "metabase/core/components/Sortable";
 import Tooltip from "metabase/core/components/Tooltip";
-
-import type { Bookmark } from "metabase-types/api";
-import { PLUGIN_COLLECTIONS } from "metabase/plugins";
+import GrabberS from "metabase/css/components/grabber.module.css";
+import CS from "metabase/css/core/index.css";
 import Bookmarks from "metabase/entities/bookmarks";
 import * as Urls from "metabase/lib/urls";
+import { PLUGIN_COLLECTIONS } from "metabase/plugins";
+import { Icon } from "metabase/ui";
+import type { Bookmark } from "metabase-types/api";
 
-import type { SelectedItem } from "../../types";
 import { SidebarHeading } from "../../MainNavbar.styled";
+import type { SelectedItem } from "../../types";
 
 import { SidebarBookmarkItem } from "./BookmarkList.styled";
 
@@ -84,6 +83,8 @@ const BookmarkItem = ({
     bookmark.type === "collection" &&
     !PLUGIN_COLLECTIONS.isRegularCollection(bookmark);
 
+  const iconName = isSelected ? "bookmark_filled" : "bookmark";
+
   return (
     <Sortable id={bookmark.id} key={bookmark.id}>
       <SidebarBookmarkItem
@@ -97,7 +98,7 @@ const BookmarkItem = ({
         right={
           <button onClick={onRemove}>
             <Tooltip tooltip={t`Remove bookmark`} placement="bottom">
-              <Icon name="bookmark" />
+              <Icon name={iconName} />
             </Tooltip>
           </button>
         }
@@ -131,13 +132,13 @@ const BookmarkList = ({
   }, []);
 
   const handleSortStart = useCallback(() => {
-    document.body.classList.add("grabbing");
+    document.body.classList.add(GrabberS.grabbing);
     setIsSorting(true);
   }, []);
 
   const handleSortEnd = useCallback(
     input => {
-      document.body.classList.remove("grabbing");
+      document.body.classList.remove(GrabberS.grabbing);
       setIsSorting(false);
       const newIndex = bookmarks.findIndex(b => b.id === input.over.id);
       const oldIndex = bookmarks.findIndex(b => b.id === input.active.id);
@@ -154,7 +155,7 @@ const BookmarkList = ({
       initialState={BOOKMARKS_INITIALLY_VISIBLE ? "expanded" : "collapsed"}
       iconPosition="right"
       iconSize={8}
-      headerClass="mb1"
+      headerClass={CS.mb1}
       onToggle={onToggleBookmarks}
     >
       <DndContext

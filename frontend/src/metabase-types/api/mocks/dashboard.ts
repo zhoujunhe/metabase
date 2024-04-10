@@ -1,14 +1,18 @@
 import type {
   Dashboard,
+  DashboardTab,
   QuestionDashboardCard,
   VirtualCard,
   ActionDashboardCard,
   VirtualDashboardCard,
 } from "metabase-types/api";
+
 import { createMockCard } from "./card";
 
 export const createMockDashboard = (opts?: Partial<Dashboard>): Dashboard => ({
   id: 1,
+  created_at: "2024-01-01T00:00:00Z",
+  updated_at: "2024-01-01T00:00:00Z",
   collection_id: null,
   name: "Dashboard",
   dashcards: [],
@@ -27,6 +31,20 @@ export const createMockDashboard = (opts?: Partial<Dashboard>): Dashboard => ({
   public_uuid: null,
   enable_embedding: false,
   embedding_params: null,
+  initially_published_at: null,
+  width: "fixed",
+  ...opts,
+});
+
+export const createMockDashboardTab = (
+  opts?: Partial<DashboardTab>,
+): DashboardTab => ({
+  id: 1,
+  dashboard_id: 1,
+  name: "Tab 1",
+  entity_id: "abc_123",
+  created_at: "2020-01-01T12:30:30.000000",
+  updated_at: "2020-01-01T12:30:30.000000",
   ...opts,
 });
 
@@ -66,6 +84,7 @@ export const createMockActionDashboardCard = (
   opts?: Partial<ActionDashboardCard>,
 ): ActionDashboardCard => ({
   ...createMockDashboardCard(),
+  action_id: 1,
   action: undefined,
   card: createMockCard({ display: "action" }),
   visualization_settings: {
@@ -112,14 +131,15 @@ export const createMockVirtualDashCard = (
   };
 };
 
-export const createMockTextDashboardCard = (
-  opts?: VirtualDashboardCardOpts & { text?: string },
-): VirtualDashboardCard =>
+export const createMockTextDashboardCard = ({
+  text,
+  ...opts
+}: VirtualDashboardCardOpts & { text?: string } = {}): VirtualDashboardCard =>
   createMockVirtualDashCard({
     ...opts,
     card: createMockVirtualCard({ display: "text" }),
     visualization_settings: {
-      text: opts?.text ?? "Body Text",
+      text: text ?? "Body Text",
     },
   });
 
@@ -147,4 +167,13 @@ export const createMockLinkDashboardCard = ({
         url: opts?.url ?? visualization_settings?.link?.url ?? "Link Text",
       },
     },
+  });
+
+export const createMockPlaceholderDashboardCard = ({
+  visualization_settings,
+  ...opts
+}: VirtualDashboardCardOpts = {}): VirtualDashboardCard =>
+  createMockVirtualDashCard({
+    ...opts,
+    card: createMockVirtualCard({ display: "placeholder" }),
   });

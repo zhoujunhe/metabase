@@ -1,3 +1,9 @@
+import { USER_GROUPS, SAMPLE_DB_ID } from "e2e/support/cypress_data";
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+import {
+  NORMAL_USER_ID,
+  ORDERS_DASHBOARD_ID,
+} from "e2e/support/cypress_sample_instance_data";
 import {
   describeEE,
   modal,
@@ -5,7 +11,6 @@ import {
   openPeopleTable,
   openReviewsTable,
   popover,
-  queryBuilderMain,
   restore,
   remapDisplayValueToFK,
   setupSMTP,
@@ -18,13 +23,8 @@ import {
   startNewQuestion,
   sendEmailAndAssert,
   setTokenFeatures,
+  selectFilterOperator,
 } from "e2e/support/helpers";
-import {
-  NORMAL_USER_ID,
-  ORDERS_DASHBOARD_ID,
-} from "e2e/support/cypress_sample_instance_data";
-import { USER_GROUPS, SAMPLE_DB_ID } from "e2e/support/cypress_data";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 
 const {
   ORDERS,
@@ -144,11 +144,9 @@ describeEE("formatting > sandboxes", () => {
     });
 
     describe("question with joins", () => {
-      it("should show permissions error after applying a filter to the question", () => {
+      it("should be sandboxed even after applying a filter to the question", () => {
         cy.log("Open saved question with joins");
-        cy.get("@questionId").then(id => {
-          visitQuestion(id);
-        });
+        visitQuestion("@questionId");
 
         cy.log("Make sure user is initially sandboxed");
         cy.get(".TableInteractive-cellWrapper--firstColumn").should(
@@ -159,29 +157,19 @@ describeEE("formatting > sandboxes", () => {
         cy.log("Add filter to a question");
         cy.icon("notebook").click();
         filter({ mode: "notebook" });
-        popover().within(() => {
-          cy.findByText("Total").click({ force: true });
-          cy.findByDisplayValue("Equal to").click();
-        });
-        cy.findByRole("listbox").findByText("Greater than").click();
+        popover().findByText("Total").click();
+        selectFilterOperator("Greater than");
         popover().within(() => {
           cy.findByPlaceholderText("Enter a number").type("100");
           cy.button("Add filter").click();
         });
 
         visualize();
-
-        cy.log("Make sure permissions error is shown");
-        queryBuilderMain().within(() => {
-          cy.findByText("There was a problem with your question").should(
-            "exist",
-          );
-
-          cy.findByText("Show error details").click();
-          cy.findByText(
-            "You do not have permissions to run this query.",
-          ).should("exist");
-        });
+        cy.log("Make sure user is still sandboxed");
+        cy.get(".TableInteractive-cellWrapper--firstColumn").should(
+          "have.length",
+          7,
+        );
       });
     });
 
@@ -238,13 +226,15 @@ describeEE("formatting > sandboxes", () => {
 
       popover().within(() => {
         // Collapse "Order/s/" in order to bring "User" into view (trick to get around virtualization - credits: @flamber)
-        cy.get(".List-section-header")
+        cy.get("[data-element-id=list-section-header]")
           .contains(/Orders?/)
           .click();
 
-        cy.get(".List-section-header").contains("User").click();
+        cy.get("[data-element-id=list-section-header]")
+          .contains("User")
+          .click();
 
-        cy.get(".List-item").contains("ID").click();
+        cy.get("[data-element-id=list-item]").contains("ID").click();
       });
 
       visualize();
@@ -358,7 +348,7 @@ describeEE("formatting > sandboxes", () => {
 
         cy.wait("@cardQuery");
         // Drill-through
-        cy.get(".Visualization").within(() => {
+        cy.findByTestId("query-visualization-root").within(() => {
           // Click on the first bar in a graph (Category: "Doohickey")
           cy.get(".bar").eq(0).click({ force: true });
         });
@@ -435,7 +425,7 @@ describeEE("formatting > sandboxes", () => {
 
       cy.wait("@cardQuery");
       // Drill-through
-      cy.get(".Visualization").within(() => {
+      cy.findByTestId("query-visualization-root").within(() => {
         // Click on the first bar in a graph (Category: "Doohickey")
         cy.get(".bar").eq(0).click({ force: true });
       });
@@ -546,107 +536,111 @@ describeEE("formatting > sandboxes", () => {
         // relies on the existence of a save button on a saved question that is not dirty
         // which is a bug fixed in ssue metabase#14302
         ["normal" /* , "workaround" */].forEach(test => {
-          it(`${test.toUpperCase()} version:\n advanced sandboxing should not ignore data model features like object detail of FK (metabase-enterprise#520)`, () => {
-            cy.intercept("POST", "/api/card/*/query").as("cardQuery");
-            cy.intercept("PUT", "/api/card/*").as("questionUpdate");
+          it(
+            `${test.toUpperCase()} version:\n advanced sandboxing should not ignore data model features like object detail of FK (metabase-enterprise#520)`,
+            { tags: "@quarantine" },
+            () => {
+              cy.intercept("POST", "/api/card/*/query").as("cardQuery");
+              cy.intercept("PUT", "/api/card/*").as("questionUpdate");
 
-            cy.createNativeQuestion({
-              name: "EE_520_Q1",
-              native: {
-                query:
-                  "SELECT * FROM ORDERS WHERE USER_ID={{sandbox}} AND TOTAL > 10",
-                "template-tags": {
-                  sandbox: {
-                    "display-name": "Sandbox",
-                    id: "1115dc4f-6b9d-812e-7f72-b87ab885c88a",
-                    name: "sandbox",
-                    type: "number",
+              cy.createNativeQuestion({
+                name: "EE_520_Q1",
+                native: {
+                  query:
+                    "SELECT * FROM ORDERS WHERE USER_ID={{sandbox}} AND TOTAL > 10",
+                  "template-tags": {
+                    sandbox: {
+                      "display-name": "Sandbox",
+                      id: "1115dc4f-6b9d-812e-7f72-b87ab885c88a",
+                      name: "sandbox",
+                      type: "number",
+                    },
                   },
                 },
-              },
-            }).then(({ body: { id: CARD_ID } }) => {
-              test === "workaround"
-                ? runAndSaveQuestion({ question: CARD_ID, sandboxValue: "1" })
-                : null;
+              }).then(({ body: { id: CARD_ID } }) => {
+                test === "workaround"
+                  ? runAndSaveQuestion({ question: CARD_ID, sandboxValue: "1" })
+                  : null;
 
-              cy.sandboxTable({
-                table_id: ORDERS_ID,
-                card_id: CARD_ID,
-                attribute_remappings: {
-                  attr_uid: ["variable", ["template-tag", "sandbox"]],
-                },
+                cy.sandboxTable({
+                  table_id: ORDERS_ID,
+                  card_id: CARD_ID,
+                  attribute_remappings: {
+                    attr_uid: ["variable", ["template-tag", "sandbox"]],
+                  },
+                });
               });
-            });
 
-            cy.createNativeQuestion({
-              name: "EE_520_Q2",
-              native: {
-                query:
-                  "SELECT * FROM PRODUCTS WHERE CATEGORY={{sandbox}} AND PRICE > 10",
-                "template-tags": {
-                  sandbox: {
-                    "display-name": "Sandbox",
-                    id: "3d69ba99-7076-2252-30bd-0bb8810ba895",
-                    name: "sandbox",
-                    type: "text",
+              cy.createNativeQuestion({
+                name: "EE_520_Q2",
+                native: {
+                  query:
+                    "SELECT * FROM PRODUCTS WHERE CATEGORY={{sandbox}} AND PRICE > 10",
+                  "template-tags": {
+                    sandbox: {
+                      "display-name": "Sandbox",
+                      id: "3d69ba99-7076-2252-30bd-0bb8810ba895",
+                      name: "sandbox",
+                      type: "text",
+                    },
                   },
                 },
-              },
-            }).then(({ body: { id: CARD_ID } }) => {
-              test === "workaround"
-                ? runAndSaveQuestion({
-                    question: CARD_ID,
-                    sandboxValue: "Widget",
-                  })
-                : null;
+              }).then(({ body: { id: CARD_ID } }) => {
+                test === "workaround"
+                  ? runAndSaveQuestion({
+                      question: CARD_ID,
+                      sandboxValue: "Widget",
+                    })
+                  : null;
 
-              cy.sandboxTable({
-                table_id: PRODUCTS_ID,
-                card_id: CARD_ID,
-                attribute_remappings: {
-                  attr_cat: ["variable", ["template-tag", "sandbox"]],
-                },
+                cy.sandboxTable({
+                  table_id: PRODUCTS_ID,
+                  card_id: CARD_ID,
+                  attribute_remappings: {
+                    attr_cat: ["variable", ["template-tag", "sandbox"]],
+                  },
+                });
               });
-            });
 
-            cy.signOut();
-            cy.signInAsSandboxedUser();
+              cy.signOut();
+              cy.signInAsSandboxedUser();
 
-            openOrdersTable();
+              openOrdersTable();
 
-            cy.log("Reported failing on v1.36.x");
+              cy.log("Reported failing on v1.36.x");
 
-            cy.log(
-              "It should show remapped Display Values instead of Product ID",
-            );
-            cy.get(".cellData").contains("Awesome Concrete Shoes").click();
-            // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-            cy.findByText(/View details/i).click();
+              cy.log(
+                "It should show remapped Display Values instead of Product ID",
+              );
+              cy.get(".cellData").contains("Awesome Concrete Shoes").click();
+              // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
+              cy.findByText(/View details/i).click();
 
-            cy.log(
-              "It should show object details instead of filtering by this Product ID",
-            );
-            // The name of this Vendor is visible in "details" only
-            cy.findByTestId("object-detail");
-            cy.findAllByText("McClure-Lockman");
+              cy.log(
+                "It should show object details instead of filtering by this Product ID",
+              );
+              // The name of this Vendor is visible in "details" only
+              cy.findByTestId("object-detail");
+              cy.findAllByText("McClure-Lockman");
 
-            /**
-             * Helper function related to this test only!
-             */
-            function runAndSaveQuestion({ question, sandboxValue } = {}) {
-              // Run the question
-              cy.visit(`/question/${question}?sandbox=${sandboxValue}`);
-              // Wait for results
-              cy.wait("@cardQuery");
-              // Save the question
-              cy.findByText("Save").click();
-              modal().within(() => {
-                cy.button("Save").click();
-              });
-              // Wait for an update so the other queries don't accidentally cancel it
-              cy.wait("@questionUpdate");
-            }
-          });
+              /**
+               * Helper function related to this test only!
+               */
+              function runAndSaveQuestion({ question, sandboxValue } = {}) {
+                // Run the question
+                cy.visit(`/question/${question}?sandbox=${sandboxValue}`);
+                // Wait for results
+                cy.wait("@cardQuery");
+                // Save the question
+                cy.findByText("Save").click();
+                modal().within(() => {
+                  cy.button("Save").click();
+                });
+                // Wait for an update so the other queries don't accidentally cancel it
+                cy.wait("@questionUpdate");
+              }
+            },
+          );
         });
 
         it("simple sandboxing should work (metabase#14629)", () => {
@@ -742,7 +736,7 @@ describeEE("formatting > sandboxes", () => {
 
         cy.wait("@cardQuery");
         // Drill-through
-        cy.get(".Visualization").within(() => {
+        cy.findByTestId("query-visualization-root").within(() => {
           // Click on the second bar in a graph (Category: "Widget")
           cy.get(".bar").eq(1).click({ force: true });
         });
@@ -793,7 +787,7 @@ describeEE("formatting > sandboxes", () => {
         expect(response.statusCode).to.eq(400);
         expect(response.body.message).to.eq(ERROR_MESSAGE);
       });
-      cy.get(".Modal").scrollTo("bottom");
+      modal().scrollTo("bottom");
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText(ERROR_MESSAGE);
     });

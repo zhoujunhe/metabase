@@ -1,10 +1,10 @@
+import { ORDERS_DASHBOARD_ID } from "e2e/support/cypress_sample_instance_data";
 import {
   restore,
   popover,
   selectDashboardFilter,
   visitDashboard,
 } from "e2e/support/helpers";
-import { ORDERS_DASHBOARD_ID } from "e2e/support/cypress_sample_instance_data";
 
 function filterDashboard(suggests = true) {
   visitDashboard(ORDERS_DASHBOARD_ID);
@@ -49,7 +49,10 @@ describe("support > permissions (metabase#8472)", () => {
     popover().contains("Is").click();
 
     // Filter the first card by User Address
-    selectDashboardFilter(cy.get(".DashCard").first(), "Address");
+    selectDashboardFilter(
+      cy.findByTestId("dashcard-container").first(),
+      "Address",
+    );
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.contains("Done").click();

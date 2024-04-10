@@ -1,21 +1,13 @@
-import { useCallback, useState } from "react";
 import type * as React from "react";
+import { useCallback, useState } from "react";
 import { t } from "ttag";
 
 import Breadcrumbs from "metabase/components/Breadcrumbs";
+import CS from "metabase/css/core/index.css";
+import Search from "metabase/entities/search";
 import type { IconProps } from "metabase/ui";
 import { Icon } from "metabase/ui";
-
-import Search from "metabase/entities/search";
-
 import type { Collection } from "metabase-types/api";
-
-import type {
-  CollectionPickerItem,
-  PickerItem,
-  PickerModel,
-  SearchQuery,
-} from "./types";
 
 import Item from "./Item";
 import {
@@ -25,6 +17,12 @@ import {
   SearchInput,
   SearchToggle,
 } from "./ItemPicker.styled";
+import type {
+  CollectionPickerItem,
+  PickerItem,
+  PickerModel,
+  SearchQuery,
+} from "./types";
 
 interface SearchEntityListLoaderProps<TId> {
   list: PickerItem<TId>[];
@@ -100,7 +98,7 @@ function ItemPickerView<TId>({
         <ItemPickerHeader data-testid="item-picker-header">
           <SearchInput
             type="search"
-            className="input"
+            className={CS.input}
             placeholder={t`Search`}
             autoFocus
             onKeyPress={handleSearchInputKeyPress}

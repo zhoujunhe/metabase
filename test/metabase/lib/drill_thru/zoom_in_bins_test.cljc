@@ -198,6 +198,7 @@
                  [:<  {} [:field {} (meta/id :products :rating)] 5.125]]
                 (lib/filters drilled)))))))
 
+;; This actually checks pivot tables too.
 (deftest ^:parallel legend-zoom-binning-latitude-test
   ;; Sum of Subtotal by month and People->Latitude with binning, then click a latitude range to zoom in.
   (let [query    (-> (lib/query meta/metadata-provider (meta/table-metadata :orders))
@@ -226,3 +227,69 @@
         (is (=? [[:>= {} [:field {} (meta/id :people :latitude)] 30]
                  [:<  {} [:field {} (meta/id :people :latitude)] 40.0]]
                 (lib/filters drilled)))))))
+
+(deftest ^:parallel nil-aggregation-value-test
+  (testing "nil dimension value for binned column should not return this drill"
+    (let [query        (-> (lib/query meta/metadata-provider (meta/table-metadata :orders))
+                           (lib/aggregate (lib/count))
+                           (lib/breakout (-> (meta/field-metadata :orders :discount)
+                                             (lib/with-binning {:strategy :default})))
+                           #_(lib/breakout (-> (meta/field-metadata :orders :created-at)
+                                               (lib/with-temporal-bucket :month))))
+          count-col    (m/find-first #(= (:name %) "count")
+                                     (lib/returned-columns query))
+          _            (is (some? count-col))
+          discount-col (m/find-first #(= (:name %) "DISCOUNT")
+                                     (lib/returned-columns query))
+          _            (is (some? discount-col))
+          discount-dim {:column     discount-col
+                        :column-ref (lib/ref discount-col)
+                        :value      nil}
+          context      {:column     count-col
+                        :column-ref (lib/ref count-col)
+                        :value      16845
+                        :row        [discount-dim
+                                     {:column     count-col
+                                      :column-ref (lib/ref count-col)
+                                      :value      16845}]
+                        :dimensions [discount-dim]}
+          drills       (set (map :type (lib/available-drill-thrus query context)))]
+      (is (not (drills :drill-thru/zoom-in.binning))))))
+
+(deftest ^:parallel nested-zoom-test
+  (testing "repeatedly zooming in on smaller bins should work"
+    (let [query (as-> (lib/query meta/metadata-provider (meta/table-metadata :orders)) $q
+                  ;; Filtering like we'd already zoomed in once, on the 40-60 bin.
+                  (lib/filter $q (lib/>= (meta/field-metadata :orders :subtotal) 40))
+                  (lib/filter $q (lib/<  (meta/field-metadata :orders :subtotal) 60))
+                  (lib/aggregate $q (lib/count))
+                  (lib/breakout $q (lib/with-binning (meta/field-metadata :orders :subtotal)
+                                     {:strategy  :num-bins
+                                      :num-bins  8
+                                      :bin-width 2.5
+                                      :min-value 40
+                                      :max-value 60})))]
+      (lib.drill-thru.tu/test-drill-application
+        {:click-type     :cell
+         :query-type     :aggregated
+         :custom-query   query
+         :custom-row     {"count" 100
+                          "SUBTOTAL" 50} ;; Clicking the 50-52.5 bin
+         :column-name    "count"
+         :drill-type     :drill-thru/zoom-in.binning
+         :expected       {:type        :drill-thru/zoom-in.binning
+                          :column      {:name "SUBTOTAL"}
+                          :min-value   50
+                          :max-value   52.5
+                          :new-binning {:strategy :default}}
+         :expected-query {:stages [{:source-table (meta/id :orders)
+                                    :aggregation  [[:count {}]]
+                                    :breakout     [[:field
+                                                    {:binning {:strategy :default}}
+                                                    (meta/id :orders :subtotal)]]
+                                    :filters      [[:>= {}
+                                                    [:field {} (meta/id :orders :subtotal)]
+                                                    50]
+                                                   [:< {}
+                                                    [:field {} (meta/id :orders :subtotal)]
+                                                    52.5]]}]}}))))

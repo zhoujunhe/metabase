@@ -1,3 +1,10 @@
+import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+import {
+  ORDERS_DASHBOARD_ID,
+  ORDERS_COUNT_QUESTION_ID,
+  ORDERS_BY_YEAR_QUESTION_ID,
+} from "e2e/support/cypress_sample_instance_data";
 import {
   popover,
   restore,
@@ -21,13 +28,6 @@ import {
   openQuestionActions,
   spyRequestFinished,
 } from "e2e/support/helpers";
-import {
-  ORDERS_DASHBOARD_ID,
-  ORDERS_COUNT_QUESTION_ID,
-  ORDERS_BY_YEAR_QUESTION_ID,
-} from "e2e/support/cypress_sample_instance_data";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
-import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
 
 const { ORDERS_ID, ORDERS, PRODUCTS, PRODUCTS_ID, REVIEWS_ID } =
   SAMPLE_DATABASE;
@@ -115,8 +115,8 @@ describe("scenarios > dashboard > parameters", () => {
     });
 
     cy.location("search").should("eq", "?text=Gadget");
-    cy.get(".DashCard").first().should("contain", "0");
-    cy.get(".DashCard").last().should("contain", "4,939");
+    cy.findAllByTestId("dashcard-container").first().should("contain", "0");
+    cy.findAllByTestId("dashcard-container").last().should("contain", "4,939");
   });
 
   it("should be able to remove parameter (metabase#17933)", () => {
@@ -316,7 +316,7 @@ describe("scenarios > dashboard > parameters", () => {
       });
 
       visitDashboard(dashboard_id);
-      cy.get(".ScalarValue").invoke("text").should("eq", "53");
+      cy.findByTestId("scalar-value").invoke("text").should("eq", "53");
 
       // Confirm you can't map wrong parameter type the native question's field filter (metabase#16181)
       cy.icon("pencil").click();
@@ -351,7 +351,7 @@ describe("scenarios > dashboard > parameters", () => {
       filterWidget().contains("Gadget");
 
       // But the question should display the new value and is not affected by the filter
-      cy.get(".ScalarValue").invoke("text").should("eq", "1");
+      cy.findByTestId("scalar-value").invoke("text").should("eq", "1");
 
       // Confirm that it is not possible to connect filter to the updated question anymore (metabase#9299)
       cy.icon("pencil").click();

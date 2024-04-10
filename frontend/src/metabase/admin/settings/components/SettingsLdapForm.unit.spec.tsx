@@ -1,11 +1,11 @@
+import userEvent from "@testing-library/user-event";
 import fetchMock from "fetch-mock";
 
-import userEvent from "@testing-library/user-event";
 import { renderWithProviders, screen, waitFor } from "__support__/ui";
 import { createMockGroup } from "metabase-types/api/mocks";
 
-import { SettingsLdapFormView } from "./SettingsLdapForm";
 import type { SettingValues } from "./SettingsLdapForm";
+import { SettingsLdapFormView } from "./SettingsLdapForm";
 
 const GROUPS = [
   createMockGroup(),
@@ -254,54 +254,57 @@ describe("SettingsLdapForm", () => {
       "ldap-sync-admin-group": true,
     };
 
-    userEvent.type(
+    await userEvent.type(
       await screen.findByRole("textbox", { name: /LDAP Host/ }),
       ATTRS["ldap-host"],
     );
-    userEvent.type(
+    await userEvent.type(
       await screen.findByRole("textbox", { name: /LDAP Port/ }),
       ATTRS["ldap-port"],
     );
-    userEvent.click(screen.getByRole("radio", { name: /SSL/ }));
-    userEvent.type(
+    await userEvent.click(screen.getByRole("radio", { name: /SSL/ }));
+    await userEvent.type(
       await screen.findByRole("textbox", { name: /Username or DN/ }),
       ATTRS["ldap-bind-dn"],
     );
-    userEvent.type(screen.getByLabelText(/Password/), ATTRS["ldap-password"]);
-    userEvent.type(
+    await userEvent.type(
+      screen.getByLabelText(/Password/),
+      ATTRS["ldap-password"],
+    );
+    await userEvent.type(
       await screen.findByRole("textbox", { name: /User search base/ }),
       ATTRS["ldap-user-base"],
     );
-    userEvent.type(
+    await userEvent.type(
       await screen.findByRole("textbox", { name: /User filter/ }),
       ATTRS["ldap-user-filter"],
     );
-    userEvent.type(
+    await userEvent.type(
       await screen.findByRole("textbox", { name: /Email attribute/ }),
       ATTRS["ldap-attribute-email"],
     );
-    userEvent.type(
+    await userEvent.type(
       await screen.findByRole("textbox", { name: /First name attribute/ }),
       ATTRS["ldap-attribute-firstname"],
     );
-    userEvent.type(
+    await userEvent.type(
       await screen.findByRole("textbox", { name: /Last name attribute/ }),
       ATTRS["ldap-attribute-lastname"],
     );
-    userEvent.click(screen.getByTestId("group-sync-switch")); // checkbox for "ldap-group-sync"
-    userEvent.type(
+    await userEvent.click(screen.getByTestId("group-sync-switch")); // checkbox for "ldap-group-sync"
+    await userEvent.type(
       await screen.findByRole("textbox", { name: /Group search base/ }),
       ATTRS["ldap-group-base"],
     );
-    userEvent.type(
+    await userEvent.type(
       await screen.findByRole("textbox", { name: /Group membership filter/ }),
       ATTRS["ldap-group-membership-filter"],
     );
-    userEvent.click(
+    await userEvent.click(
       screen.getByRole("checkbox", { name: /Sync Administrator group/ }),
     );
 
-    userEvent.click(await screen.findByRole("button", { name: /Save/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Save/ }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(ATTRS);

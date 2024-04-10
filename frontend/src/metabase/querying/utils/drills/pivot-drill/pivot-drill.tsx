@@ -1,4 +1,5 @@
 import { t } from "ttag";
+
 import { QueryColumnPicker } from "metabase/common/components/QueryColumnPicker";
 import { ClickActionsView } from "metabase/visualizations/components/ClickActions";
 import type {
@@ -7,7 +8,7 @@ import type {
   PopoverClickAction,
 } from "metabase/visualizations/types/click-actions";
 import * as Lib from "metabase-lib";
-import type Question from "metabase-lib/Question";
+import type Question from "metabase-lib/v1/Question";
 
 const ACTIONS = {
   category: {

@@ -1,4 +1,5 @@
 import { t } from "ttag";
+
 import { ClickActionsView } from "metabase/visualizations/components/ClickActions";
 import type {
   RegularClickAction,
@@ -8,7 +9,7 @@ import type {
 import {
   getAutomaticDashboardUrl,
   getComparisonDashboardUrl,
-} from "metabase-lib/urls";
+} from "metabase-lib/v1/urls";
 
 export const automaticInsightsDrill: Drill = ({
   question,

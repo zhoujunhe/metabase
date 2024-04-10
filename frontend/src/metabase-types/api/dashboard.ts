@@ -1,16 +1,22 @@
+import type { EmbeddingParameters } from "metabase/public/lib/types";
 import type {
   ClickBehavior,
   Collection,
   CollectionAuthorityLevel,
+  CollectionId,
   Parameter,
   ParameterId,
   ParameterTarget,
 } from "metabase-types/api";
 
-import type { ActionDisplayType, WritebackAction } from "./actions";
-import type { SearchModelType } from "./search";
+import type {
+  ActionDisplayType,
+  WritebackAction,
+  WritebackActionId,
+} from "./actions";
 import type { Card, CardId, CardDisplayType } from "./card";
 import type { Dataset } from "./dataset";
+import type { SearchModel } from "./search";
 
 // x-ray dashboard have string ids
 export type DashboardId = number | string;
@@ -20,10 +26,14 @@ export type DashboardCard =
   | QuestionDashboardCard
   | VirtualDashboardCard;
 
+export type DashboardWidth = "full" | "fixed";
+
 export interface Dashboard {
   id: DashboardId;
+  created_at: string;
+  updated_at: string;
   collection?: Collection | null;
-  collection_id: number | null;
+  collection_id: CollectionId | null;
   name: string;
   description: string | null;
   model?: string;
@@ -43,7 +53,9 @@ export interface Dashboard {
   auto_apply_filters: boolean;
   archived: boolean;
   public_uuid: string | null;
-  embedding_params?: Record<string, string> | null;
+  initially_published_at: string | null;
+  embedding_params?: EmbeddingParameters | null;
+  width: DashboardWidth;
 
   /* Indicates whether static embedding for this dashboard has been published */
   enable_embedding: boolean;
@@ -51,28 +63,38 @@ export interface Dashboard {
 
 export type DashCardId = number;
 
-export type BaseDashboardCard = {
+export type DashboardCardLayoutAttrs = {
+  col: number;
+  row: number;
+  size_x: number;
+  size_y: number;
+};
+
+export type DashCardVisualizationSettings = {
+  [key: string]: unknown;
+  virtual_card?: VirtualCard;
+};
+
+export type BaseDashboardCard = DashboardCardLayoutAttrs & {
   id: DashCardId;
   dashboard_id: DashboardId;
   dashboard_tab_id: DashboardTabId | null;
   card_id: CardId | null;
   card: Card | VirtualCard;
   collection_authority_level?: CollectionAuthorityLevel;
-  size_x: number;
-  size_y: number;
-  col: number;
-  row: number;
   entity_id: string;
-  visualization_settings?: {
-    [key: string]: unknown;
-    virtual_card?: VirtualCard;
-  };
+  visualization_settings?: DashCardVisualizationSettings;
   justAdded?: boolean;
   created_at: string;
   updated_at: string;
 };
 
-export type VirtualCardDisplay = "text" | "action" | "link" | "heading";
+export type VirtualCardDisplay =
+  | "action"
+  | "heading"
+  | "link"
+  | "placeholder"
+  | "text";
 
 export type VirtualCard = Partial<
   Omit<Card, "name" | "dataset_query" | "visualization_settings">
@@ -87,13 +109,13 @@ export type ActionDashboardCard = Omit<
   BaseDashboardCard,
   "parameter_mappings"
 > & {
+  action_id: WritebackActionId;
   action?: WritebackAction;
   card_id: CardId | null; // model card id for the associated action
   card: Card;
 
   parameter_mappings?: ActionParametersMapping[] | null;
-  visualization_settings: {
-    [key: string]: unknown;
+  visualization_settings: DashCardVisualizationSettings & {
     "button.label"?: string;
     click_behavior?: ClickBehavior;
     actionDisplayType?: ActionDisplayType;
@@ -157,7 +179,7 @@ export type UnrestrictedLinkEntity = {
   id: number;
   db_id?: number;
   database_id?: number;
-  model: SearchModelType;
+  model: SearchModel;
   name: string;
   display_name?: string;
   description?: string;

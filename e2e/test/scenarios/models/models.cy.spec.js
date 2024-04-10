@@ -1,3 +1,9 @@
+import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+import {
+  ORDERS_QUESTION_ID,
+  ORDERS_BY_YEAR_QUESTION_ID,
+} from "e2e/support/cypress_sample_instance_data";
 import {
   restore,
   modal,
@@ -21,15 +27,9 @@ import {
   getDashboardCard,
   saveDashboard,
   getNotebookStep,
+  selectFilterOperator,
+  focusNativeEditor,
 } from "e2e/support/helpers";
-
-import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
-import {
-  ORDERS_QUESTION_ID,
-  ORDERS_BY_YEAR_QUESTION_ID,
-} from "e2e/support/cypress_sample_instance_data";
-
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import { questionInfoButton } from "e2e/support/helpers/e2e-ui-elements-helpers";
 
 import {
@@ -167,18 +167,18 @@ describe("scenarios > models", () => {
   it("changes model's display to table", () => {
     visitQuestion(ORDERS_BY_YEAR_QUESTION_ID);
 
-    cy.get(".LineAreaBarChart");
+    cy.get("[data-element-id=line-area-bar-chart]");
     cy.get(".TableInteractive").should("not.exist");
 
     turnIntoModel();
 
     cy.get(".TableInteractive");
-    cy.get(".LineAreaBarChart").should("not.exist");
+    cy.get("[data-element-id=line-area-bar-chart]").should("not.exist");
   });
 
   it("allows to undo turning a question into a model", () => {
     visitQuestion(ORDERS_BY_YEAR_QUESTION_ID);
-    cy.get(".LineAreaBarChart");
+    cy.get("[data-element-id=line-area-bar-chart]");
 
     turnIntoModel();
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
@@ -186,7 +186,7 @@ describe("scenarios > models", () => {
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Undo").click();
 
-    cy.get(".LineAreaBarChart");
+    cy.get("[data-element-id=line-area-bar-chart]");
     openQuestionActions();
     assertIsQuestion();
   });
@@ -306,9 +306,8 @@ describe("scenarios > models", () => {
       popover().within(() => {
         cy.findByText("Product").click();
         cy.findByText("Price").click();
-        cy.findByDisplayValue("Equal to").click();
       });
-      cy.findByRole("listbox").findByText("Less than").click();
+      selectFilterOperator("Less than");
       popover().within(() => {
         cy.findByPlaceholderText("Enter a number").type("50");
         cy.button("Add filter").click();
@@ -323,12 +322,12 @@ describe("scenarios > models", () => {
       selectFromDropdown("Created At");
 
       visualize();
-      cy.get(".LineAreaBarChart");
+      cy.get("[data-element-id=line-area-bar-chart]");
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Save").click();
 
-      modal().within(() => {
-        cy.button("Save").click();
+      cy.findByTestId("save-question-modal").within(modal => {
+        cy.findByText("Save").click();
       });
 
       cy.url().should("match", /\/question\/\d+-[a-z0-9-]*$/);
@@ -477,12 +476,15 @@ describe("scenarios > models", () => {
     // Check card tags are supported by models
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText(/Open editor/i).click();
-    cy.get(".ace_content").type(
-      "{leftarrow}{leftarrow}{backspace}{backspace}#1",
+    focusNativeEditor().type(
+      "{leftarrow}{leftarrow}{backspace}{backspace}#1-orders",
     );
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("Save").click();
-    modal().findByText("Save").click();
+    cy.findByText("Save").click({ force: true });
+
+    cy.findByTestId("save-question-modal").within(modal => {
+      cy.findByText("Save").click({ force: true });
+    });
 
     turnIntoModel();
     openQuestionActions();

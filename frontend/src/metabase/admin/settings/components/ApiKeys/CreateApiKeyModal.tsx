@@ -1,7 +1,7 @@
-import { t } from "ttag";
 import { useCallback, useState } from "react";
+import { t } from "ttag";
 
-import { Text, Button, Group, Modal, Stack } from "metabase/ui";
+import { useCreateApiKeyMutation } from "metabase/api";
 import {
   Form,
   FormErrorMessage,
@@ -10,29 +10,22 @@ import {
   FormSubmitButton,
   FormTextInput,
 } from "metabase/forms";
-import { ApiKeysApi } from "metabase/services";
+import { Text, Button, Group, Modal, Stack } from "metabase/ui";
 
 import { SecretKeyModal } from "./SecretKeyModal";
 import { API_KEY_VALIDATION_SCHEMA } from "./utils";
 
-export const CreateApiKeyModal = ({
-  onClose,
-  refreshList,
-}: {
-  onClose: () => void;
-  refreshList: () => void;
-}) => {
+export const CreateApiKeyModal = ({ onClose }: { onClose: () => void }) => {
   const [modal, setModal] = useState<"create" | "secretKey">("create");
-  const [secretKey, setSecretKey] = useState<string>("");
+  const [createApiKey, response] = useCreateApiKeyMutation();
+  const secretKey = response?.data?.unmasked_key || "";
 
   const handleSubmit = useCallback(
     async vals => {
-      const response = await ApiKeysApi.create(vals);
-      setSecretKey(response.unmasked_key);
+      await createApiKey(vals);
       setModal("secretKey");
-      refreshList();
     },
-    [refreshList],
+    [createApiKey],
   );
 
   if (modal === "secretKey") {
