@@ -1,3 +1,4 @@
+import type { DragEndEvent } from "@dnd-kit/core";
 import { DndContext, useSensor, PointerSensor } from "@dnd-kit/core";
 import {
   restrictToVerticalAxis,
@@ -44,6 +45,8 @@ interface CollectionSidebarBookmarksProps {
     newIndex: number;
     oldIndex: number;
   }) => void;
+  onToggle: (isExpanded: boolean) => void;
+  initialState: "expanded" | "collapsed";
 }
 
 interface BookmarkItemProps {
@@ -54,9 +57,6 @@ interface BookmarkItemProps {
   onSelect: () => void;
   onDeleteBookmark: (bookmark: Bookmark) => void;
 }
-
-const BOOKMARKS_INITIALLY_VISIBLE =
-  localStorage.getItem("shouldDisplayBookmarks") !== "false";
 
 function isBookmarkSelected(bookmark: Bookmark, selectedItem?: SelectedItem) {
   if (!selectedItem) {
@@ -115,6 +115,8 @@ const BookmarkList = ({
   onSelect,
   onDeleteBookmark,
   reorderBookmarks,
+  onToggle,
+  initialState,
 }: CollectionSidebarBookmarksProps) => {
   const [orderedBookmarks, setOrderedBookmarks] = useState(bookmarks);
   const [isSorting, setIsSorting] = useState(false);
@@ -124,12 +126,8 @@ const BookmarkList = ({
   }, [bookmarks]);
 
   const pointerSensor = useSensor(PointerSensor, {
-    activationConstraint: { distance: 0 },
+    activationConstraint: { distance: 15 },
   });
-
-  const onToggleBookmarks = useCallback(isVisible => {
-    localStorage.setItem("shouldDisplayBookmarks", String(isVisible));
-  }, []);
 
   const handleSortStart = useCallback(() => {
     document.body.classList.add(GrabberS.grabbing);
@@ -137,10 +135,10 @@ const BookmarkList = ({
   }, []);
 
   const handleSortEnd = useCallback(
-    input => {
+    (input: DragEndEvent) => {
       document.body.classList.remove(GrabberS.grabbing);
       setIsSorting(false);
-      const newIndex = bookmarks.findIndex(b => b.id === input.over.id);
+      const newIndex = bookmarks.findIndex(b => b.id === input.over?.id);
       const oldIndex = bookmarks.findIndex(b => b.id === input.active.id);
       reorderBookmarks({ newIndex, oldIndex });
     },
@@ -149,14 +147,17 @@ const BookmarkList = ({
 
   const bookmarkIds = bookmarks.map(b => b.id);
 
+  const headerId = "headingForBookmarksSectionOfSidebar";
+
   return (
     <CollapseSection
-      header={<SidebarHeading>{t`Bookmarks`}</SidebarHeading>}
-      initialState={BOOKMARKS_INITIALLY_VISIBLE ? "expanded" : "collapsed"}
+      aria-labelledby={headerId}
+      header={<SidebarHeading id={headerId}>{t`Bookmarks`}</SidebarHeading>}
+      initialState={initialState}
       iconPosition="right"
       iconSize={8}
       headerClass={CS.mb1}
-      onToggle={onToggleBookmarks}
+      onToggle={onToggle}
     >
       <DndContext
         onDragEnd={handleSortEnd}

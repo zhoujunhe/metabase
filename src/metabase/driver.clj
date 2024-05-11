@@ -366,7 +366,8 @@
 
 (defmulti describe-fks
   "Returns a reducible collection of maps, each containing information about foreign keys.
-  Takes keyword arguments to narrow down the results to a set of `schema-names` or `table-names`.
+  Takes optional keyword arguments to narrow down the results to a set of `schema-names`
+  and `table-names`.
 
   Results match [[metabase.sync.interface/FKMetadataEntry]].
   Results are optionally filtered by `schema-names` and `table-names` provided.
@@ -588,11 +589,21 @@
     ;; if so, `metabase.driver/describe-fields` must be implemented instead of `metabase.driver/describe-table`
     :describe-fields
 
+    ;; Does the driver support automatically adding a primary key column to a table for uploads?
+    ;; If so, Metabase will add an auto-incrementing primary key column called `_mb_row_id` for any table created or
+    ;; updated with CSV uploads, and ignore any `_mb_row_id` column in the CSV file.
+    ;; DEFAULTS TO TRUE
+    :upload-with-auto-pk
+
     ;; Does the driver support fingerprint the fields. Default is true
     :fingerprint
 
     ;; Does this driver support window functions like cumulative count and cumulative sum? (default: false)
-    :window-functions})
+    :window-functions/cumulative
+
+    ;; Does this driver support the new `:offset` MBQL clause added in 50? (i.e. SQL `lag` and `lead` or equivalent
+    ;; functions)
+    :window-functions/offset})
 
 (defmulti database-supports?
   "Does this driver and specific instance of a database support a certain `feature`?
@@ -630,7 +641,8 @@
                               :temporal-extract                       true
                               :schemas                                true
                               :test/jvm-timezone-setting              true
-                              :fingerprint                            true}]
+                              :fingerprint                            true
+                              :upload-with-auto-pk                    true}]
   (defmethod database-supports? [::driver feature] [_driver _feature _db] supported?))
 
 (defmulti ^String escape-alias

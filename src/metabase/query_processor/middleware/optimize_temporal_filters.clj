@@ -6,13 +6,14 @@
    [metabase.legacy-mbql.schema :as mbql.s]
    [metabase.legacy-mbql.util :as mbql.u]
    [metabase.lib.metadata :as lib.metadata]
+   [metabase.lib.schema.common :as lib.schema.common]
    [metabase.lib.util.match :as lib.util.match]
    [metabase.query-processor.store :as qp.store]
    [metabase.util :as u]
    [metabase.util.date-2 :as u.date]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
-   [metabase.util.malli.schema :as ms]))
+   [metabase.util.malli.registry :as mr]))
 
 (def ^:private optimizable-units
   #{:second :minute :hour :day :week :month :quarter :year})
@@ -120,14 +121,17 @@
     (and (field-and-temporal-value-have-compatible-units? field temporal-value-1)
          (field-and-temporal-value-have-compatible-units? field temporal-value-2))))
 
-(mu/defn ^:private temporal-literal-lower-bound :- (ms/InstanceOfClass java.time.temporal.Temporal)
+(mr/def ::temporal
+  (lib.schema.common/instance-of-class java.time.temporal.Temporal))
+
+  (mu/defn ^:private temporal-literal-lower-bound :- ::temporal
   [unit :- (into [:enum] u.date/add-units)
-   t    :- (ms/InstanceOfClass java.time.temporal.Temporal)]
+   t    :- ::temporal]
   (:start (u.date/range t unit)))
 
-(mu/defn ^:private temporal-literal-upper-bound :- (ms/InstanceOfClass java.time.temporal.Temporal)
+(mu/defn ^:private temporal-literal-upper-bound :- ::temporal
   [unit :- (into [:enum] u.date/add-units)
-   t    :- (ms/InstanceOfClass java.time.temporal.Temporal)]
+   t    :- ::temporal]
   (:end (u.date/range t unit)))
 
 (defn- change-temporal-unit-to-default [field]
@@ -178,15 +182,17 @@
   (let [target-unit (target-unit-for-new-bound unit temporal-unit)]
     [:absolute-datetime (temporal-literal-upper-bound target-unit t) :default]))
 
-(mu/defmethod temporal-value-lower-bound :relative-datetime :- mbql.s/relative-datetime
+(mu/defmethod temporal-value-lower-bound :relative-datetime :- [:maybe mbql.s/relative-datetime]
   [[_ n unit] temporal-unit]
-  (let [target-unit (target-unit-for-new-bound unit temporal-unit)]
-    [:relative-datetime (if (= n :current) 0 n) target-unit]))
+  (when-not (= temporal-unit :default)
+    (let [target-unit (target-unit-for-new-bound unit temporal-unit)]
+      [:relative-datetime (if (= n :current) 0 n) target-unit])))
 
-(mu/defmethod temporal-value-upper-bound :relative-datetime :- mbql.s/relative-datetime
+(mu/defmethod temporal-value-upper-bound :relative-datetime :- [:maybe mbql.s/relative-datetime]
   [[_ n unit] temporal-unit]
-  (let [target-unit (target-unit-for-new-bound unit temporal-unit)]
-    [:relative-datetime (inc (if (= n :current) 0 n)) target-unit]))
+  (when-not (= temporal-unit :default)
+    (let [target-unit (target-unit-for-new-bound unit temporal-unit)]
+      [:relative-datetime (inc (if (= n :current) 0 n)) target-unit])))
 
 (defn- date-field-with-day-bucketing? [x]
   (and (isa? (field-or-expression-effective-type x) :type/Date)

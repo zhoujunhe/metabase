@@ -1,9 +1,10 @@
 import type { UserId } from "metabase-types/api/user";
 
-import type { CardId } from "./card";
+import type { CardDisplayType, CardId } from "./card";
 import type { Collection, CollectionId } from "./collection";
 import type { DashboardId } from "./dashboard";
 import type { DatabaseId, InitialSyncStatus } from "./database";
+import type { PaginationRequest, PaginationResponse } from "./pagination";
 import type { FieldReference } from "./query";
 import type { TableId } from "./table";
 
@@ -22,7 +23,6 @@ export const SEARCH_MODELS = [
   ...ENABLED_SEARCH_MODELS,
   "segment",
   "metric",
-  "snippet",
 ] as const;
 
 export type EnabledSearchModel = typeof ENABLED_SEARCH_MODELS[number];
@@ -57,24 +57,22 @@ interface BaseSearchResult<
   name: string;
 }
 
-export interface SearchResponse<
+export type SearchResponse<
   Id extends SearchResultId = SearchResultId,
   Model extends SearchModel = SearchModel,
   Result extends BaseSearchResult<Id, Model> = SearchResult<Id, Model>,
-> {
+> = {
   data: Result[];
   models: Model[] | null;
   available_models: SearchModel[];
-  limit: number;
-  offset: number;
   table_db_id: DatabaseId | null;
-  total: number;
-}
+} & PaginationResponse;
 
 export type CollectionEssentials = Pick<
   Collection,
-  "id" | "name" | "authority_level"
->;
+  "id" | "name" | "authority_level" | "type"
+> &
+  Partial<Pick<Collection, "effective_ancestors">>;
 
 export type SearchResultId =
   | CollectionId
@@ -97,6 +95,8 @@ export interface SearchResult<
   table_id: TableId;
   bookmark: boolean | null;
   database_id: DatabaseId;
+  database_name: string | null;
+  display: CardDisplayType | null;
   pk_ref: FieldReference | null;
   table_schema: string | null;
   collection_authority_level: "official" | null;
@@ -120,7 +120,7 @@ export interface SearchResult<
   can_write: boolean | null;
 }
 
-export interface SearchRequest {
+export type SearchRequest = {
   q?: string;
   archived?: boolean;
   table_db_id?: DatabaseId;
@@ -133,10 +133,12 @@ export interface SearchRequest {
   last_edited_by?: UserId[];
   search_native_query?: boolean | null;
   verified?: boolean | null;
-  limit?: number;
-  offset?: number;
+  model_ancestors?: boolean | null;
 
   // this should be in ListCollectionItemsRequest but legacy code expects them here
   collection?: CollectionId;
   namespace?: "snippets";
-}
+} & PaginationRequest;
+
+/** Model retrieved through the search endpoint */
+export type ModelResult = SearchResult<number, "dataset">;

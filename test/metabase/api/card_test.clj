@@ -15,7 +15,6 @@
    [metabase.api.pivots :as api.pivots]
    [metabase.config :as config]
    [metabase.driver.sql-jdbc.execute :as sql-jdbc.execute]
-   [metabase.events.view-log-test :as view-log-test]
    [metabase.http-client :as client]
    [metabase.lib.core :as lib]
    [metabase.lib.metadata :as lib.metadata]
@@ -29,7 +28,6 @@
    [metabase.models.permissions-group :as perms-group]
    [metabase.models.revision :as revision]
    [metabase.permissions.util :as perms.u]
-   [metabase.public-settings.premium-features :as premium-features]
    [metabase.query-processor :as qp]
    [metabase.query-processor.async :as qp.async]
    [metabase.query-processor.card :as qp.card]
@@ -85,7 +83,8 @@
    :average_query_time     nil
    :last_query_start       nil
    :result_metadata        nil
-   :cache_invalidated_at   nil})
+   :cache_invalidated_at   nil
+   :view_count             0})
 
 ;; Used in dashboard tests
 (def card-defaults-no-hydrate
@@ -294,28 +293,6 @@
         (is (= [{:name "Card 1"}]
                (for [card (mt/user-http-request :rasta :get 200 "card", :f :bookmarked)]
                  (select-keys card [:name]))))))))
-
-(deftest filter-by-stale-test
-  (testing "Filter by `stale`"
-    ;; *query-analyzer/*parse-queries-in-test?* is not relevant since we're not doing the parsing here
-    (mt/with-temp [:model/Field        {active-field-id :id}    {:active true}
-                   :model/Field        {inactive-field-id :id}  {:active false}
-                   :model/Card         relevant-card            {:name "Card with stale query"}
-                   :model/Card         not-stale-card           {:name "Card whose columns are up to date"}
-                   :model/Card         irrelevant-card          {:name "Card with no QueryFields at all"}
-                   :model/Card         select-*-card            {:name "Card with only wildcard refs"}
-                   :model/QueryField   _                        {:card_id  (u/the-id relevant-card)
-                                                                 :field_id inactive-field-id}
-                   :model/QueryField   _                        {:card_id  (u/the-id not-stale-card)
-                                                                 :field_id active-field-id}
-                   :model/QueryField   _                        {:card_id  (u/the-id select-*-card)
-                                                                 :field_id inactive-field-id
-                                                                 :direct_reference false}]
-      (with-cards-in-readable-collection [relevant-card not-stale-card irrelevant-card]
-        (is (=? [{:name         "Card with stale query"
-                  :query_fields [{:card_id  (u/the-id relevant-card)
-                                  :field_id inactive-field-id}]}]
-                (mt/user-http-request :rasta :get 200 "card", :f :stale)))))))
 
 (deftest filter-by-using-model-segment-metric
   (mt/with-temp [:model/Database {database-id :id} {}
@@ -1140,7 +1117,7 @@
           (perms/grant-collection-read-permissions! (perms-group/all-users) collection)
           (is (= (merge
                   card-defaults
-                  (select-keys card [:id :name :entity_id :created_at :updated_at])
+                  (select-keys card [:id :name :entity_id :created_at :updated_at :last_used_at])
                   {:dashboard_count        0
                    :parameter_usage_count  0
                    :creator_id             (mt/user->id :rasta)
@@ -3350,18 +3327,6 @@
                   :status 422}
                  (upload-example-csv-via-api!))))))))
 
-(deftest card-read-event-test
-  (when (premium-features/log-enabled?)
-    (testing "Card reads (views) via the API are recorded in the view_log"
-      (t2.with-temp/with-temp [:model/Card card {:name "My Cool Card" :type :question}]
-        (testing "GET /api/card/:id"
-          (mt/user-http-request :crowberto :get 200 (format "card/%s" (u/id card)))
-          (is (partial=
-               {:user_id  (mt/user->id :crowberto)
-                :model    "card"
-                :model_id (u/id card)}
-               (view-log-test/latest-view (mt/user->id :crowberto) (u/id card)))))))))
-
 (deftest pivot-from-model-test
   (testing "Pivot options should match fields through models (#35319)"
     (mt/dataset test-data
@@ -3518,17 +3483,26 @@
                 (mt/user-http-request :crowberto :post 400 "card" card-data)))))))
 
 (deftest ^:parallel format-export-middleware-test
-  (testing "The `:format-export?` query processor middleware has the intended effect on file exports."
+  (testing "The `:format-rows` query processor middleware results in formatted/unformatted rows when set to true/false."
     (let [q             {:database (mt/id)
                          :type     :native
                          :native   {:query "SELECT 2000 AS number, '2024-03-26'::DATE AS date;"}}
-          output-helper {:csv  (fn [output] (->> output csv/read-csv last))
-                         :json (fn [output] (->> output (map (juxt :NUMBER :DATE)) last))}]
-      (t2.with-temp/with-temp [Card {card-id :id} {:display :table :dataset_query q}]
-        (doseq [[export-format apply-formatting? expected] [[:csv true ["2,000" "March 26, 2024"]]
-                                                            [:csv false ["2000" "2024-03-26"]]
-                                                            [:json true ["2,000" "March 26, 2024"]]
-                                                            [:json false [2000 "2024-03-26"]]]]
+          output-helper {:csv  (fn [output] (->> output csv/read-csv))
+                         :json (fn [[row]] [(map name (keys row)) (vals row)])}]
+      (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query q
+                                                   :display       :table
+                                                   :visualization_settings
+                                                   {:column_settings
+                                                    {"[\"name\",\"NUMBER\"]" {:column_title "Custom Title"}
+                                                     "[\"name\",\"DATE\"]"   {:column_title "Custom Title 2"}}}}]
+        (doseq [[export-format apply-formatting? expected] [[:csv true [["Custom Title" "Custom Title 2"]
+                                                                        ["2,000" "March 26, 2024"]]]
+                                                            [:csv false [["NUMBER" "DATE"]
+                                                                         ["2000" "2024-03-26"]]]
+                                                            [:json true [["Custom Title" "Custom Title 2"]
+                                                                         ["2,000" "March 26, 2024"]]]
+                                                            [:json false [["NUMBER" "DATE"]
+                                                                          [2000 "2024-03-26"]]]]]
           (testing (format "export_format %s yields expected output for %s exports." apply-formatting? export-format)
               (is (= expected
                      (->> (mt/user-http-request
