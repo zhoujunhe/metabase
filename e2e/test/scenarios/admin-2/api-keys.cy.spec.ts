@@ -1,10 +1,5 @@
-import {
-  restore,
-  visitDashboard,
-  visitQuestion,
-  createApiKey,
-} from "e2e/support/helpers";
-
+import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
   ALL_USERS_GROUP_ID,
   READONLY_GROUP_ID,
@@ -13,9 +8,12 @@ import {
   ORDERS_QUESTION_ID,
   ORDERS_DASHBOARD_ID,
 } from "e2e/support/cypress_sample_instance_data";
-
-import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+import {
+  restore,
+  visitDashboard,
+  visitQuestion,
+  createApiKey,
+} from "e2e/support/helpers";
 const { PRODUCTS_ID } = SAMPLE_DATABASE;
 
 describe("scenarios > admin > settings > API keys", () => {
@@ -126,8 +124,7 @@ describe("scenarios > admin > settings > API keys", () => {
     cy.wait("@deleteKey");
     cy.wait("@getKeys");
 
-    cy.findByTestId("api-keys-table").should("not.contain", "Test API Key One");
-    cy.findByTestId("api-keys-table").findByText("No API keys here yet");
+    cy.findByTestId("empty-table-warning").findByText("No API keys here yet");
   });
 
   it("should allow editing an API key", () => {

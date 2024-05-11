@@ -21,6 +21,7 @@ Some things to keep in mind with this special Metabase analytics collection:
 - Metabase analytics is a view-only collection. Even admins can't curate it. It is eternal.
 - By default, only admins can view the Metabase analytics collection (though admins can grant other groups view access to it). If you're upgrading from a version older than 48, people in groups with [monitoring access](../usage-and-performance-tools/usage-analytics.md) will also get access to the Metabase analytics collection. But after that initial grandfathering in, the monitoring access privilege is unrelated to the Metabase analytics collection; you'll need to specifically grant groups access to the Metabase analytics collection.
 - You can duplicate any item in the Metabase analytics collection, modify the item to your liking, and save the item to another collection.
+- Metabase creates some default user accounts that you might see in your usage analytics, like `internal@metabase.com`. See [Default accounts](../people-and-groups/managing.md#default-user-accounts) for more information.
 
 ## Permissions
 
@@ -29,6 +30,18 @@ By default, only admins can see the Metabase analytics collection. You can manag
 There are only two access types for the Metabase analytics collection: **View** and **No access**.
 
 Additionally, this Metabase analytics collection has a default sub-collection called "Custom reports" which you can use to save duplicated/modified questions, dashboards, and models. This sub-collection inherits the same permissions, but it's not view-only; admins have curate access by default, and can grant other groups view access.
+
+## Viewing usage insights for a question, dashboard, or model
+
+> Only people in groups with view access to the Metabase analytics collection will see this Usage insights option.
+
+To view usage analytics for a question, dashboard, or model:
+
+- Visit the item.
+- Click on the dot menu (**...**).
+- Select **Usage insights**.
+
+Metabase will take you to the relevant usage dashboard and plug in the item's ID.
 
 ## Creating custom reports
 
@@ -44,7 +57,7 @@ There is one thing to know about the Custom reports collection: its metadata res
 
 The Metabase Analytics collection includes a set of read-only dashboards.
 
-### Metabase metrics
+### Metabase metrics dashboard
 
 General information about people viewing and creating dashboards, questions, subscriptions, and alerts. Cards include:
 
@@ -60,7 +73,7 @@ General information about people viewing and creating dashboards, questions, sub
 - Most viewed dashboards
 - Most viewed cards
 
-### Most viewed content
+### Most viewed content dashboard
 
 View the most relevant content in your Metabase. Cards include:
 
@@ -68,7 +81,7 @@ View the most relevant content in your Metabase. Cards include:
 - Most viewed questions
 - Most viewed tables
 
-### Person overview
+### Person overview dashboard
 
 See what someone's been up to in your Metabase. Cards include:
 
@@ -84,7 +97,7 @@ See what someone's been up to in your Metabase. Cards include:
 - Recent activity
 - Last queries
 
-### Dashboard overview
+### Dashboard overview dashboard
 
 Information about dashboards, questions, models, and tables. Cards include:
 
@@ -98,7 +111,7 @@ Information about dashboards, questions, models, and tables. Cards include:
 - Recent activity on dashboard
 - Subscriptions on this dashboard
 
-### Question overview
+### Question overview dashboard
 
 Views, performance, activity, and other data for a particular question. Cards include:
 
@@ -110,7 +123,7 @@ Views, performance, activity, and other data for a particular question. Cards in
 - Last activity on this question
 - Alerts on this question
 
-### Performance overview
+### Performance overview dashboard
 
 Question, dashboard and database performance. Cards include:
 
@@ -121,7 +134,7 @@ Question, dashboard and database performance. Cards include:
 - Dashboards with more questions in the same tab
 - Users consuming the most resources
 
-### Content with cobwebs
+### Content with cobwebs dashboard
 
 Dashboards and questions that you could consider archiving. Cards include:
 
@@ -133,7 +146,7 @@ Dashboards and questions that you could consider archiving. Cards include:
 
 The Metabase analytics collection includes a bunch of useful models based on Metabase's application database.
 
-### Activity log model
+## Activity log model
 
 Each row of this model describes one event of a particular topic. Fields include:
 
@@ -169,7 +182,7 @@ The topics include:
 - subscription-delete
 - user-joined
 
-### View Log model
+## View log model
 
 Tracks views cards (which includes models), dashboards, and tables. Fields include:
 
@@ -180,7 +193,7 @@ Tracks views cards (which includes models), dashboards, and tables. Fields inclu
 - Entity ID
 - Entity Qualified ID
 
-### Query log model
+## Query log model
 
 Information about all queries Metabase ran across all dashboards. Fields include:
 
@@ -223,37 +236,7 @@ Query sources include:
 - question
 - xlsx-download
 
-### Content model
-
-All Metabase content, including questions, models, dashboards, events, and collections. Entity types include:
-
-- action
-- collection
-- dashboard
-- event
-- model
-- question
-
-### Dashboard subscriptions
-
-Which subscriptions are active, who created them, who's subscribed to them, when they're sent, and more.
-
-- Entity ID
-- Entity Qualified ID
-- Created At
-- Updated At
-- Creator ID
-- Archived
-- Dashboard Qualified ID
-- Schedule Type
-- Schedule Day
-- Schedule Hour
-- Recipient Type
-- Recipients
-- Recipient External
-- Parameters
-
-### Alerts
+## Alerts model
 
 All alerts, both active and archived.
 
@@ -273,7 +256,7 @@ All alerts, both active and archived.
 - Recipients
 - Recipient External
 
-### Content
+### Content model
 
 Questions, dashboards, models, events, and collections.
 
@@ -298,7 +281,16 @@ Questions, dashboards, models, events, and collections.
 - Question Is Native
 - Event Timestamp
 
-### People model
+Entity types include:
+
+- action
+- collection
+- dashboard
+- event
+- model
+- question
+
+## People model
 
 Everyone in your Metabase, including deactivated accounts. Fields include:
 
@@ -315,7 +307,7 @@ Everyone in your Metabase, including deactivated accounts. Fields include:
 - SSO Source
 - Locale
 
-### Dashboard subscriptions model
+## Dashboard subscriptions model
 
 Which subscriptions are active, who created them, who's subscribed to them, when they're sent, and more.
 
@@ -334,7 +326,7 @@ Which subscriptions are active, who created them, who's subscribed to them, when
 - Recipient External
 - Parameters
 
-### Dashboard cards model
+## Dashboard cards model
 
 Each row is a dashboard card: either a question card or a text card. Fields include:
 
@@ -403,7 +395,7 @@ All fields from all connected data sources. Fields include:
 - Active
 - Table ID
 
-## System tasks
+## System tasks model
 
 Describes the last 14 days of Metabase internal processes tasks.
 

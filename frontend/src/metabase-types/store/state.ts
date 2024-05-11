@@ -1,19 +1,22 @@
 import type { RouterState } from "react-router-redux";
 
 import type { User } from "metabase-types/api";
+
 import type { AdminState } from "./admin";
 import type { AppState } from "./app";
+import type { AuthState } from "./auth";
 import type { DashboardState } from "./dashboard";
 import type { EmbedState } from "./embed";
 import type { EntitiesState } from "./entities";
 import type { MetabotState } from "./metabot";
-import type { QueryBuilderState } from "./qb";
 import type { ParametersState } from "./parameters";
+import type { QueryBuilderState } from "./qb";
+import type { RequestsState } from "./requests";
 import type { SettingsState } from "./settings";
 import type { SetupState } from "./setup";
 import type { FileUploadState } from "./upload";
-import type { AuthState } from "./auth";
 
+type modalName = null | "collection" | "dashboard" | "action";
 export interface State {
   admin: AdminState;
   app: AppState;
@@ -25,13 +28,15 @@ export interface State {
   metabot: MetabotState;
   parameters: ParametersState;
   qb: QueryBuilderState;
+  requests: RequestsState;
   routing: RouterState;
   settings: SettingsState;
   setup: SetupState;
   upload: FileUploadState;
+  modal: modalName;
 }
 
-export type Dispatch<T = any> = (action: T) => void;
+export type Dispatch<T = any> = (action: T) => unknown | Promise<unknown>;
 
 export type GetState = () => State;
 

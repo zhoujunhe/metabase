@@ -23,8 +23,8 @@
    [metabase.util.log :as log]
    [taoensso.nippy :as nippy])
   (:import
-   (org.bson.types ObjectId)
-   (com.mongodb.client MongoClient MongoDatabase)))
+   (com.mongodb.client MongoClient MongoDatabase)
+   (org.bson.types ObjectId)))
 
 (set! *warn-on-reflection* true)
 
@@ -49,7 +49,8 @@
   [_ db-details]
   (mongo.connection/with-mongo-client [^MongoClient c db-details]
     (let [db-names (mongo.util/list-database-names c)
-          db (mongo.util/database c (mongo.db/db-name db-details))
+          db-name (mongo.db/db-name db-details)
+          db (mongo.util/database c db-name)
           db-stats (mongo.util/run-command db {:dbStats 1} :keywordize true)]
       (and
        ;; 1. check db.dbStats command completes successfully
@@ -57,7 +58,7 @@
           1.0)
        ;; 2. check the database is actually on the server
        ;; (this is required because (1) is true even if the database doesn't exist)
-       (boolean (some #(= % (:db db-stats)) db-names))))))
+       (boolean (some #(= % db-name) db-names))))))
 
 (defmethod driver/humanize-connection-error-message
   :mongo
@@ -271,14 +272,6 @@
                               :index-info                      true}]
   (defmethod driver/database-supports? [:mongo feature] [_driver _feature _db] supported?))
 
-;; We say Mongo supports foreign keys so that the front end can use implicit
-;; joins. In reality, Mongo doesn't support foreign keys.
-;; Only define an implementation for `:foreign-keys` if none exists already.
-;; In test extensions we define an alternate implementation, and we don't want
-;; to stomp over that if it was loaded already.
-(when-not (get (methods driver/supports?) [:mongo :foreign-keys])
-  (defmethod driver/supports? [:mongo :foreign-keys] [_ _] true))
-
 (defmethod driver/database-supports? [:mongo :schemas] [_driver _feat _db] false)
 
 (defmethod driver/database-supports? [:mongo :expressions]
@@ -315,7 +308,8 @@
   (mongo.qp/mbql->native query))
 
 (defmethod driver/execute-reducible-query :mongo
-  [_ query _context respond]
+  [_driver query _context respond]
+  (assert (string? (get-in query [:native :collection])) "Cannot execute MongoDB query without a :collection name")
   (mongo.connection/with-mongo-client [_ (lib.metadata/database (qp.store/metadata-provider))]
     (mongo.execute/execute-reducible-query query respond)))
 

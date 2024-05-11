@@ -1,21 +1,21 @@
+import { DateTimeColumn, NumberColumn } from "__support__/visualizations";
 import * as measureText from "metabase/lib/measure-text";
 import type { FontStyle } from "metabase/visualizations/shared/types/measure-text";
-
 import type {
   DatasetColumn,
-  Insight,
-  RelativeDatetimeUnit,
+  DateTimeAbsoluteUnit,
   RowValues,
   SmartScalarComparison,
   SmartScalarComparisonAnotherColumn,
   SmartScalarComparisonStaticNumber,
   VisualizationSettings,
 } from "metabase-types/api";
+import type { Insight } from "metabase-types/api/insight";
 import {
   createMockColumn,
   createMockSingleSeries,
 } from "metabase-types/api/mocks";
-import { DateTimeColumn, NumberColumn } from "__support__/visualizations";
+
 import { COMPARISON_TYPES } from "./constants";
 import {
   COMPARISON_SELECTOR_OPTIONS,
@@ -43,8 +43,16 @@ const getAutoPrecisionOptions = (width: number) => {
 describe("SmartScalar > utils", () => {
   describe("scalar.comparisons", () => {
     const FIELD_NAME = "Count";
-    const createInsights = (dateUnit: RelativeDatetimeUnit) => [
-      { unit: dateUnit, col: FIELD_NAME },
+    const createInsights = (dateUnit: DateTimeAbsoluteUnit): Insight[] => [
+      {
+        unit: dateUnit,
+        col: FIELD_NAME,
+        offset: 0,
+        slope: 0,
+        "last-change": 0,
+        "last-value": 0,
+        "previous-value": 0,
+      },
     ];
     const cols = [
       createMockColumn(DateTimeColumn({ name: "Month" })),

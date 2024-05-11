@@ -1,10 +1,12 @@
 import { t } from "ttag";
+
 import type {
   ClickAction,
   Drill,
 } from "metabase/visualizations/types/click-actions";
 import * as Lib from "metabase-lib";
-import type Question from "metabase-lib/Question";
+import type Question from "metabase-lib/v1/Question";
+
 import { getFilterPopover } from "../filter-drill";
 
 export const quickFilterDrill: Drill<Lib.QuickFilterDrillThruInfo> = ({
@@ -56,7 +58,7 @@ function getActionOverrides(
     }
   }
 
-  if (Lib.isString(column) && typeof value === "string") {
+  if (Lib.isStringOrStringLike(column) && typeof value === "string") {
     const columnName = Lib.displayInfo(query, stageIndex, column).displayName;
     const valueTitle = getTextValueTitle(value);
     const action: Partial<ClickAction> = {

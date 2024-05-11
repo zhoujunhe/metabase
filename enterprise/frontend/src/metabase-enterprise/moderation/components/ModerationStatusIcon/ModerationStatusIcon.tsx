@@ -1,8 +1,7 @@
 import { color } from "metabase/lib/colors";
-import { getStatusIcon } from "metabase-enterprise/moderation/service";
-
 import type { IconProps } from "metabase/ui";
-import { Icon } from "metabase/ui";
+import { FixedSizeIcon } from "metabase/ui";
+import { getStatusIcon } from "metabase-enterprise/moderation/service";
 
 type ModerationStatusIconProps = {
   status: string | null | undefined;
@@ -14,8 +13,25 @@ export const ModerationStatusIcon = ({
   filled = false,
   ...iconProps
 }: ModerationStatusIconProps) => {
-  const { name: iconName, color: iconColor } = getStatusIcon(status, filled);
-  return iconName ? (
-    <Icon name={iconName} color={color(iconColor)} {...iconProps} />
-  ) : null;
+  const { name: iconName, color: iconColor } = getStatusIcon(
+    status ?? null,
+    filled,
+  );
+  if (!iconName) {
+    return null;
+  }
+  const reformattedIconProps = {
+    ...iconProps,
+    size:
+      typeof iconProps.size === "string"
+        ? parseInt(iconProps.size)
+        : iconProps.size,
+  };
+  return (
+    <FixedSizeIcon
+      name={iconName}
+      color={color(iconColor)}
+      {...reformattedIconProps}
+    />
+  );
 };

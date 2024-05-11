@@ -1,5 +1,14 @@
 import userEvent from "@testing-library/user-event";
+
+import { createMockEntitiesState } from "__support__/store";
+import {
+  getIcon,
+  queryIcon,
+  renderWithProviders,
+  screen,
+} from "__support__/ui";
 import { getMetadata } from "metabase/selectors/metadata";
+import type Question from "metabase-lib/v1/Question";
 import type { Card, Database } from "metabase-types/api";
 import {
   createMockCard,
@@ -8,14 +17,7 @@ import {
 } from "metabase-types/api/mocks";
 import { createSampleDatabase } from "metabase-types/api/mocks/presets";
 import { createMockState } from "metabase-types/store/mocks";
-import { createMockEntitiesState } from "__support__/store";
-import {
-  getIcon,
-  queryIcon,
-  renderWithProviders,
-  screen,
-} from "__support__/ui";
-import type Question from "metabase-lib/Question";
+
 import { QuestionActions } from "./QuestionActions";
 
 const ICON_CASES_CARDS = [
@@ -85,12 +87,12 @@ describe("QuestionActions", () => {
   it("should allow to edit the model only with write permissions", async () => {
     setup({
       card: createMockCard({
-        dataset: true,
+        type: "model",
         can_write: true,
       }),
     });
 
-    userEvent.click(getIcon("ellipsis"));
+    await userEvent.click(getIcon("ellipsis"));
     await screen.findByRole("dialog");
 
     expect(screen.getByText("Edit query definition")).toBeInTheDocument();
@@ -100,12 +102,12 @@ describe("QuestionActions", () => {
   it("should not allow to edit the model without write permissions", async () => {
     setup({
       card: createMockCard({
-        dataset: true,
+        type: "model",
         can_write: false,
       }),
     });
 
-    userEvent.click(getIcon("ellipsis"));
+    await userEvent.click(getIcon("ellipsis"));
     await screen.findByRole("dialog");
 
     expect(screen.queryByText("Edit query definition")).not.toBeInTheDocument();
@@ -115,7 +117,7 @@ describe("QuestionActions", () => {
   it("should not render the menu when there are no menu items", () => {
     setup({
       card: createMockCard({
-        dataset: true,
+        type: "model",
         can_write: false,
       }),
       databases: [],

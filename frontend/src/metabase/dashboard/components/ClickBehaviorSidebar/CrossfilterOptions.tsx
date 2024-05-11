@@ -1,7 +1,7 @@
 import { t } from "ttag";
 
+import CS from "metabase/css/core/index.css";
 import { ClickMappingsConnected } from "metabase/dashboard/components/ClickMappings";
-
 import type {
   ClickBehavior,
   Dashboard,
@@ -25,7 +25,9 @@ export function CrossfilterOptions({
 }: Props) {
   return (
     <SidebarContent>
-      <Heading className="text-medium">{t`Pick one or more filters to update`}</Heading>
+      <Heading
+        className={CS.textMedium}
+      >{t`Pick one or more filters to update`}</Heading>
       <ClickMappingsConnected
         object={dashboard}
         dashcard={dashcard}

@@ -1,10 +1,11 @@
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
   restore,
   visitQuestionAdhoc,
   popover,
   openSeriesSettings,
+  cartesianChartCircle,
 } from "e2e/support/helpers";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 
 const { ORDERS, ORDERS_ID } = SAMPLE_DATABASE;
 
@@ -40,7 +41,7 @@ describe("issue 21452", () => {
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Done").click();
 
-    cy.get("circle").first().realHover();
+    cartesianChartCircle().first().realHover();
 
     popover().within(() => {
       testPairedTooltipValues("Created At", "2022");

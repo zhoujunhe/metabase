@@ -1,4 +1,6 @@
 import { assoc, assocIn } from "icepick";
+
+import { createMockEntitiesState } from "__support__/store";
 import {
   getQuestion,
   getIsResultDirty,
@@ -6,7 +8,7 @@ import {
   getNativeEditorSelectedText,
   getQuestionDetailsTimelineDrawerState,
 } from "metabase/query_builder/selectors";
-import { createMockEntitiesState } from "__support__/store";
+import Question from "metabase-lib/v1/Question";
 import { createMockTable } from "metabase-types/api/mocks";
 import {
   createSampleDatabase,
@@ -14,13 +16,13 @@ import {
   ORDERS_ID,
   PRODUCTS,
   PRODUCTS_ID,
+  SAMPLE_DB_ID,
 } from "metabase-types/api/mocks/presets";
 import {
   createMockState,
   createMockQueryBuilderState,
   createMockQueryBuilderUIControlsState,
 } from "metabase-types/store/mocks";
-import Question from "metabase-lib/Question";
 
 function getBaseState({ uiControls = {}, ...state } = {}) {
   return createMockState({
@@ -74,13 +76,13 @@ describe("getQuestion", () => {
 
   it("should return composed dataset when dataset is open", () => {
     const card = {
-      id: 5,
-      dataset: true,
+      id: 1,
+      type: "model",
       dataset_query: {
-        database: 1,
+        database: SAMPLE_DB_ID,
         type: "query",
         query: {
-          "source-table": 1,
+          "source-table": ORDERS_ID,
         },
       },
     };
@@ -88,14 +90,14 @@ describe("getQuestion", () => {
     const question = getQuestion(getBaseState({ card }));
 
     expect(question.card()).toEqual(
-      assocIn(card, ["dataset_query", "query", "source-table"], "card__5"),
+      assocIn(card, ["dataset_query", "query", "source-table"], "card__1"),
     );
   });
 
   it("should return real dataset when dataset is open in 'dataset' QB mode", () => {
     const card = {
       id: 5,
-      dataset: true,
+      type: "model",
       dataset_query: {
         database: 1,
         type: "query",
@@ -313,7 +315,7 @@ describe("getIsResultDirty", () => {
     function getDataset(query) {
       return getBaseCard({
         id: 1,
-        dataset: true,
+        type: "model",
         dataset_query: { type: "query", query },
       });
     }

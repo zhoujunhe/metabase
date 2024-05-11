@@ -1,5 +1,3 @@
-import { modal } from "e2e/support/helpers/e2e-ui-elements-helpers";
-
 // Find a text field by label text, type it in, then blur the field.
 // Commonly used in our Admin section as we auto-save settings.
 export function typeAndBlurUsingLabel(label, value) {
@@ -101,36 +99,47 @@ export function interceptPromise(method, path) {
  *   cy.visit(`/dashboard/1`);
  * });
  */
-const cypressWaitAllRecursive = (results, currentCommand, commands) => {
-  return currentCommand.then(result => {
+const cypressWaitAllRecursive = (results, commands) => {
+  const [nextCommand, ...restCommands] = commands;
+  if (!nextCommand) {
+    return;
+  }
+
+  return nextCommand.then(result => {
     results.push(result);
 
-    const [nextCommand, ...rest] = Array.from(commands);
-
     if (nextCommand == null) {
-      return results;
+      return;
     }
 
-    return cypressWaitAllRecursive(results, nextCommand, rest);
+    return cypressWaitAllRecursive(results, restCommands);
   });
 };
 
 export const cypressWaitAll = function (commands) {
   const results = [];
 
-  return cypressWaitAllRecursive(
-    results,
-    cy.wrap(null, { log: false }),
-    commands,
-  );
+  return cy.wrap(results).then(() => {
+    cypressWaitAllRecursive(results, commands);
+  });
 };
 
 /**
  * Visit a question and wait for its query to load.
  *
- * @param {number} id
+ * @param {number|string} questionIdOrAlias
  */
-export function visitQuestion(id) {
+export function visitQuestion(questionIdOrAlias) {
+  if (typeof questionIdOrAlias === "number") {
+    visitQuestionById(questionIdOrAlias);
+  }
+
+  if (typeof questionIdOrAlias === "string") {
+    cy.get(questionIdOrAlias).then(id => visitQuestionById(id));
+  }
+}
+
+function visitQuestionById(id) {
   // In case we use this function multiple times in a test, make sure aliases are unique for each question
   const alias = "cardQuery" + id;
 
@@ -151,7 +160,7 @@ export function visitModel(id, { hasDataAccess = true } = {}) {
   const alias = "modelQuery" + id;
 
   if (hasDataAccess) {
-    cy.intercept("POST", `/api/dataset`).as(alias);
+    cy.intercept("POST", "/api/dataset").as(alias);
   } else {
     cy.intercept("POST", `/api/card/**/${id}/query`).as(alias);
   }
@@ -173,7 +182,7 @@ export function visitDashboard(dashboardIdOrAlias, { params = {} } = {}) {
   }
 
   if (typeof dashboardIdOrAlias === "string") {
-    visitDashboardByAlias(dashboardIdOrAlias, { params });
+    cy.get(dashboardIdOrAlias).then(id => visitDashboardById(id, { params }));
   }
 }
 
@@ -239,14 +248,6 @@ function visitDashboardById(dashboard_id, config) {
   });
 }
 
-/**
- * Visit a dashboard by using its previously saved dashboard id alias.
- * @param {string} alias
- */
-function visitDashboardByAlias(alias, config) {
-  cy.get(alias).then(id => visitDashboard(id, config));
-}
-
 function hasAccess(statusCode) {
   return statusCode !== 403;
 }
@@ -288,11 +289,11 @@ export function saveQuestion(
   cy.intercept("POST", "/api/card").as("saveQuestion");
   cy.findByText("Save").click();
 
-  modal().within(() => {
+  cy.findByTestId("save-question-modal").within(modal => {
     if (name) {
       cy.findByLabelText("Name").clear().type(name);
     }
-    cy.button("Save").click();
+    cy.findByText("Save").click();
   });
 
   cy.wait("@saveQuestion").then(({ response: { body } }) => {
@@ -301,7 +302,7 @@ export function saveQuestion(
     }
   });
 
-  modal().within(() => {
+  cy.get("#QuestionSavedModal").within(() => {
     cy.button("Not now").click();
   });
 }
@@ -310,8 +311,8 @@ export function saveSavedQuestion() {
   cy.intercept("PUT", "/api/card/**").as("updateQuestion");
   cy.findByText("Save").click();
 
-  modal().within(() => {
-    cy.button("Save").click();
+  cy.findByTestId("save-question-modal").within(modal => {
+    cy.findByText("Save").click();
   });
   cy.wait("@updateQuestion");
 }

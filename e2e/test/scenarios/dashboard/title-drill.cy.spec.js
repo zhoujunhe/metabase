@@ -1,3 +1,4 @@
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
   restore,
   filterWidget,
@@ -7,7 +8,6 @@ import {
   getDashboardCard,
   appBar,
 } from "e2e/support/helpers";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 
 const { PRODUCTS, PRODUCTS_ID } = SAMPLE_DATABASE;
 
@@ -305,7 +305,7 @@ describe("scenarios > dashboard > title drill", () => {
         });
 
         // rerun the query with the newly set filter
-        cy.get(".RunButton").first().click();
+        cy.findAllByTestId("run-button").first().click();
         cy.wait("@cardQuery");
 
         // make sure the results reflect the new filter
@@ -327,7 +327,7 @@ describe("scenarios > dashboard > title drill", () => {
         });
 
         // rerun the query with the newly set filter
-        cy.get(".RunButton").first().click();
+        cy.findAllByTestId("run-button").first().click();
         cy.wait("@cardQuery");
 
         // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
@@ -423,5 +423,5 @@ function checkFilterLabelAndValue(label, value) {
 }
 
 function checkScalarResult(result) {
-  cy.get(".ScalarValue").invoke("text").should("eq", result);
+  cy.findByTestId("scalar-value").invoke("text").should("eq", result);
 }

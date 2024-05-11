@@ -1,3 +1,4 @@
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
   restore,
   openQuestionActions,
@@ -5,8 +6,6 @@ import {
   sidebar,
   openColumnOptions,
 } from "e2e/support/helpers";
-
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import { createModelIndex } from "e2e/support/helpers/e2e-model-index-helper";
 
 const { PRODUCTS_ID, PEOPLE_ID } = SAMPLE_DATABASE;
@@ -46,7 +45,7 @@ describe("scenarios > model indexes", () => {
 
     sidebar()
       .findByLabelText(/surface individual records/i)
-      .click();
+      .click({ force: true }); // needs to be forced because Mantine
 
     cy.findByTestId("dataset-edit-bar").within(() => {
       cy.button("Save changes").click();
@@ -64,7 +63,7 @@ describe("scenarios > model indexes", () => {
 
     sidebar()
       .findByLabelText(/surface individual records/i)
-      .click();
+      .click({ force: true });
 
     cy.findByTestId("dataset-edit-bar").within(() => {
       cy.button("Save changes").click();
@@ -81,7 +80,7 @@ describe("scenarios > model indexes", () => {
 
     sidebar()
       .findByLabelText(/surface individual records/i)
-      .click();
+      .click({ force: true });
 
     cy.findByTestId("dataset-edit-bar").within(() => {
       cy.button("Save changes").click();
@@ -105,7 +104,7 @@ describe("scenarios > model indexes", () => {
 
     sidebar()
       .findByLabelText(/surface individual records/i)
-      .click();
+      .click({ force: true });
 
     openColumnOptions("ID");
 
@@ -150,7 +149,7 @@ describe("scenarios > model indexes", () => {
     cy.wait("@dataset");
 
     cy.findByTestId("object-detail").within(() => {
-      cy.findByText("Product");
+      cy.findByRole("heading", { name: /Product/ });
       cy.findByText("Small Marble Shoes");
       cy.findByText("Doohickey");
     });
@@ -212,7 +211,7 @@ describe("scenarios > model indexes", () => {
     cy.wait("@dataset");
 
     cy.findByTestId("object-detail").within(() => {
-      cy.findByText("Product");
+      cy.findByRole("heading", { name: /Product/ });
       cy.findByText("Small Marble Shoes");
       cy.findByText("Doohickey");
     });

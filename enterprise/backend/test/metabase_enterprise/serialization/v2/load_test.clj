@@ -8,7 +8,7 @@
    [metabase-enterprise.serialization.v2.load :as serdes.load]
    [metabase.models
     :refer [Action Card Collection Dashboard DashboardCard Database Field
-            FieldValues Metric NativeQuerySnippet Segment Table Timeline
+            FieldValues LegacyMetric NativeQuerySnippet Segment Table Timeline
             TimelineEvent User]]
    [metabase.models.action :as action]
    [metabase.models.serialization :as serdes]
@@ -366,7 +366,7 @@
             (reset! table1s  (ts/create! Table :name "orders" :db_id (:id @db1s)))
             (reset! field1s  (ts/create! Field :name "subtotal"    :table_id (:id @table1s)))
             (reset! user1s   (ts/create! User  :first_name "Tom" :last_name "Scholz" :email "tom@bost.on"))
-            (reset! metric1s (ts/create! Metric :table_id (:id @table1s) :name "Revenue"
+            (reset! metric1s (ts/create! LegacyMetric :table_id (:id @table1s) :name "Revenue"
                                          :definition {:source-table (:id @table1s)
                                                       :aggregation [[:sum [:field (:id @field1s) nil]]]}
                                          :creator_id (:id @user1s)))
@@ -376,7 +376,7 @@
           (is (= {:source-table ["my-db" nil "orders"]
                   :aggregation [[:sum [:field ["my-db" nil "orders" "subtotal"] nil]]]}
                  (-> @serialized
-                     (by-model "Metric")
+                     (by-model "LegacyMetric")
                      first
                      :definition))))
 
@@ -395,7 +395,7 @@
             (reset! db1d     (t2/select-one Database :name "my-db"))
             (reset! table1d  (t2/select-one Table :name "orders"))
             (reset! field1d  (t2/select-one Field :table_id (:id @table1d) :name "subtotal"))
-            (reset! metric1d (t2/select-one Metric :name "Revenue"))
+            (reset! metric1d (t2/select-one LegacyMetric :name "Revenue"))
 
             (testing "the main Database, Table, and Field have different IDs now"
               (is (not= (:id @db1s) (:id @db1d)))
@@ -758,12 +758,12 @@
           (ts/with-db source-db
             (reset! user1s    (ts/create! User :first_name "Tom" :last_name "Scholz" :email "tom@bost.on"))
             (reset! user2s    (ts/create! User :first_name "Neil"  :last_name "Peart"   :email "neil@rush.yyz"))
-            (reset! metric1s  (ts/create! Metric
+            (reset! metric1s  (ts/create! LegacyMetric
                                           :name "Large Users"
                                           :table_id   (mt/id :venues)
                                           :creator_id (:id @user1s)
                                           :definition {:aggregation [[:count]]}))
-            (reset! metric2s  (ts/create! Metric
+            (reset! metric2s  (ts/create! LegacyMetric
                                           :name "Support Headaches"
                                           :table_id   (mt/id :venues)
                                           :creator_id (:id @user2s)
@@ -773,7 +773,7 @@
         (testing "exported form is properly converted"
           (is (= "tom@bost.on"
                  (-> @serialized
-                     (by-model "Metric")
+                     (by-model "LegacyMetric")
                      first
                      :creator_id))))
 
@@ -782,17 +782,17 @@
             ;; Create another random user to change the user IDs.
             (ts/create! User   :first_name "Gideon" :last_name "Nav" :email "griddle@ninth.tomb")
             ;; Likewise, create some other metrics.
-            (ts/create! Metric :name "Other metric A" :table_id (mt/id :venues))
-            (ts/create! Metric :name "Other metric B" :table_id (mt/id :venues))
-            (ts/create! Metric :name "Other metric C" :table_id (mt/id :venues))
+            (ts/create! LegacyMetric :name "Other metric A" :table_id (mt/id :venues))
+            (ts/create! LegacyMetric :name "Other metric B" :table_id (mt/id :venues))
+            (ts/create! LegacyMetric :name "Other metric C" :table_id (mt/id :venues))
             (reset! user1d  (ts/create! User  :first_name "Tom" :last_name "Scholz" :email "tom@bost.on"))
 
             ;; Load the serialized content.
             (serdes.load/load-metabase! (ingestion-in-memory @serialized))
 
             ;; Fetch the relevant bits
-            (reset! metric1d (t2/select-one Metric :name "Large Users"))
-            (reset! metric2d (t2/select-one Metric :name "Support Headaches"))
+            (reset! metric1d (t2/select-one LegacyMetric :name "Large Users"))
+            (reset! metric2d (t2/select-one LegacyMetric :name "Support Headaches"))
 
             (testing "the Metrics and Users have different IDs now"
               (is (not= (:id @metric1s) (:id @metric1d)))
@@ -1040,7 +1040,7 @@
                 card     (ts/create! Card
                                      :name "the query"
                                      :query_type :native
-                                     :dataset true
+                                     :type :model
                                      :database_id (:id db)
                                      :dataset_query {:database (:id db)
                                                      :native {:type   :native
@@ -1172,7 +1172,7 @@
                 card       (ts/create! Card
                                  :name "the query"
                                  :query_type :native
-                                 :dataset true
+                                 :type :model
                                  :database_id (:id db)
                                  :dataset_query {:database (:id db)
                                                  :native   {:type   :native
@@ -1223,3 +1223,36 @@
                          (serdes.load/load-metabase! (ingestion-in-memory @serialized))))
             (is (= (str "qwe_" (:name coll))
                    (t2/select-one-fn :name Collection :id (:id card))))))))))
+
+(deftest circular-links-test
+  (mt/with-empty-h2-app-db
+    (let [coll  (ts/create! Collection :name "coll")
+          card  (ts/create! Card :name "card" :collection_id (:id coll))
+          dash1 (ts/create! Dashboard :name "dash1" :collection_id (:id coll))
+          dash2 (ts/create! Dashboard :name "dash2" :collection_id (:id coll))
+          dash3 (ts/create! Dashboard :name "dash3" :collection_id (:id coll))
+          dc1   (ts/create! DashboardCard :dashboard_id (:id dash1) :card_id (:id card)
+                            :visualization_settings {:click_behavior {:type     "link"
+                                                                      :linkType "dashboard"
+                                                                      :targetId (:id dash2)}})
+          dc2   (ts/create! DashboardCard :dashboard_id (:id dash2) :card_id (:id card)
+                            :visualization_settings {:click_behavior {:type     "link"
+                                                                      :linkType "dashboard"
+                                                                      :targetId (:id dash3)}})
+          dc3   (ts/create! DashboardCard :dashboard_id (:id dash2) :card_id (:id card)
+                            :visualization_settings {:click_behavior {:type     "link"
+                                                                      :linkType "dashboard"
+                                                                      :targetId (:id dash1)}})
+          ser   (atom nil)]
+      (reset! ser (into [] (serdes.extract/extract {:no-settings   true
+                                                    :no-data-model true})))
+      (t2/delete! DashboardCard :id [:in (map :id [dc1 dc2 dc3])])
+      (testing "Circular dependencies are loaded correctly"
+        (is (serdes.load/load-metabase! (ingestion-in-memory @ser)))
+        (let [select-target #(-> % :visualization_settings :click_behavior :targetId)]
+          (is (= (:id dash2)
+                 (t2/select-one-fn select-target DashboardCard :entity_id (:entity_id dc1))))
+          (is (= (:id dash3)
+                 (t2/select-one-fn select-target DashboardCard :entity_id (:entity_id dc2))))
+          (is (= (:id dash1)
+                 (t2/select-one-fn select-target DashboardCard :entity_id (:entity_id dc3)))))))))

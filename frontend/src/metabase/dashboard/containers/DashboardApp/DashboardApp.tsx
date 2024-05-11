@@ -1,22 +1,28 @@
+import cx from "classnames";
+import type { Location } from "history";
 import type { ReactNode } from "react";
 import { useCallback, useEffect } from "react";
-import type { Location } from "history";
-import { useUnmount } from "react-use";
-import type { Route } from "react-router";
 import { connect } from "react-redux";
+import type { Route } from "react-router";
 import { push } from "react-router-redux";
-import _ from "underscore";
+import { useUnmount } from "react-use";
 import { t } from "ttag";
+import _ from "underscore";
 
 import { LeaveConfirmationModal } from "metabase/components/LeaveConfirmationModal";
-
-import title from "metabase/hoc/Title";
+import CS from "metabase/css/core/index.css";
+import { Dashboard } from "metabase/dashboard/components/Dashboard/Dashboard";
+import Dashboards from "metabase/entities/dashboards";
 import favicon from "metabase/hoc/Favicon";
+import title from "metabase/hoc/Title";
 import titleWithLoadingTime from "metabase/hoc/TitleWithLoadingTime";
 import { useLoadingTimer } from "metabase/hooks/use-loading-timer";
-import { useWebNotification } from "metabase/hooks/use-web-notification";
 import { useUniqueId } from "metabase/hooks/use-unique-id";
-
+import { useWebNotification } from "metabase/hooks/use-web-notification";
+import { parseHashOptions } from "metabase/lib/browser";
+import { useDispatch } from "metabase/lib/redux";
+import * as Urls from "metabase/lib/urls";
+import type { EmbeddingParameterVisibility } from "metabase/public/lib/types";
 import { closeNavbar, setErrorPage } from "metabase/redux/app";
 import { addUndo, dismissUndo } from "metabase/redux/undo";
 import { getIsNavbarOpen } from "metabase/selectors/app";
@@ -25,14 +31,9 @@ import {
   canManageSubscriptions,
   getUserIsAdmin,
 } from "metabase/selectors/user";
-
-import { parseHashOptions } from "metabase/lib/browser";
-import { useDispatch } from "metabase/lib/redux";
-import * as Urls from "metabase/lib/urls";
-
-import { Dashboard } from "metabase/dashboard/components/Dashboard/Dashboard";
-import Dashboards from "metabase/entities/dashboards";
-
+import type Database from "metabase-lib/v1/metadata/Database";
+import type Metadata from "metabase-lib/v1/metadata/Metadata";
+import type { UiParameter } from "metabase-lib/v1/parameters/types";
 import type {
   Dashboard as IDashboard,
   DashboardId,
@@ -44,10 +45,6 @@ import type {
   ParameterValueOrArray,
 } from "metabase-types/api";
 import type { SelectedTabId, State, StoreDashcard } from "metabase-types/store";
-import type { EmbeddingParameterVisibility } from "metabase/public/lib/types";
-import type Database from "metabase-lib/metadata/Database";
-import type { UiParameter } from "metabase-lib/parameters/types";
-import type Metadata from "metabase-lib/metadata/Metadata";
 
 import * as dashboardActions from "../../actions";
 import { DASHBOARD_SLOW_TIMEOUT } from "../../constants";
@@ -249,7 +246,7 @@ const DashboardApp = (props: DashboardAppProps) => {
   });
 
   return (
-    <div className="shrink-below-content-size full-height">
+    <div className={cx(CS.shrinkBelowContentSize, CS.fullHeight)}>
       <LeaveConfirmationModal isEnabled={isEditing && isDirty} route={route} />
 
       <Dashboard

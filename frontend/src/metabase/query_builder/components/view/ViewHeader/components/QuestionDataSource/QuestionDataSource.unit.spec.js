@@ -1,11 +1,17 @@
 /* eslint-disable react/display-name, react/prop-types */
 import { Component } from "react";
+
+import { createMockMetadata } from "__support__/metadata";
+import { setupCardEndpoints } from "__support__/server-mocks/card";
+import { renderWithProviders, screen } from "__support__/ui";
+import * as Urls from "metabase/lib/urls";
+import Question from "metabase-lib/v1/Question";
+import * as ML_Urls from "metabase-lib/v1/urls";
 import {
   createMockCard,
   createMockDatabase,
   createMockTable,
 } from "metabase-types/api/mocks";
-
 import {
   ORDERS_ID,
   ORDERS,
@@ -16,12 +22,7 @@ import {
   PEOPLE_ID,
   createSampleDatabase,
 } from "metabase-types/api/mocks/presets";
-import { createMockMetadata } from "__support__/metadata";
-import { setupCardEndpoints } from "__support__/server-mocks/card";
-import { renderWithProviders, screen } from "__support__/ui";
-import * as Urls from "metabase/lib/urls";
-import Question from "metabase-lib/Question";
-import * as ML_Urls from "metabase-lib/urls";
+
 import { QuestionDataSource } from "./QuestionDataSource";
 
 const MULTI_SCHEMA_DB_ID = 2;
@@ -559,5 +560,15 @@ describe("QuestionDataSource", () => {
         });
       });
     });
+  });
+
+  it("should show info icon on an ad-hoc question header", () => {
+    setup({ card: SOURCE_CARD });
+    expect(screen.getByLabelText("More info")).toBeInTheDocument();
+  });
+
+  it("should show info icon on a subheader", () => {
+    setup({ card: SOURCE_CARD, subHead: true });
+    expect(screen.queryByLabelText("More info")).not.toBeInTheDocument();
   });
 });

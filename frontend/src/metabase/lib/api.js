@@ -1,10 +1,9 @@
+import EventEmitter from "events";
 import querystring from "querystring";
 
-import EventEmitter from "events";
-
-import { delay } from "metabase/lib/promise";
-import { isWithinIframe } from "metabase/lib/dom";
 import { isTest } from "metabase/env";
+import { isWithinIframe } from "metabase/lib/dom";
+import { delay } from "metabase/lib/promise";
 
 const ONE_SECOND = 1000;
 const MAX_RETRIES = 10;
@@ -18,7 +17,7 @@ const DEFAULT_OPTIONS = {
   json: true,
   hasBody: false,
   noEvent: false,
-  transformResponse: o => o,
+  transformResponse: ({ body }) => body,
   raw: {},
   headers: {},
   retry: false,
@@ -32,6 +31,10 @@ const DEFAULT_OPTIONS = {
 
 export class Api extends EventEmitter {
   basename = "";
+  apiKey = "";
+  sessionToken;
+
+  onBeforeRequest;
 
   GET;
   POST;
@@ -59,6 +62,10 @@ export class Api extends EventEmitter {
       };
 
       return async (rawData, invocationOptions = {}) => {
+        if (this.onBeforeRequest) {
+          await this.onBeforeRequest();
+        }
+
         const options = { ...defaultOptions, ...invocationOptions };
         let url = urlTemplate;
         const data = { ...rawData };
@@ -88,6 +95,15 @@ export class Api extends EventEmitter {
 
         if (options.formData && options.fetch) {
           delete headers["Content-Type"];
+        }
+
+        if (this.apiKey) {
+          headers["X-Api-Key"] = this.apiKey;
+        }
+
+        if (this.sessionToken) {
+          // eslint-disable-next-line no-literal-metabase-strings -- not a UI string
+          headers["X-Metabase-Session"] = this.sessionToken;
         }
 
         if (isWithinIframe()) {
@@ -202,7 +218,7 @@ export class Api extends EventEmitter {
           }
           if (status >= 200 && status <= 299) {
             if (options.transformResponse) {
-              body = options.transformResponse(body, { data });
+              body = options.transformResponse({ body, data });
             }
             resolve(body);
           } else {
@@ -236,7 +252,8 @@ export class Api extends EventEmitter {
     data,
     options,
   ) {
-    const controller = new AbortController();
+    const controller = options.controller || new AbortController();
+    const signal = options.signal ?? controller.signal;
     options.cancelled?.then(() => controller.abort());
 
     const requestUrl = new URL(this.basename + url, location.origin);
@@ -244,11 +261,12 @@ export class Api extends EventEmitter {
       method,
       headers,
       body: requestBody,
-      signal: controller.signal,
+      signal,
     });
 
     return fetch(request)
       .then(response => {
+        const unreadResponse = response.clone();
         return response.text().then(body => {
           if (options.json) {
             try {
@@ -272,7 +290,11 @@ export class Api extends EventEmitter {
 
           if (status >= 200 && status <= 299) {
             if (options.transformResponse) {
-              body = options.transformResponse(body, { data });
+              body = options.transformResponse({
+                body,
+                data,
+                response: unreadResponse,
+              });
             }
             return body;
           } else {
@@ -281,7 +303,7 @@ export class Api extends EventEmitter {
         });
       })
       .catch(error => {
-        if (controller.signal.aborted) {
+        if (signal.aborted) {
           throw { isCancelled: true };
         } else {
           throw error;

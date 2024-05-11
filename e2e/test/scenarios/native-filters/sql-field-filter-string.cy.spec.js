@@ -1,9 +1,8 @@
 import { restore, openNativeEditor } from "e2e/support/helpers";
 
 import { STRING_FILTER_SUBTYPES } from "./helpers/e2e-field-filter-data-objects";
-
-import * as SQLFilter from "./helpers/e2e-sql-filter-helpers";
 import * as FieldFilter from "./helpers/e2e-field-filter-helpers";
+import * as SQLFilter from "./helpers/e2e-sql-filter-helpers";
 
 const stringFilters = Object.entries(STRING_FILTER_SUBTYPES);
 
@@ -44,7 +43,7 @@ describe("scenarios > filters > sql filters > field filter > String", () => {
 
         SQLFilter.runQuery();
 
-        cy.get(".Visualization").within(() => {
+        cy.findByTestId("query-visualization-root").within(() => {
           cy.findByText(representativeResult);
           cy.findByText("Toucan").should("not.exist");
         });
@@ -59,11 +58,6 @@ describe("scenarios > filters > sql filters > field filter > String", () => {
       ([subType, { searchTerm, value, representativeResult }], index) => {
         FieldFilter.setWidgetType(subType);
 
-        // When we run the first iteration, there will be no default filter value set
-        if (index !== 0) {
-          FieldFilter.clearDefaultFilterValue();
-        }
-
         FieldFilter.openEntryForm({ isFilterRequired: true });
 
         searchTerm
@@ -72,7 +66,7 @@ describe("scenarios > filters > sql filters > field filter > String", () => {
 
         SQLFilter.runQuery();
 
-        cy.get(".Visualization").within(() => {
+        cy.findByTestId("query-visualization-root").within(() => {
           cy.findByText(representativeResult);
           cy.findByText("Toucan").should("not.exist");
         });

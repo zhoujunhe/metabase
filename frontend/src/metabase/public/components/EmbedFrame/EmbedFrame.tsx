@@ -1,27 +1,32 @@
+import cx from "classnames";
+import type { Location } from "history";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-
-import { withRouter } from "react-router";
 import { connect } from "react-redux";
-import cx from "classnames";
-import _ from "underscore";
-import type { Location } from "history";
-
+import { withRouter } from "react-router";
 import { useMount } from "react-use";
-import TitleAndDescription from "metabase/components/TitleAndDescription";
+import _ from "underscore";
 
-import { getSetting } from "metabase/selectors/settings";
+import TitleAndDescription from "metabase/components/TitleAndDescription";
+import CS from "metabase/css/core/index.css";
 import {
-  isWithinIframe,
+  FixedWidthContainer,
+  ParametersFixedWidthContainer,
+} from "metabase/dashboard/components/Dashboard/Dashboard.styled";
+import { parseHashOptions } from "metabase/lib/browser";
+import {
   initializeIframeResizer,
   isSmallScreen,
+  isWithinIframe,
 } from "metabase/lib/dom";
-import { parseHashOptions } from "metabase/lib/browser";
-
-import { getVisibleParameters } from "metabase/parameters/utils/ui";
-import SyncedParametersList from "metabase/parameters/components/SyncedParametersList/SyncedParametersList";
+import { useDispatch } from "metabase/lib/redux";
 import { FilterApplyButton } from "metabase/parameters/components/FilterApplyButton";
-
+import SyncedParametersList from "metabase/parameters/components/SyncedParametersList/SyncedParametersList";
+import { getVisibleParameters } from "metabase/parameters/utils/ui";
+import { setOptions } from "metabase/redux/embed";
+import { getSetting } from "metabase/selectors/settings";
+import type Question from "metabase-lib/v1/Question";
+import { getValuePopulatedParameters } from "metabase-lib/v1/parameters/utils/parameter-values";
 import type {
   Dashboard,
   Parameter,
@@ -30,30 +35,23 @@ import type {
 } from "metabase-types/api";
 import type { State } from "metabase-types/store";
 
-import { useDispatch } from "metabase/lib/redux";
-import { setOptions } from "metabase/redux/embed";
-import {
-  FixedWidthContainer,
-  ParametersFixedWidthContainer,
-} from "metabase/dashboard/components/Dashboard/Dashboard.styled";
-import type Question from "metabase-lib/Question";
-import { getValuePopulatedParameters } from "metabase-lib/parameters/utils/parameter-values";
+import ParameterValueWidgetS from "../../../parameters/components/ParameterValueWidget.module.css";
 
-import LogoBadge from "./LogoBadge";
+import EmbedFrameS from "./EmbedFrame.module.css";
 import type { FooterVariant } from "./EmbedFrame.styled";
 import {
-  Root,
-  ContentContainer,
-  Header,
-  Body,
-  ParametersWidgetContainer,
-  Footer,
   ActionButtonsContainer,
-  TitleAndDescriptionContainer,
-  Separator,
+  Body,
+  ContentContainer,
   DashboardTabsContainer,
+  Footer,
+  Header,
+  ParametersWidgetContainer,
+  Root,
+  Separator,
+  TitleAndDescriptionContainer,
 } from "./EmbedFrame.styled";
-import "./EmbedFrame.css";
+import LogoBadge from "./LogoBadge";
 
 type ParameterValues = Record<ParameterId, ParameterValueOrArray>;
 
@@ -88,7 +86,7 @@ type Props = OwnProps &
 interface HashOptions {
   bordered?: boolean;
   titled?: boolean;
-  theme?: string;
+  theme?: "night" | "transparent";
   hide_parameters?: string;
   hide_download_button?: boolean;
 }
@@ -98,6 +96,20 @@ function mapStateToProps(state: State) {
     hasEmbedBranding: !getSetting(state, "hide-embed-branding?"),
   };
 }
+
+const EMBED_THEME_CLASSES = (theme: HashOptions["theme"]) => {
+  if (!theme) {
+    return null;
+  }
+
+  if (theme === "night") {
+    return cx(ParameterValueWidgetS.ThemeNight, EmbedFrameS.ThemeNight);
+  }
+
+  if (theme === "transparent") {
+    return EmbedFrameS.ThemeTransparent;
+  }
+};
 
 function EmbedFrame({
   className,
@@ -165,11 +177,11 @@ function EmbedFrame({
 
   const hasParameters = Array.isArray(parameters) && parameters.length > 0;
   const visibleParameters = hasParameters
-    ? getVisibleParameters(parameters, hiddenParameterSlugs)
+    ? getVisibleParameters(parameters, hideParameters)
     : [];
   const hasVisibleParameters = visibleParameters.length > 0;
 
-  const hasHeader = Boolean(finalName || hasParameters);
+  const hasHeader = Boolean(finalName || dashboardTabs);
   const isParameterPanelSticky =
     !!dashboard &&
     theme !== "transparent" && // https://github.com/metabase/metabase/pull/38766#discussion_r1491549200
@@ -179,14 +191,20 @@ function EmbedFrame({
     <Root
       hasScroll={hasFrameScroll}
       isBordered={bordered}
-      className={cx("EmbedFrame", className, {
-        [`Theme--${theme}`]: !!theme,
-      })}
+      className={cx(
+        EmbedFrameS.EmbedFrame,
+        className,
+        EMBED_THEME_CLASSES(theme),
+      )}
       data-testid="embed-frame"
+      data-embed-theme={theme}
     >
       <ContentContainer>
         {hasHeader && (
-          <Header className="EmbedFrame-header">
+          <Header
+            className={EmbedFrameS.EmbedFrameHeader}
+            data-testid="embed-frame-header"
+          >
             {finalName && (
               <TitleAndDescriptionContainer>
                 <FixedWidthContainer
@@ -196,7 +214,7 @@ function EmbedFrame({
                   <TitleAndDescription
                     title={finalName}
                     description={description}
-                    className="my2"
+                    className={CS.my2}
                   />
                 </FixedWidthContainer>
               </TitleAndDescriptionContainer>
@@ -248,7 +266,10 @@ function EmbedFrame({
         <Body>{children}</Body>
       </ContentContainer>
       {showFooter && (
-        <Footer className="EmbedFrame-footer" variant={footerVariant}>
+        <Footer
+          className={EmbedFrameS.EmbedFrameFooter}
+          variant={footerVariant}
+        >
           {hasEmbedBranding && (
             <LogoBadge variant={footerVariant} dark={theme === "night"} />
           )}

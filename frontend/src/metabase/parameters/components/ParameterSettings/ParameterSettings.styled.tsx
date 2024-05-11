@@ -1,14 +1,8 @@
 import styled from "@emotion/styled";
+
 import { color } from "metabase/lib/colors";
+
 import ParameterValueWidget from "../ParameterValueWidget";
-
-export const SettingsRoot = styled.div`
-  padding: 1.5rem 1rem;
-`;
-
-export const SettingSection = styled.div`
-  margin-bottom: 2rem;
-`;
 
 export const SettingLabel = styled.label`
   display: block;

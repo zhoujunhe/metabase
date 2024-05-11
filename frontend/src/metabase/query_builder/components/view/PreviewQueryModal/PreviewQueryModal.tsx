@@ -1,14 +1,20 @@
 import { t } from "ttag";
-import { useCallback } from "react";
-import MetabaseSettings from "metabase/lib/settings";
-import {
-  getNativeQueryFn,
-  getQuestion,
-} from "metabase/query_builder/selectors";
-import { checkNotNull } from "metabase/lib/types";
+
+import { useGetNativeDatasetQuery } from "metabase/api";
+import { formatNativeQuery } from "metabase/lib/engine";
+import { getResponseErrorMessage } from "metabase/lib/errors";
 import { useSelector } from "metabase/lib/redux";
+import { checkNotNull } from "metabase/lib/types";
+import {
+  getQuestion,
+  getNextRunParameters,
+} from "metabase/query_builder/selectors";
+import { getLearnUrl } from "metabase/selectors/settings";
 import { getShowMetabaseLinks } from "metabase/selectors/whitelabel";
-import NativeQueryModal, { useNativeQuery } from "../NativeQueryModal";
+import * as Lib from "metabase-lib";
+
+import { NativeQueryPreview } from "../NativeQueryPreview";
+
 import { ModalExternalLink } from "./PreviewQueryModal.styled";
 
 interface PreviewQueryModalProps {
@@ -19,28 +25,34 @@ export const PreviewQueryModal = ({
   onClose,
 }: PreviewQueryModalProps): JSX.Element => {
   const question = checkNotNull(useSelector(getQuestion));
-  const onLoadQuery = useSelector(getNativeQueryFn);
-  const handleLoadQuery = useCallback(
-    () => onLoadQuery({ pretty: false }),
-    [onLoadQuery],
-  );
-  const { query, error, isLoading } = useNativeQuery(question, handleLoadQuery);
-  const learnUrl = MetabaseSettings.learnUrl("debugging-sql/sql-syntax");
+  const sourceQuery = question.query();
+  const parameters = useSelector(getNextRunParameters);
+  const payload = {
+    ...Lib.toLegacyQuery(sourceQuery),
+    parameters,
+    pretty: false,
+  };
+  const { data, error, isFetching } = useGetNativeDatasetQuery(payload);
+  const learnUrl = getLearnUrl("debugging-sql/sql-syntax");
   const showMetabaseLinks = useSelector(getShowMetabaseLinks);
 
+  const engine = question.database()?.engine;
+  const formattedQuery = formatNativeQuery(data?.query, engine);
+  const formattedError = error ? getResponseErrorMessage(error) : undefined;
+
   return (
-    <NativeQueryModal
+    <NativeQueryPreview
       title={t`Query preview`}
-      query={query}
-      error={error}
-      isLoading={isLoading}
+      query={formattedQuery}
+      error={formattedError}
+      isLoading={isFetching}
       onClose={onClose}
     >
-      {error && showMetabaseLinks && (
+      {formattedError && showMetabaseLinks && (
         <ModalExternalLink href={learnUrl}>
           {t`Learn how to debug SQL errors`}
         </ModalExternalLink>
       )}
-    </NativeQueryModal>
+    </NativeQueryPreview>
   );
 };

@@ -5,6 +5,7 @@
    [medley.core :as m]
    [metabase.lib.convert :as lib.convert]
    [metabase.lib.core :as lib]
+   [metabase.lib.filter :as lib.filter]
    [metabase.lib.filter.operator :as lib.filter.operator]
    [metabase.lib.metadata :as lib.metadata]
    [metabase.lib.options :as lib.options]
@@ -12,6 +13,7 @@
    [metabase.lib.test-util :as lib.tu]
    [metabase.lib.test-util.matrix :as matrix]
    [metabase.lib.types.isa :as lib.types.isa]
+   [metabase.lib.util :as lib.util]
    [metabase.util :as u]))
 
 #?(:cljs (comment metabase.test-runner.assert-exprs.approximately-equal/keep-me))
@@ -417,9 +419,8 @@
         (let [filter-clause (assoc first-filter 2 43)]
           (is (nil? (lib/find-filter-for-legacy-filter query (lib.convert/->legacy-MBQL filter-clause))))))
       (testing "ambiguous match"
-        (let [query (lib/filter query (-> first-filter
-                                          (assoc-in [1 :lib/uuid] (str (random-uuid)))
-                                          (assoc-in [2 1 :lib/uuid] (str (random-uuid)))))]
+        ;; don't use lib/filter because it will ignore duplicate filters.
+        (let [query (lib.util/update-query-stage query -1 update :filters conj (lib.util/fresh-uuids first-filter))]
           (is (thrown-with-msg?
                #?(:clj Exception :cljs :default) #"Multiple matching filters found"
                (lib/find-filter-for-legacy-filter query (lib.convert/->legacy-MBQL (first filter-clauses))))))))))
@@ -572,12 +573,17 @@
        {:clause [:!= nam "A" "B" "C"], :name "Name is not 3 selections"}
        {:clause [:contains nam "ABC"], :name "Name contains ABC"}
        {:clause [:contains nam "ABC"], :options {:case-sensitive true}, :name "Name contains ABC"}
+       {:clause [:contains nam "ABC"], :options {:case-sensitive false}, :name "Name contains ABC"}
+       {:clause [:contains nam "ABC" "HJK" "XYZ"], :name "Name contains 3 selections"}
        {:clause [:does-not-contain nam "ABC"], :name "Name does not contain ABC"}
+       {:clause [:does-not-contain nam "ABC" "HJK" "XYZ"], :name "Name does not contain 3 selections"}
        {:clause [:is-empty nam], :name "Name is empty"}
        {:clause [:not-empty nam], :name "Name is not empty"}
        {:clause [:does-not-contain nam "ABC"], :name "Name does not contain ABC"}
        {:clause [:starts-with nam "ABC"], :name "Name starts with ABC"}
-       {:clause [:ends-with nam "ABC"], :name "Name ends with ABC"}])))
+       {:clause [:starts-with nam "ABC" "HJK" "XYZ"], :name "Name starts with 3 selections"}
+       {:clause [:ends-with nam "ABC"], :name "Name ends with ABC"}
+       {:clause [:ends-with nam "ABC" "HJK" "XYZ"], :name "Name ends with 3 selections"}])))
 
 (deftest ^:parallel boolean-frontend-filter-display-names-test
   (check-display-names
@@ -753,3 +759,53 @@
               parts))
       (is (=? [:= {} (lib.options/update-options (lib/ref col) dissoc :lib/uuid) v]
               (lib/expression-clause (:operator parts) (:args parts) nil))))))
+
+(deftest ^:parallel add-filters-to-stage-test
+  (testing "Don't add empty :filters"
+    (is (= {:lib/type :mbql.stage/mbql}
+           (lib.filter/add-filters-to-stage {:lib/type :mbql.stage/mbql} nil)
+           (lib.filter/add-filters-to-stage {:lib/type :mbql.stage/mbql} []))))
+  (testing "Ignore duplicate filters"
+    (is (= {:lib/type :mbql.stage/mbql
+            :filters [[:=
+                       {:lib/uuid "00000000-0000-0000-0000-000000000001"}
+                       [:field {:lib/uuid "00000000-0000-0000-0000-000000000002"} 1]
+                       1]
+                      [:=
+                       {:lib/uuid "00000000-0000-0000-0000-000000000003"}
+                       [:field {:lib/uuid "00000000-0000-0000-0000-000000000004"} 1]
+                       2]]}
+           (lib.filter/add-filters-to-stage
+            {:lib/type :mbql.stage/mbql
+             :filters [[:=
+                        {:lib/uuid "00000000-0000-0000-0000-000000000001"}
+                        [:field {:lib/uuid "00000000-0000-0000-0000-000000000002"} 1]
+                        1]
+                       [:=
+                        {:lib/uuid "00000000-0000-0000-0000-000000000003"}
+                        [:field {:lib/uuid "00000000-0000-0000-0000-000000000004"} 1]
+                        2]]}
+            [[:=
+              {:lib/uuid "00000000-0000-0000-0000-000000000005"}
+              [:field {:lib/uuid "00000000-0000-0000-0000-000000000006"} 1]
+              1]])))))
+
+(deftest ^:parallel flatten-compound-filters-in-stage-test
+  (is (= {:lib/type :mbql.stage/mbql
+          :filters
+          [[:= {:lib/uuid "00000000-0000-0000-0000-000000000000"} 1 2]
+           [:= {:lib/uuid "00000000-0000-0000-0000-000000000002"} 3 4]
+           [:= {:lib/uuid "00000000-0000-0000-0000-000000000003"} 5 6]
+           [:= {:lib/uuid "00000000-0000-0000-0000-000000000005"} 7 8]
+           [:= {:lib/uuid "00000000-0000-0000-0000-000000000006"} 9 10]]}
+         (lib.filter/flatten-compound-filters-in-stage
+          {:lib/type :mbql.stage/mbql
+           :filters  [[:= {:lib/uuid "00000000-0000-0000-0000-000000000000"} 1 2]
+                      [:and
+                       {:lib/uuid "00000000-0000-0000-0000-000000000001"}
+                       [:= {:lib/uuid "00000000-0000-0000-0000-000000000002"} 3 4]
+                       [:= {:lib/uuid "00000000-0000-0000-0000-000000000003"} 5 6]
+                       [:and
+                        {:lib/uuid "00000000-0000-0000-0000-000000000004"}
+                        [:= {:lib/uuid "00000000-0000-0000-0000-000000000005"} 7 8]
+                        [:= {:lib/uuid "00000000-0000-0000-0000-000000000006"} 9 10]]]]}))))

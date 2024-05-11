@@ -1,28 +1,22 @@
-import _ from "underscore";
-
-import { useSelector, useDispatch } from "metabase/lib/redux";
-import type {
-  CollectionId,
-  BookmarkId,
-  BookmarkType,
-} from "metabase-types/api";
-import type { UploadFileProps } from "metabase/redux/uploads";
-import { uploadFile as uploadFileAction } from "metabase/redux/uploads";
-
 import {
-  useCollectionQuery,
-  useCollectionListQuery,
-  useDatabaseListQuery,
   useBookmarkListQuery,
+  useCollectionListQuery,
+  useCollectionQuery,
+  useDatabaseListQuery,
 } from "metabase/common/hooks";
-
+import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
 import Bookmark from "metabase/entities/bookmarks";
 import Databases from "metabase/entities/databases";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
-
-import { getUserIsAdmin } from "metabase/selectors/user";
+import { useDispatch, useSelector } from "metabase/lib/redux";
+import type { UploadFileProps } from "metabase/redux/uploads";
+import { uploadFile as uploadFileAction } from "metabase/redux/uploads";
 import { getSetting } from "metabase/selectors/settings";
-import { getIsNavbarOpen } from "metabase/selectors/app";
+import { getUserIsAdmin } from "metabase/selectors/user";
+import type {
+  BookmarkId,
+  BookmarkType,
+  CollectionId,
+} from "metabase-types/api";
 
 import { CollectionContentView } from "./CollectionContentView";
 
@@ -64,7 +58,6 @@ export function CollectionContent({
   );
 
   const isAdmin = useSelector(getUserIsAdmin);
-  const isNavbarOpen = useSelector(getIsNavbarOpen);
 
   const dispatch = useDispatch();
 
@@ -78,8 +71,11 @@ export function CollectionContent({
     modelId,
     collectionId,
     tableId,
+    uploadMode,
   }: UploadFileProps) =>
-    dispatch(uploadFileAction({ file, modelId, collectionId, tableId }));
+    dispatch(
+      uploadFileAction({ file, modelId, collectionId, tableId, uploadMode }),
+    );
 
   const error =
     bookmarksError || databasesError || collectionsError || collectionError;
@@ -102,7 +98,6 @@ export function CollectionContent({
       createBookmark={createBookmark}
       deleteBookmark={deleteBookmark}
       isAdmin={isAdmin}
-      isNavbarOpen={isNavbarOpen}
       uploadFile={uploadFile}
       uploadsEnabled={uploadsEnabled}
       canUploadToDb={canUploadToDb}

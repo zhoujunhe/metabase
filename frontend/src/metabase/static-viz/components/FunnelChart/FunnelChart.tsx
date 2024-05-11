@@ -1,8 +1,7 @@
-import { Fragment } from "react";
-import { Line, Polygon } from "@visx/shape";
 import { Group } from "@visx/group";
-import { Text } from "metabase/static-viz/components/Text";
-import { measureTextHeight } from "metabase/static-viz/lib/text";
+import { Line, Polygon } from "@visx/shape";
+import { Fragment } from "react";
+
 import type {
   FunnelDatum,
   FunnelSettings,
@@ -14,6 +13,9 @@ import {
   getFormattedStep,
   reorderData,
 } from "metabase/static-viz/components/FunnelChart/utils/funnel";
+import { Text } from "metabase/static-viz/components/Text";
+import { measureTextHeight } from "metabase/static-viz/lib/text";
+
 import { calculateMargin } from "./utils/margin";
 
 const layout = {
@@ -68,7 +70,11 @@ const Funnel = ({ data, settings }: FunnelProps) => {
   const stepLabelTop = firstMeasureTop + measureTextHeight(layout.nameFontSize);
 
   return (
-    <svg width={layout.width} height={layout.height}>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={layout.width}
+      height={layout.height}
+    >
       <Group left={margin.left}>
         {steps.map((step, index) => {
           const isFirst = index === 0;

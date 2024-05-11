@@ -1,40 +1,38 @@
 import type { ChangeEvent } from "react";
-import { useCallback, useRef } from "react";
+import { useCallback, useState, useRef } from "react";
 import { t } from "ttag";
 
-import * as Urls from "metabase/lib/urls";
+import { useSetting } from "metabase/common/hooks";
+import EntityMenu from "metabase/components/EntityMenu";
+import BookmarkToggle from "metabase/core/components/BookmarkToggle";
 import Button from "metabase/core/components/Button";
 import Tooltip from "metabase/core/components/Tooltip";
-import EntityMenu from "metabase/components/EntityMenu";
-
+import { color } from "metabase/lib/colors";
+import { useDispatch, useSelector } from "metabase/lib/redux";
+import * as Urls from "metabase/lib/urls";
+import { canUseMetabotOnDatabase } from "metabase/metabot/utils";
 import {
-  PLUGIN_MODERATION,
   PLUGIN_MODEL_PERSISTENCE,
+  PLUGIN_MODERATION,
   PLUGIN_QUERY_BUILDER_HEADER,
 } from "metabase/plugins";
-
-import { MODAL_TYPES } from "metabase/query_builder/constants";
-
 import { softReloadCard } from "metabase/query_builder/actions";
-import { getUserIsAdmin } from "metabase/selectors/user";
-import { uploadFile } from "metabase/redux/uploads";
-
-import { color } from "metabase/lib/colors";
-
-import BookmarkToggle from "metabase/core/components/BookmarkToggle";
-import { getSetting } from "metabase/selectors/settings";
-import { canUseMetabotOnDatabase } from "metabase/metabot/utils";
-import { useDispatch, useSelector } from "metabase/lib/redux";
 import { trackTurnIntoModelClicked } from "metabase/query_builder/analytics";
+import { MODAL_TYPES } from "metabase/query_builder/constants";
+import { uploadFile } from "metabase/redux/uploads";
+import { getUserIsAdmin } from "metabase/selectors/user";
+import { Icon, Menu } from "metabase/ui";
 import * as Lib from "metabase-lib";
-import type Question from "metabase-lib/Question";
-
+import type Question from "metabase-lib/v1/Question";
 import {
   checkCanBeModel,
   checkDatabaseCanPersistDatasets,
-} from "metabase-lib/metadata/utils/models";
+} from "metabase-lib/v1/metadata/utils/models";
+import { UploadMode } from "metabase-types/store/upload";
+
 import { canUploadToQuestion } from "../../../../../selectors";
 import { ViewHeaderIconButtonContainer } from "../../ViewHeader.styled";
+
 import {
   QuestionActionsDivider,
   StrengthIndicator,
@@ -75,10 +73,8 @@ export const QuestionActions = ({
   onInfoClick,
   onModelPersistenceChange,
 }: Props) => {
-  const isMetabotEnabled = useSelector(state =>
-    getSetting(state, "is-metabot-enabled"),
-  );
-
+  const [uploadMode, setUploadMode] = useState<UploadMode>(UploadMode.append);
+  const isMetabotEnabled = useSetting("is-metabot-enabled");
   const canUpload = useSelector(canUploadToQuestion(question));
 
   const isModerator = useSelector(getUserIsAdmin) && question.canWrite?.();
@@ -91,7 +87,8 @@ export const QuestionActions = ({
     ? color("brand")
     : undefined;
 
-  const isDataset = question.isDataset();
+  const isQuestion = question.type() === "question";
+  const isModel = question.type() === "model";
   const canWrite = question.canWrite();
   const isSaved = question.isSaved();
   const database = question.database();
@@ -101,7 +98,7 @@ export const QuestionActions = ({
     PLUGIN_MODEL_PERSISTENCE.isModelLevelPersistenceEnabled() &&
     canWrite &&
     isSaved &&
-    isDataset &&
+    isModel &&
     checkDatabaseCanPersistDatasets(question.database());
 
   const handleEditQuery = useCallback(() => {
@@ -128,7 +125,7 @@ export const QuestionActions = ({
 
   if (
     isMetabotEnabled &&
-    isDataset &&
+    isModel &&
     database &&
     canUseMetabotOnDatabase(database)
   ) {
@@ -147,7 +144,7 @@ export const QuestionActions = ({
     ),
   );
 
-  if (canWrite && isDataset) {
+  if (canWrite && isModel) {
     extraButtons.push(
       {
         title: t`Edit query definition`,
@@ -176,7 +173,7 @@ export const QuestionActions = ({
     });
   }
 
-  if (!isDataset) {
+  if (isQuestion) {
     extraButtons.push({
       title: t`Add to dashboard`,
       icon: "add_to_dash",
@@ -192,21 +189,6 @@ export const QuestionActions = ({
       action: () => onOpenModal(MODAL_TYPES.MOVE),
       testId: MOVE_TESTID,
     });
-    if (!isDataset) {
-      extraButtons.push({
-        title: t`Turn into a model`,
-        icon: "model",
-        action: handleTurnToModel,
-        testId: TURN_INTO_DATASET_TESTID,
-      });
-    }
-    if (isDataset) {
-      extraButtons.push({
-        title: t`Turn back to saved question`,
-        icon: "insight",
-        action: turnDatasetIntoQuestion,
-      });
-    }
   }
 
   const { isEditable } = Lib.queryDisplayInfo(question.query());
@@ -220,6 +202,26 @@ export const QuestionActions = ({
   }
 
   if (canWrite) {
+    if (isQuestion) {
+      extraButtons.push({
+        title: t`Turn into a model`,
+        icon: "model",
+        action: handleTurnToModel,
+        testId: TURN_INTO_DATASET_TESTID,
+      });
+    }
+    if (isModel) {
+      extraButtons.push({
+        title: t`Turn back to saved question`,
+        icon: "insight",
+        action: turnDatasetIntoQuestion,
+      });
+    }
+  }
+
+  extraButtons.push(...PLUGIN_QUERY_BUILDER_HEADER.extraButtons(question));
+
+  if (canWrite) {
     extraButtons.push({
       title: t`Archive`,
       icon: "archive",
@@ -228,12 +230,13 @@ export const QuestionActions = ({
     });
   }
 
-  extraButtons.push(...PLUGIN_QUERY_BUILDER_HEADER.extraButtons(question));
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleUploadClick = () => {
+  const handleUploadClick = (
+    newUploadMode: UploadMode.append | UploadMode.replace,
+  ) => {
     if (fileInputRef.current) {
+      setUploadMode(newUploadMode);
       fileInputRef.current.click();
     }
   };
@@ -241,11 +244,14 @@ export const QuestionActions = ({
   const handleFileUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && question._card.based_on_upload) {
-      uploadFile({
-        file,
-        tableId: question._card.based_on_upload,
-        reloadQuestionData: true,
-      })(dispatch);
+      dispatch(
+        uploadFile({
+          file,
+          tableId: question._card.based_on_upload,
+          reloadQuestionData: true,
+          uploadMode,
+        }),
+      );
 
       // reset the file input so that subsequent uploads of the same file trigger the change handler
       if (fileInputRef.current?.value) {
@@ -280,22 +286,40 @@ export const QuestionActions = ({
         <>
           <input
             type="file"
-            accept="text/csv"
-            id="append-file-input"
+            accept="text/csv,text/tab-separated-values"
+            id="upload-file-input"
             ref={fileInputRef}
             onChange={handleFileUpload}
             style={{ display: "none" }}
           />
           <Tooltip tooltip={t`Upload data to this model`}>
             <ViewHeaderIconButtonContainer>
-              <Button
-                onlyIcon
-                icon="upload"
-                iconSize={HEADER_ICON_SIZE}
-                onClick={handleUploadClick}
-                color={infoButtonColor}
-                data-testid="qb-header-append-button"
-              />
+              <Menu position="bottom-end">
+                <Menu.Target>
+                  <Button
+                    onlyIcon
+                    icon="upload"
+                    iconSize={HEADER_ICON_SIZE}
+                    color={infoButtonColor}
+                    data-testid="qb-header-append-button"
+                  />
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    icon={<Icon name="add" />}
+                    onClick={() => handleUploadClick(UploadMode.append)}
+                  >
+                    {t`Append data to this model`}
+                  </Menu.Item>
+
+                  <Menu.Item
+                    icon={<Icon name="refresh" />}
+                    onClick={() => handleUploadClick(UploadMode.replace)}
+                  >
+                    {t`Replace all data in this model`}
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
             </ViewHeaderIconButtonContainer>
           </Tooltip>
         </>

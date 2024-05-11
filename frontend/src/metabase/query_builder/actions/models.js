@@ -1,14 +1,14 @@
-import { createAction } from "redux-actions";
-import { push } from "react-router-redux";
 import { merge } from "icepick";
+import { push } from "react-router-redux";
+import { createAction } from "redux-actions";
 import { t } from "ttag";
 
-import { addUndo } from "metabase/redux/undo";
-import { loadMetadataForDependentItems } from "metabase/redux/metadata";
 import Questions from "metabase/entities/questions";
-
+import { loadMetadataForCard } from "metabase/questions/actions";
+import { addUndo } from "metabase/redux/undo";
 import { getMetadata } from "metabase/selectors/metadata";
-import { isSameField } from "metabase-lib/queries/utils/field-ref";
+import { isSameField } from "metabase-lib/v1/queries/utils/field-ref";
+
 import { getOriginalCard, getQuestion, getResultsMetadata } from "../selectors";
 
 import { apiUpdateQuestion, updateQuestion, API_UPDATE_QUESTION } from "./core";
@@ -49,8 +49,7 @@ export const turnQuestionIntoDataset = () => async (dispatch, getState) => {
   const metadata = getMetadata(getState());
   const dataset = metadata.question(question.id());
 
-  const dependentItems = dataset.dependentMetadata();
-  await dispatch(loadMetadataForDependentItems(dependentItems));
+  await dispatch(loadMetadataForCard(dataset.card()));
 
   await dispatch({ type: API_UPDATE_QUESTION, payload: dataset.card() });
 

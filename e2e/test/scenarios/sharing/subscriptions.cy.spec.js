@@ -1,3 +1,6 @@
+import { USERS } from "e2e/support/cypress_data";
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+import { ORDERS_DASHBOARD_ID } from "e2e/support/cypress_sample_instance_data";
 import {
   restore,
   setupSMTP,
@@ -7,6 +10,7 @@ import {
   mockSlackConfigured,
   isOSS,
   visitDashboard,
+  editDashboard,
   sendEmailAndAssert,
   addOrUpdateDashboardCard,
   addTextBox,
@@ -21,10 +25,8 @@ import {
   openPublicLinkPopoverFromMenu,
   openEmbedModalFromMenu,
   getEmbedModalSharingPane,
+  setFilter,
 } from "e2e/support/helpers";
-import { ORDERS_DASHBOARD_ID } from "e2e/support/cypress_sample_instance_data";
-import { USERS } from "e2e/support/cypress_data";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 
 const { PRODUCTS, PRODUCTS_ID } = SAMPLE_DATABASE;
 const { admin, normal } = USERS;
@@ -165,10 +167,7 @@ describe("scenarios > dashboard > subscriptions", () => {
           cy.findByPlaceholderText("Enter user names or email addresses")
             .click()
             .type(`${normal.first_name} ${normal.last_name}{enter}`);
-          cy.contains("Done")
-            .closest(".Button")
-            .should("not.be.disabled")
-            .click();
+          clickButton("Done");
 
           cy.findByLabelText("add icon").click();
           cy.findByText("Email this dashboard").should("exist");
@@ -217,36 +216,30 @@ describe("scenarios > dashboard > subscriptions", () => {
     });
 
     describe("let non-users unsubscribe from subscriptions", () => {
-      it(
-        "should allow non-user to unsubscribe from subscription",
-        { tags: "@flaky" },
-        () => {
-          const nonUserEmail = "non-user@example.com";
-          const otherUserEmail = "other-user@example.com";
-          const dashboardName = "Orders in a dashboard";
+      it("should allow non-user to unsubscribe from subscription", () => {
+        const nonUserEmail = "non-user@example.com";
+        const dashboardName = "Orders in a dashboard";
 
-          visitDashboard(ORDERS_DASHBOARD_ID);
+        visitDashboard(ORDERS_DASHBOARD_ID);
 
-          setupSubscriptionWithRecipients([nonUserEmail, otherUserEmail]);
+        setupSubscriptionWithRecipients([nonUserEmail]);
 
-          emailSubscriptionRecipients();
+        emailSubscriptionRecipients();
 
-          openEmailPage(dashboardName).then(() => {
-            cy.intercept("/api/session/pulse/unsubscribe").as("unsubscribe");
-            cy.findByText("Unsubscribe").click();
-            cy.wait("@unsubscribe");
-            cy.contains(
-              `You've unsubscribed ${nonUserEmail} from the "${dashboardName}" alert.`,
-            ).should("exist");
-          });
+        openEmailPage(dashboardName).then(() => {
+          cy.intercept("/api/session/pulse/unsubscribe").as("unsubscribe");
+          cy.findByText("Unsubscribe").click();
+          cy.wait("@unsubscribe");
+          cy.contains(
+            `You've unsubscribed ${nonUserEmail} from the "${dashboardName}" alert.`,
+          ).should("exist");
+        });
 
-          openDashboardSubscriptions();
-          openPulseSubscription();
+        openDashboardSubscriptions();
+        openPulseSubscription();
 
-          sidebar().findByText(nonUserEmail).should("not.exist");
-          sidebar().findByText(otherUserEmail).should("exist");
-        },
-      );
+        sidebar().findByText(nonUserEmail).should("not.exist");
+      });
 
       it("should allow non-user to undo-unsubscribe from subscription", () => {
         const nonUserEmail = "non-user@example.com";
@@ -291,7 +284,7 @@ describe("scenarios > dashboard > subscriptions", () => {
         }; // missing pulse-id
 
         cy.visit({
-          url: `/unsubscribe`,
+          url: "/unsubscribe",
           qs: params,
         });
 
@@ -308,7 +301,7 @@ describe("scenarios > dashboard > subscriptions", () => {
         };
 
         cy.visit({
-          url: `/unsubscribe`,
+          url: "/unsubscribe",
           qs: params,
         });
 
@@ -443,7 +436,7 @@ describe("scenarios > dashboard > subscriptions", () => {
       });
     });
 
-    it(`should load question binned by "Month of year" or similar granularity (metabase#16918)`, () => {
+    it('should load question binned by "Month of year" or similar granularity (metabase#16918)', () => {
       const questionDetails = {
         name: "16918",
         query: {
@@ -756,8 +749,8 @@ function assignRecipients({
     .blur(); // blur is needed to close the popover
 }
 
-function clickButton(button_name) {
-  cy.contains(button_name).closest(".Button").should("not.be.disabled").click();
+function clickButton(name) {
+  cy.button(name).should("not.be.disabled").click();
 }
 
 function createEmailSubscription() {
@@ -784,13 +777,9 @@ function openRecipientsWithUserVisibilitySetting(setting) {
 }
 
 function addParametersToDashboard() {
-  // edit dashboard
-  cy.icon("pencil").click();
+  editDashboard();
 
-  // add Category > Dropdown "Name" filter
-  cy.icon("filter").click();
-  cy.findByText("Text or Category").click();
-  cy.findByText("Is").click();
+  setFilter("Text or Category", "Is");
 
   cy.findByText("Select…").click();
   popover().within(() => {
@@ -803,10 +792,8 @@ function addParametersToDashboard() {
   popover().findByText("Corbin Mertz").click();
   popover().contains("Add filter").click();
 
-  // add Category > Dropdown "Category" filter
-  cy.icon("filter").click();
-  cy.findByText("Text or Category").click();
-  cy.findByText("Is").click();
+  setFilter("Text or Category", "Is");
+
   cy.findByText("Select…").click();
   popover().within(() => {
     cy.findByText("Category").click();

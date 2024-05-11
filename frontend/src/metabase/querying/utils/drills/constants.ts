@@ -1,7 +1,10 @@
-import type * as Lib from "metabase-lib";
 import type { Drill } from "metabase/visualizations/types";
+import type * as Lib from "metabase-lib";
+
 import { automaticInsightsDrill } from "./automatic-insights-drill";
+import { columnExtractDrill } from "./column-extract-drill";
 import { columnFilterDrill } from "./column-filter-drill";
+import { combineColumnsDrill } from "./combine-columns-drill";
 import { distributionDrill } from "./distribution-drill";
 import { fkDetailsDrill } from "./fk-details-drill";
 import { fkFilterDrill } from "./fk-filter-drill";
@@ -19,7 +22,9 @@ import { zoomInTimeseriesDrill } from "./zoom-in-timeseries-drill";
 
 export const DRILLS: Record<Lib.DrillThruType, Drill<any>> = {
   "drill-thru/automatic-insights": automaticInsightsDrill,
+  "drill-thru/column-extract": columnExtractDrill,
   "drill-thru/column-filter": columnFilterDrill,
+  "drill-thru/combine-columns": combineColumnsDrill,
   "drill-thru/distribution": distributionDrill,
   "drill-thru/fk-details": fkDetailsDrill,
   "drill-thru/fk-filter": fkFilterDrill,

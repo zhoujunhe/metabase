@@ -1,17 +1,22 @@
+import type { EmbeddingParameters } from "metabase/public/lib/types";
 import type {
   ClickBehavior,
   Collection,
   CollectionAuthorityLevel,
+  CollectionId,
   Parameter,
   ParameterId,
   ParameterTarget,
 } from "metabase-types/api";
 
-import type { EmbeddingParameters } from "metabase/public/lib/types";
-import type { ActionDisplayType, WritebackAction } from "./actions";
-import type { SearchModelType } from "./search";
+import type {
+  ActionDisplayType,
+  WritebackAction,
+  WritebackActionId,
+} from "./actions";
 import type { Card, CardId, CardDisplayType } from "./card";
 import type { Dataset } from "./dataset";
+import type { SearchModel } from "./search";
 
 // x-ray dashboard have string ids
 export type DashboardId = number | string;
@@ -28,13 +33,15 @@ export interface Dashboard {
   created_at: string;
   updated_at: string;
   collection?: Collection | null;
-  collection_id: number | null;
+  collection_id: CollectionId | null;
   name: string;
   description: string | null;
   model?: string;
   dashcards: DashboardCard[];
   tabs?: DashboardTab[];
+  show_in_getting_started?: boolean | null;
   parameters?: Parameter[] | null;
+  point_of_interest?: string | null;
   collection_authority_level?: CollectionAuthorityLevel;
   can_write: boolean;
   cache_ttl: number | null;
@@ -65,6 +72,11 @@ export type DashboardCardLayoutAttrs = {
   size_y: number;
 };
 
+export type DashCardVisualizationSettings = {
+  [key: string]: unknown;
+  virtual_card?: VirtualCard;
+};
+
 export type BaseDashboardCard = DashboardCardLayoutAttrs & {
   id: DashCardId;
   dashboard_id: DashboardId;
@@ -73,10 +85,7 @@ export type BaseDashboardCard = DashboardCardLayoutAttrs & {
   card: Card | VirtualCard;
   collection_authority_level?: CollectionAuthorityLevel;
   entity_id: string;
-  visualization_settings?: {
-    [key: string]: unknown;
-    virtual_card?: VirtualCard;
-  };
+  visualization_settings?: DashCardVisualizationSettings;
   justAdded?: boolean;
   created_at: string;
   updated_at: string;
@@ -102,13 +111,13 @@ export type ActionDashboardCard = Omit<
   BaseDashboardCard,
   "parameter_mappings"
 > & {
+  action_id: WritebackActionId;
   action?: WritebackAction;
   card_id: CardId | null; // model card id for the associated action
   card: Card;
 
   parameter_mappings?: ActionParametersMapping[] | null;
-  visualization_settings: {
-    [key: string]: unknown;
+  visualization_settings: DashCardVisualizationSettings & {
     "button.label"?: string;
     click_behavior?: ClickBehavior;
     actionDisplayType?: ActionDisplayType;
@@ -172,7 +181,7 @@ export type UnrestrictedLinkEntity = {
   id: number;
   db_id?: number;
   database_id?: number;
-  model: SearchModelType;
+  model: SearchModel;
   name: string;
   display_name?: string;
   description?: string;
@@ -194,3 +203,64 @@ export interface GetCompatibleCardsPayload {
   query?: string;
   exclude_ids: number[];
 }
+
+export type ListDashboardsRequest = {
+  f?: "all" | "mine" | "archived";
+};
+
+// GET /api/dashboard endpoint does not hydrate all Dashboard attributes
+export type ListDashboardsResponse = Omit<
+  Dashboard,
+  | "dashcards"
+  | "tabs"
+  | "collection"
+  | "collection_authority_level"
+  | "can_write"
+  | "param_fields"
+  | "param_values"
+>[];
+
+export type GetDashboardRequest = {
+  id: DashboardId;
+  ignore_error?: boolean;
+};
+
+export type CreateDashboardRequest = {
+  name: string;
+  description?: string | null;
+  parameters?: Parameter[] | null;
+  cache_ttl?: number;
+  collection_id?: CollectionId | null;
+  collection_position?: number | null;
+};
+
+export type UpdateDashboardRequest = {
+  id: DashboardId;
+  parameters?: Parameter[] | null;
+  point_of_interest?: string | null;
+  description?: string | null;
+  archived?: boolean | null;
+  dashcards?: DashboardCard[] | null;
+  collection_position?: number | null;
+  tabs?: DashboardTab[];
+  show_in_getting_started?: boolean | null;
+  enable_embedding?: boolean | null;
+  collection_id?: CollectionId | null;
+  name?: string | null;
+  width?: DashboardWidth | null;
+  caveats?: string | null;
+  embedding_params?: EmbeddingParameters | null;
+  cache_ttl?: number;
+  position?: number | null;
+};
+
+export type SaveDashboardRequest = Omit<UpdateDashboardRequest, "id">;
+
+export type CopyDashboardRequest = {
+  id: DashboardId;
+  name?: string | null;
+  description?: string | null;
+  collection_id?: CollectionId | null;
+  collection_position?: number | null;
+  is_deep_copy?: boolean | null;
+};

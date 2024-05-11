@@ -12,7 +12,6 @@
    [metabase.lib.join.util :as lib.join.util]
    [metabase.lib.metadata :as lib.metadata]
    [metabase.lib.metadata.calculation :as lib.metadata.calculation]
-   [metabase.lib.normalize :as lib.normalize]
    [metabase.lib.schema :as lib.schema]
    [metabase.lib.schema.id :as lib.schema.id]
    [metabase.lib.util :as lib.util]
@@ -22,14 +21,6 @@
 
 (lib.hierarchy/derive :mbql.stage/mbql   ::stage)
 (lib.hierarchy/derive :mbql.stage/native ::stage)
-
-(defmethod lib.normalize/normalize :mbql.stage/mbql
-  [stage]
-  (lib.normalize/normalize-map
-   stage
-   keyword
-   {:aggregation (partial mapv lib.normalize/normalize)
-    :filters     (partial mapv lib.normalize/normalize)}))
 
 (defmethod lib.metadata.calculation/metadata-method ::stage
   [_query _stage-number _stage]
@@ -79,7 +70,7 @@
 (mu/defn ^:private breakouts-columns :- [:maybe lib.metadata.calculation/ColumnsWithUniqueAliases]
   [query          :- ::lib.schema/query
    stage-number   :- :int
-   unique-name-fn :- fn?]
+   unique-name-fn :- ::lib.metadata.calculation/unique-name-fn]
   (not-empty
    (for [breakout (lib.breakout/breakouts-metadata query stage-number)]
      (assoc breakout
@@ -90,7 +81,7 @@
 (mu/defn ^:private aggregations-columns :- [:maybe lib.metadata.calculation/ColumnsWithUniqueAliases]
   [query          :- ::lib.schema/query
    stage-number   :- :int
-   unique-name-fn :- fn?]
+   unique-name-fn :- ::lib.metadata.calculation/unique-name-fn]
   (not-empty
    (for [ag (lib.aggregation/aggregations-metadata query stage-number)]
      (assoc ag
@@ -103,7 +94,7 @@
 (mu/defn ^:private fields-columns :- [:maybe lib.metadata.calculation/ColumnsWithUniqueAliases]
   [query          :- ::lib.schema/query
    stage-number   :- :int
-   unique-name-fn :- fn?]
+   unique-name-fn :- ::lib.metadata.calculation/unique-name-fn]
   (when-let [{fields :fields} (lib.util/query-stage query stage-number)]
     (not-empty
      (for [[tag :as ref-clause] fields
@@ -122,7 +113,7 @@
 (mu/defn ^:private summary-columns :- [:maybe lib.metadata.calculation/ColumnsWithUniqueAliases]
   [query          :- ::lib.schema/query
    stage-number   :- :int
-   unique-name-fn :- fn?]
+   unique-name-fn :- ::lib.metadata.calculation/unique-name-fn]
   (not-empty
    (into []
          (mapcat (fn [f]
@@ -134,7 +125,7 @@
   "Metadata for the previous stage, if there is one."
   [query          :- ::lib.schema/query
    stage-number   :- :int
-   unique-name-fn :- fn?]
+   unique-name-fn :- ::lib.metadata.calculation/unique-name-fn]
   (when-let [previous-stage-number (lib.util/previous-stage-number query stage-number)]
     (not-empty
      (for [col  (lib.metadata.calculation/returned-columns query
@@ -170,9 +161,9 @@
       (not-empty (lib.metadata.calculation/visible-columns query stage-number card options)))))
 
 (mu/defn ^:private expressions-metadata :- [:maybe lib.metadata.calculation/ColumnsWithUniqueAliases]
-  [query           :- ::lib.schema/query
-   stage-number    :- :int
-   unique-name-fn  :- fn?]
+  [query          :- ::lib.schema/query
+   stage-number   :- :int
+   unique-name-fn :- ::lib.metadata.calculation/unique-name-fn]
   (not-empty
    (for [expression (lib.expression/expressions-metadata query stage-number)]
      (let [base-type (:base-type expression)]
@@ -254,9 +245,7 @@
     (->> (concat
            existing-columns
            ;; add implicitly joinable columns if desired
-           (when (and include-implicitly-joinable?
-                      (or (not (:source-card (lib.util/query-stage query stage-number)))
-                          (:include-implicitly-joinable-for-source-card? options)))
+           (when include-implicitly-joinable?
              (lib.metadata.calculation/implicitly-joinable-columns query stage-number existing-columns unique-name-fn)))
          vec)))
 
@@ -335,7 +324,7 @@
   (boolean (seq (dissoc (lib.util/query-stage query stage-number) :lib/type :source-table :source-card))))
 
 (mu/defn append-stage :- ::lib.schema/query
-  "Adds a new blank stage to the end of the pipeline"
+  "Adds a new blank stage to the end of the pipeline."
   [query]
   (update query :stages conj {:lib/type :mbql.stage/mbql}))
 

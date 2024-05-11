@@ -100,7 +100,7 @@
 (defn- clean-entity
  "Removes any comparison-confounding fields, like `:created_at`."
  [entity]
- (dissoc entity :created_at :result_metadata))
+ (dissoc entity :created_at :result_metadata :metadata_sync_schedule :cache_field_values_schedule))
 
 #_{:clj-kondo/ignore [:metabase/i-like-making-cams-eyes-bleed-with-horrifically-long-tests]}
 (deftest e2e-storage-ingestion-test
@@ -154,7 +154,7 @@
                                                {:spec-gen {:dataset_query {:database 1
                                                                            :type     :native
                                                                            :native   {:query "SELECT * FROM whatever;"}}
-                                                           :dataset       true}}
+                                                           :type          :model}}
                                                {:table_id      [:t    100]
                                                 :collection_id [:coll 100]
                                                 :creator_id    [:u    10]}))
@@ -167,7 +167,7 @@
                                                 {:spec-gen {:dataset_query {:database 1
                                                                             :query {:source-table 3}
                                                                             :type :query}
-                                                            :dataset       true}}
+                                                            :type          :model}}
                                                 {:table_id      [:t    10]
                                                  :collection_id [:coll 10]
                                                  :creator_id    [:u    10]}))
@@ -222,7 +222,7 @@
                :pulse-channel-recipient (many-random-fks 40 {} {:pulse_channel_id [:pulse-channel 30]
                                                                 :user_id          [:u 100]})}))
 
-          (is (= 100 (count (t2/select-fn-set :email 'User))))
+          (is (= 101 (count (t2/select-fn-set :email 'User)))) ; +1 for the internal user
 
           (testing "extraction"
             (reset! extraction (serdes/with-cache (into [] (extract/extract {}))))
@@ -550,7 +550,7 @@
 
              Card          {model-id   :id
                             model-name :name
-                            model-eid  :entity_id}   {:dataset       true
+                            model-eid  :entity_id}   {:type          :model
                                                       :name          "Linked model"
                                                       :description   "Linked model desc"
                                                       :display       "table"}
@@ -856,3 +856,27 @@
                            (get-in viz [:column_settings
                                         (format "[\"ref\",[\"field\",%s,null]]" %people.name)
                                         :pivot_table.column_sort_order])))))))))))))
+
+(deftest extra-files-test
+  (testing "Adding some extra files does not break deserialization"
+    (ts/with-random-dump-dir [dump-dir "serdesv2-"]
+      (mt/with-empty-h2-app-db
+        (let [coll (ts/create! Collection :name "coll")
+              _    (ts/create! Card :name "card" :collection_id (:id coll))]
+          (storage/store! (extract/extract {:no-settings   true
+                                            :no-data-model true}) dump-dir)
+
+          (spit (io/file dump-dir "collections" ".hidden.yaml") "serdes/meta: [{do-not: read}]")
+          (spit (io/file dump-dir "collections" "unreadable.yaml") "\0")
+
+          (testing "No exceptions when loading despite unreadable files"
+            (let [logs (mt/with-log-messages-for-level ['metabase-enterprise :error]
+                         (let [files (->> (#'ingest/ingest-all (io/file dump-dir))
+                                          (map (comp second second))
+                                          (map #(.getName %))
+                                          set)]
+                           (testing "Hidden YAML wasn't read even though it's not throwing errors"
+                             (is (not (contains? files ".hidden.yaml"))))))]
+              (testing ".yaml files not containing valid yaml are just logged and do not break ingestion process"
+                (is (=? [[:error Throwable "Error reading file unreadable.yaml"]]
+                        logs))))))))))

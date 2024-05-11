@@ -1,7 +1,9 @@
-import { t } from "ttag";
 import { useState } from "react";
-import { Button, Group, Flex, Paper, Text } from "metabase/ui";
+import { t } from "ttag";
+
+import CS from "metabase/css/core/index.css";
 import type { EmbedResourceType } from "metabase/public/lib/types";
+import { Button, Group, Flex, Paper, Text } from "metabase/ui";
 
 interface EmbedModalContentStatusBarProps {
   isPublished: boolean;
@@ -40,7 +42,7 @@ export const EmbedModalContentStatusBar = ({
             : t`This ${resourceType} is published and ready to be embedded.`}
         </Text>
 
-        <Group spacing="1rem" className="flex-no-shrink">
+        <Group spacing="1rem" className={CS.flexNoShrink}>
           {isPublished &&
             (hasSettingsChanges ? (
               <Button onClick={onDiscard}>{t`Discard changes`}</Button>

@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
 import { t } from "ttag";
-import { Flex, Grid, TextInput, Icon } from "metabase/ui";
 
 import { getColumnIcon } from "metabase/common/utils/columns";
+import type { OperatorType } from "metabase/querying/hooks/use-string-filter";
 import { useStringFilter } from "metabase/querying/hooks/use-string-filter";
+import { Grid, MultiAutocomplete } from "metabase/ui";
 import type * as Lib from "metabase-lib";
+
 import { StringFilterValuePicker } from "../../FilterValuePicker";
-import { FilterColumnName } from "../FilterColumnName";
 import { FilterOperatorPicker } from "../FilterOperatorPicker";
+import { FilterTitle, HoverParent } from "../FilterTitle";
 import type { FilterEditorProps } from "../types";
 
 export function StringFilterEditor({
@@ -23,11 +25,10 @@ export function StringFilterEditor({
   const [isFocused, setIsFocused] = useState(false);
 
   const {
+    type,
     operator,
     availableOptions,
     values,
-    valueCount,
-    hasMultipleValues,
     options,
     getDefaultValues,
     getFilterClause,
@@ -66,37 +67,37 @@ export function StringFilterEditor({
   };
 
   return (
-    <Grid grow>
-      <Grid.Col span="auto">
-        <Flex h="100%" align="center" gap="sm">
-          <Icon name={columnIcon} />
-          <FilterColumnName
+    <HoverParent>
+      <Grid grow>
+        <Grid.Col span="auto">
+          <FilterTitle
             query={query}
             stageIndex={stageIndex}
             column={column}
+            columnIcon={columnIcon}
             isSearching={isSearching}
+          >
+            <FilterOperatorPicker
+              value={operator}
+              options={availableOptions}
+              onChange={handleOperatorChange}
+            />
+          </FilterTitle>
+        </Grid.Col>
+        <Grid.Col span={4}>
+          <StringValueInput
+            query={query}
+            stageIndex={stageIndex}
+            column={column}
+            values={values}
+            type={type}
+            onChange={handleInputChange}
+            onFocus={handleInputFocus}
+            onBlur={handleInputBlur}
           />
-          <FilterOperatorPicker
-            value={operator}
-            options={availableOptions}
-            onChange={handleOperatorChange}
-          />
-        </Flex>
-      </Grid.Col>
-      <Grid.Col span={4}>
-        <StringValueInput
-          query={query}
-          stageIndex={stageIndex}
-          column={column}
-          values={values}
-          valueCount={valueCount}
-          hasMultipleValues={hasMultipleValues}
-          onChange={handleInputChange}
-          onFocus={handleInputFocus}
-          onBlur={handleInputBlur}
-        />
-      </Grid.Col>
-    </Grid>
+        </Grid.Col>
+      </Grid>
+    </HoverParent>
   );
 }
 
@@ -105,8 +106,7 @@ interface StringValueInputProps {
   stageIndex: number;
   column: Lib.ColumnMetadata;
   values: string[];
-  valueCount: number;
-  hasMultipleValues?: boolean;
+  type: OperatorType;
   onChange: (values: string[]) => void;
   onFocus: () => void;
   onBlur: () => void;
@@ -117,13 +117,12 @@ function StringValueInput({
   stageIndex,
   column,
   values,
-  valueCount,
-  hasMultipleValues,
+  type,
   onChange,
   onFocus,
   onBlur,
 }: StringValueInputProps) {
-  if (hasMultipleValues) {
+  if (type === "exact") {
     return (
       <StringFilterValuePicker
         query={query}
@@ -138,13 +137,14 @@ function StringValueInput({
     );
   }
 
-  if (valueCount === 1) {
+  if (type === "partial") {
     return (
-      <TextInput
-        value={values[0]}
+      <MultiAutocomplete
+        data={[]}
+        value={values}
         placeholder={t`Enter some text`}
         aria-label={t`Filter value`}
-        onChange={event => onChange([event.target.value])}
+        onChange={onChange}
         onFocus={onFocus}
         onBlur={onBlur}
       />

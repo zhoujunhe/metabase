@@ -1,16 +1,19 @@
-import { jt, t } from "ttag";
+import cx from "classnames";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Box, Center, Stack, Text } from "metabase/ui";
+import { jt, t } from "ttag";
+
+import { getPlan } from "metabase/common/utils/plan";
 import ExternalLink from "metabase/core/components/ExternalLink";
-import { getDocsUrl, getSetting } from "metabase/selectors/settings";
+import CS from "metabase/css/core/index.css";
 import { useSelector } from "metabase/lib/redux";
+import { getEmbedClientCodeExampleOptions } from "metabase/public/lib/code";
 import type {
   EmbedResourceType,
   ServerCodeSampleConfig,
 } from "metabase/public/lib/types";
-import { getEmbedClientCodeExampleOptions } from "metabase/public/lib/code";
-import { getPlan } from "metabase/common/utils/plan";
+import { getDocsUrl, getSetting } from "metabase/selectors/settings";
+import { Box, Center, Stack, Text } from "metabase/ui";
 
 import { ClientEmbedCodePane } from "./ClientEmbedCodePane";
 import { SettingsTabLayout } from "./StaticEmbedSetupPane.styled";
@@ -79,7 +82,7 @@ export const OverviewSettings = ({
         </StaticEmbedSetupPaneSettingsContentSection>
       }
       previewSlot={
-        <Stack spacing="2rem" className="flex-full w-full">
+        <Stack spacing="2rem" className={cx(CS.flexFull, CS.wFull)}>
           {serverEmbedCodeSlot}
 
           <ClientEmbedCodePane

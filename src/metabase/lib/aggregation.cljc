@@ -23,7 +23,7 @@
 
 (mu/defn column-metadata->aggregation-ref :- :mbql.clause/aggregation
   "Given `:metadata/column` column metadata for an aggregation, construct an `:aggregation` reference."
-  [metadata :- lib.metadata/ColumnMetadata]
+  [metadata :- ::lib.schema.metadata/column]
   (let [options {:lib/uuid        (str (random-uuid))
                  :effective-type  ((some-fn :effective-type :base-type) metadata)
                  :lib/source-name (:name metadata)}
@@ -76,7 +76,8 @@
 ;;; count and cumulative count can both be used either with no args (count of rows) or with one arg (count of X, which
 ;;; I think means count where X is not NULL or something like that. Basically `count(x)` in SQL)
 (doseq [tag [:count
-             :cum-count]]
+             :cum-count
+             :count-where]]
   (lib.hierarchy/derive tag ::count-aggregation))
 
 (defmethod lib.metadata.calculation/display-name-method ::count-aggregation
@@ -94,13 +95,18 @@
 (defmethod lib.metadata.calculation/column-name-method ::count-aggregation
   [_query _stage-number [tag :as _clause]]
   (case tag
-    :count     "count"
-    :cum-count "cum_count"))
+    :count       "count"
+    :cum-count   "count"
+    :count-where "count_where"))
 
-(defmethod lib.metadata.calculation/metadata-method ::count-aggregation
+(defmethod lib.metadata.calculation/metadata-method ::quantity-aggregation
   [query stage-number clause]
   (assoc ((get-method lib.metadata.calculation/metadata-method ::aggregation) query stage-number clause)
          :semantic-type :type/Quantity))
+
+(lib.hierarchy/derive ::quantity-aggregation ::aggregation)
+(lib.hierarchy/derive ::count-aggregation ::quantity-aggregation)
+(lib.hierarchy/derive :distinct ::quantity-aggregation)
 
 (defmethod lib.metadata.calculation/display-name-method :case
   [_query _stage-number _case _style]
@@ -138,7 +144,6 @@
     :sum       "sum"
     :var       "var"))
 
-
 (defmethod lib.metadata.calculation/display-name-method ::unary-aggregation
   [query stage-number [tag _opts arg] style]
   (let [arg (lib.metadata.calculation/display-name query stage-number arg style)]
@@ -161,7 +166,17 @@
   [_query _stage-number _clause]
   "percentile")
 
-(lib.hierarchy/derive :percentile ::aggregation)
+(lib.hierarchy/derive ::no-semantic-type ::aggregation)
+(doseq [tag [:percentile :var]]
+  (lib.hierarchy/derive tag ::no-semantic-type))
+
+;; The default preserves the semantic type.
+;; But for ::no-semantic-type we should drop
+
+(defmethod lib.metadata.calculation/metadata-method ::no-semantic-type
+  [query stage-number clause]
+  (dissoc ((get-method lib.metadata.calculation/metadata-method ::aggregation) query stage-number clause)
+          :semantic-type))
 
 ;;; we don't currently have sophisticated logic for generating nice display names for filter clauses.
 ;;;
@@ -185,17 +200,16 @@
   [_query _stage-number _share]
   "share")
 
+(defmethod lib.metadata.calculation/metadata-method :share
+  [query stage-number clause]
+  (assoc ((get-method lib.metadata.calculation/metadata-method ::aggregation) query stage-number clause)
+         :semantic-type :type/Percentage))
+
 (lib.hierarchy/derive :share ::aggregation)
 
 (defmethod lib.metadata.calculation/display-name-method :count-where
   [_query _stage-number _count-where _style]
   (i18n/tru "Count of rows matching condition"))
-
-(defmethod lib.metadata.calculation/column-name-method :count-where
-  [_query _stage-number _count-where]
-  "count-where")
-
-(lib.hierarchy/derive :count-where ::aggregation)
 
 (defmethod lib.metadata.calculation/metadata-method ::aggregation
   [query stage-number [_tag _opts first-arg :as clause]]
@@ -203,7 +217,7 @@
    ;; flow the `:options` from the field we're aggregating. This is important, for some reason.
    ;; See [[metabase.query-processor-test.aggregation-test/field-settings-for-aggregate-fields-test]]
    (when first-arg
-     (select-keys (lib.metadata.calculation/metadata query stage-number first-arg) [:settings]))
+     (select-keys (lib.metadata.calculation/metadata query stage-number first-arg) [:settings :semantic-type]))
    ((get-method lib.metadata.calculation/metadata-method :default) query stage-number clause)))
 
 (lib.common/defop count       [] [x])
@@ -231,7 +245,7 @@
   [:or
    ::lib.schema.aggregation/aggregation
    ::lib.schema.common/external-op
-   lib.metadata/MetricMetadata])
+   ::lib.schema.metadata/legacy-metric])
 
 (mu/defn aggregate :- ::lib.schema/query
   "Adds an aggregation to query."
@@ -242,7 +256,7 @@
     stage-number :- :int
     aggregable :- Aggregable]
    ;; if this is a Metric metadata, convert it to `:metric` MBQL clause before adding.
-   (if (= (lib.dispatch/dispatch-value aggregable) :metadata/metric)
+   (if (= (lib.dispatch/dispatch-value aggregable) :metadata/legacy-metric)
      (recur query stage-number (lib.ref/ref aggregable))
      (lib.util/add-summary-clause query stage-number :aggregation aggregable))))
 
@@ -255,7 +269,7 @@
     stage-number :- :int]
    (not-empty (:aggregation (lib.util/query-stage query stage-number)))))
 
-(mu/defn aggregations-metadata :- [:maybe [:sequential lib.metadata/ColumnMetadata]]
+(mu/defn aggregations-metadata :- [:maybe [:sequential ::lib.schema.metadata/column]]
   "Get metadata about the aggregations in a given stage of a query."
   ([query]
    (aggregations-metadata query -1))
@@ -274,7 +288,7 @@
   [:merge
    ::lib.schema.aggregation/operator
    [:map
-    [:columns {:optional true} [:sequential lib.metadata/ColumnMetadata]]]])
+    [:columns {:optional true} [:sequential ::lib.schema.metadata/column]]]])
 
 (defmethod lib.metadata.calculation/display-name-method :operator/aggregation
   [_query _stage-number {:keys [display-info]} _display-name-style]
@@ -287,7 +301,7 @@
                  :requires-column requires-column?)
     (some? selected?) (assoc :selected selected?)))
 
-(mu/defn aggregation-operator-columns :- [:maybe [:sequential lib.metadata/ColumnMetadata]]
+(mu/defn aggregation-operator-columns :- [:maybe [:sequential ::lib.schema.metadata/column]]
   "Returns the columns for which `aggregation-operator` is applicable."
   [aggregation-operator :- OperatorWithColumns]
   (:columns aggregation-operator))
@@ -345,7 +359,7 @@
   [:merge
    ::lib.schema.aggregation/operator
    [:map
-    [:columns {:optional true} [:sequential lib.metadata/ColumnMetadata]]
+    [:columns {:optional true} [:sequential ::lib.schema.metadata/column]]
     [:selected? {:optional true} :boolean]]])
 
 (mu/defn selected-aggregation-operators :- [:maybe [:sequential SelectedOperatorWithColumns]]

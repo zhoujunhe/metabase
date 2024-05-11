@@ -1,5 +1,5 @@
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
-  dashboardHeader,
   dashboardParametersContainer,
   describeWithSnowplow,
   editDashboard,
@@ -19,8 +19,8 @@ import {
   visitDashboard,
   visitEmbeddedPage,
   visitPublicDashboard,
+  setFilter,
 } from "e2e/support/helpers";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 
 const { PRODUCTS, PRODUCTS_ID } = SAMPLE_DATABASE;
 
@@ -168,11 +168,9 @@ describe(
         dashboardParametersContainer().button("Apply").should("be.visible");
 
         editDashboard();
-        dashboardHeader().icon("filter").click();
-        popover().within(() => {
-          cy.findByText("Text or Category").click();
-          cy.findByText("Is").click();
-        });
+
+        setFilter("Text or Category", "Is");
+
         sidebar().findByDisplayValue("Text").clear().type("Vendor");
         getDashboardCard().findByText("Select…").click();
         popover().findByText("Vendor").click();

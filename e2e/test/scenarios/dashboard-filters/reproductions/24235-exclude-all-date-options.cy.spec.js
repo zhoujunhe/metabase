@@ -1,10 +1,10 @@
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
   popover,
   restore,
   visitDashboard,
   filterWidget,
 } from "e2e/support/helpers";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 
 const { PRODUCTS, PRODUCTS_ID } = SAMPLE_DATABASE;
 
@@ -57,7 +57,10 @@ describe("issue 24235", () => {
     });
 
     cy.wait("@getCardQuery");
-    cy.get(".cellData").should("contain", "Price, Schultz and Daniel");
+    cy.get("[data-testid=cell-data]").should(
+      "contain",
+      "Price, Schultz and Daniel",
+    );
   });
 });
 

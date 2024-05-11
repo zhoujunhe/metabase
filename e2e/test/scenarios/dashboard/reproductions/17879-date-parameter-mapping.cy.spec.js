@@ -1,12 +1,13 @@
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
   editDashboard,
+  cartesianChartCircle,
   popover,
   restore,
   saveDashboard,
   showDashboardCardActions,
   visitDashboard,
 } from "e2e/support/helpers";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 
 const { ORDERS_ID, ORDERS } = SAMPLE_DATABASE;
 
@@ -121,10 +122,10 @@ function setupDashcardAndDrillToQuestion({
     cy.wait("@getCardQuery");
 
     cy.findByTestId("visualization-root").within(() => {
-      cy.get("circle").first().click({ force: true });
+      cartesianChartCircle().first().click({ force: true });
     });
 
-    cy.url().should("include", `/question`);
+    cy.url().should("include", "/question");
 
     cy.findByTestId("qb-filters-panel").should("have.text", expectedFilterText);
   });

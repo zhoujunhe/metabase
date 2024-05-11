@@ -1,9 +1,9 @@
 /* eslint-disable react/prop-types */
 import { Component } from "react";
-
 import { connect } from "react-redux";
 import { t } from "ttag";
 import _ from "underscore";
+
 import { addUndo, dismissUndo } from "metabase/redux/undo";
 
 class SaveStatus extends Component {
@@ -35,8 +35,8 @@ class SaveStatus extends Component {
     this.setState({ showSavingingTimeout: timeout });
   }
 
-  setSaved() {
-    this.notify({ message: t`Saved` });
+  setSaved(message = t`Changes saved`) {
+    this.notify({ message });
   }
 
   setSaveError(error) {

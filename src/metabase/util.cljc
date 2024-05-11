@@ -76,7 +76,6 @@
                          :clj  'Throwable)
                       ~'_)))
 
-;; TODO -- maybe renaming this to `adoto` or `doto<>` or something would be a little clearer.
 (defmacro prog1
   "Execute `first-form`, then any other expressions in `body`, presumably for side-effects; return the result of
   `first-form`.
@@ -158,7 +157,7 @@
   conversions, turning `ID` into `ıd`, in the Turkish locale. This function always uses the `en-US` locale."
   ^String [s]
   (when s
-    #?(:clj  (.toLowerCase (str s) (Locale/US))
+    #?(:clj  (.toLowerCase (str s) Locale/US)
        :cljs (.toLowerCase (str s)))))
 
 (defn upper-case-en
@@ -168,7 +167,7 @@
   `en-US` locale."
   ^String [s]
   (when s
-    #?(:clj  (.toUpperCase (str s) (Locale/US))
+    #?(:clj  (.toUpperCase (str s) Locale/US)
        :cljs (.toUpperCase (str s)))))
 
 (defn capitalize-en
@@ -179,6 +178,15 @@
       (upper-case-en s)
       (str (upper-case-en (subs s 0 1))
            (lower-case-en (subs s 1))))))
+
+(defn regex->str
+  "Returns the contents of a regex as a string.
+
+  This is simply [[str]] in Clojure but needs to remove slashes (`\"/regex contents/\"`) in CLJS."
+  [regex]
+  #?(:clj  (str regex)
+     :cljs (let [s (str regex)]
+             (subs s 1 (dec (count s))))))
 
 ;;; define custom CSK conversion functions so we don't run into problems if the system locale is Turkish
 
@@ -258,7 +266,7 @@
 ;; Log the maximum memory available to the JVM at launch time as well since it is very handy for debugging things
 #?(:clj
    (when-not *compile-files*
-     (log/info (i18n/trs "Maximum memory available to JVM: {0}" (u.format/format-bytes (.maxMemory (Runtime/getRuntime)))))))
+     (log/infof "Maximum memory available to JVM: %s" (u.format/format-bytes (.maxMemory (Runtime/getRuntime))))))
 
 ;; Set the default width for pprinting to 120 instead of 72. The default width is too narrow and wastes a lot of space
 #?(:clj  (alter-var-root #'pprint/*print-right-margin* (constantly 120))
@@ -430,9 +438,8 @@
   "If passed an integer ID, returns it. If passed a map containing an `:id` key, returns the value if it is an integer.
   Otherwise, throws an Exception.
 
-  Provided as a convenience to allow model-layer functions to easily accept either an object or raw ID, and to assert
+  Provided to allow model-layer functions to easily accept either an object or raw ID, and to assert
   that you have a valid ID."
-  ;; TODO - lots of functions can be rewritten to use this, which would make them more flexible
   ^Integer [object-or-id]
   (or (id object-or-id)
       (throw (error (tru "Not something with an ID: {0}" (pr-str object-or-id))))))
@@ -834,20 +841,38 @@
                          {:kvs kvs})))
        ret))))
 
-(defn classify-changes
+(defn row-diff
   "Given 2 lists of seq maps of changes, where each map an has an `id` key,
   return a map of 3 keys: `:to-create`, `:to-update`, `:to-delete`.
 
   Where:
-  :to-create is a list of maps that ids in `new-items`
-  :to-update is a list of maps that has ids in both `current-items` and `new-items`
-  :to delete is a list of maps that has ids only in `current-items`"
-  [current-items new-items]
-  (let [[delete-ids create-ids update-ids] (diff (set (map :id current-items))
-                                                 (set (map :id new-items)))]
-    {:to-create (when (seq create-ids) (filter #(create-ids (:id %)) new-items))
-     :to-delete (when (seq delete-ids) (filter #(delete-ids (:id %)) current-items))
-     :to-update (when (seq update-ids) (filter #(update-ids (:id %)) new-items))}))
+  - `:to-create` is a list of maps that ids in `new-rows`
+  - `:to-delete` is a list of maps that has ids only in `current-rows`
+  - `:to-skip`   is a list of identical maps that has ids in both lists
+  - `:to-update` is a list of different maps that has ids in both lists
+
+  Optional arguments:
+  - `id-fn` - function to get row-matching identifiers
+  - `to-compare` - function to get rows into a comparable state
+  "
+  [current-rows new-rows & {:keys [id-fn to-compare]
+                            :or   {id-fn   :id
+                                   to-compare identity}}]
+  (let [[delete-ids
+         create-ids
+         update-ids]     (diff (set (map id-fn current-rows))
+                               (set (map id-fn new-rows)))
+        known-map        (m/index-by id-fn current-rows)
+        {to-update false
+         to-skip   true} (when (seq update-ids)
+                           (group-by (fn [x]
+                                       (let [y (get known-map (id-fn x))]
+                                         (= (to-compare x) (to-compare y))))
+                                     (filter #(update-ids (id-fn %)) new-rows)))]
+    {:to-create (when (seq create-ids) (filter #(create-ids (id-fn %)) new-rows))
+     :to-delete (when (seq delete-ids) (filter #(delete-ids (id-fn %)) current-rows))
+     :to-update to-update
+     :to-skip   to-skip}))
 
 (defn empty-or-distinct?
   "True if collection `xs` is either [[empty?]] or all values are [[distinct?]]."
@@ -889,3 +914,24 @@
   "Given two maps, are any keys on which they disagree? We only consider keys that are present in both."
   [m1 m2]
   (boolean (some identity (conflicting-keys m1 m2))))
+
+(defn- map-all*
+  [f colls]
+  (lazy-seq
+   (if (some seq colls)
+     (cons (apply f (map first colls))
+           (map-all* f (map rest colls)))
+     ())))
+
+(defn map-all
+  "Similar to [[clojure.core/map]], but instead of short-circuiting it continues until the end of the longest
+  collection, using nil for collection(s) that have already been exhausted."
+  ([f coll] (map f coll))
+  ([f c1 c2]
+   (lazy-seq
+    (let [s1 (seq c1) s2 (seq c2)]
+      (when (or s1 s2)
+        (cons (f (first s1) (first s2))
+              (map-all f (rest s1) (rest s2)))))))
+  ([f c1 c2 & colls]
+   (map-all* f (list* c1 c2 colls))))

@@ -1,41 +1,31 @@
 import { useCallback, useMemo } from "react";
 import { t } from "ttag";
 
-import type { CollectionItem } from "metabase-types/api";
-
-import { useDispatch, useSelector } from "metabase/lib/redux";
-
+import { useSearchListQuery } from "metabase/common/hooks";
+import { ArchivedItem } from "metabase/components/ArchivedItem/ArchivedItem";
+import { BulkActionBar } from "metabase/components/BulkActionBar";
+import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper/LoadingAndErrorWrapper";
+import { StackedCheckBox } from "metabase/components/StackedCheckBox";
+import { VirtualizedList } from "metabase/components/VirtualizedList";
+import PageHeading from "metabase/components/type/PageHeading";
 import Search from "metabase/entities/search";
 import { useListSelect } from "metabase/hooks/use-list-select";
-import { useSearchListQuery } from "metabase/common/hooks";
-import { getMainElement } from "metabase/lib/dom";
-
-import { getIsNavbarOpen } from "metabase/selectors/app";
-
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper/LoadingAndErrorWrapper";
+import { useDispatch } from "metabase/lib/redux";
 import { Button } from "metabase/ui";
-import BulkActionBar from "metabase/components/BulkActionBar";
-import Card from "metabase/components/Card";
-import PageHeading from "metabase/components/type/PageHeading";
-import { StackedCheckBox } from "metabase/components/StackedCheckBox";
-import VirtualizedList from "metabase/components/VirtualizedList";
-import { ArchivedItem } from "metabase/components/ArchivedItem/ArchivedItem";
+import type { CollectionItem } from "metabase-types/api";
 
 import {
   ArchiveBarContent,
-  ArchiveBarText,
   ArchiveBody,
   ArchiveEmptyState,
   ArchiveHeader,
   ArchiveRoot,
+  VirtualizedListWrapper,
+  CardWithMaxWidth,
 } from "./ArchiveApp.styled";
-
-const ROW_HEIGHT = 68;
 
 export function ArchiveApp() {
   const dispatch = useDispatch();
-  const isNavbarOpen = useSelector(getIsNavbarOpen);
-  const mainElement = getMainElement();
 
   const { data, isLoading, error } = useSearchListQuery({
     query: { archived: true },
@@ -73,42 +63,47 @@ export function ArchiveApp() {
         <PageHeading>{t`Archive`}</PageHeading>
       </ArchiveHeader>
       <ArchiveBody data-testid="archived-list">
-        <Card
-          style={{
-            height: list.length > 0 ? ROW_HEIGHT * list.length : "auto",
-          }}
-        >
-          {list.length > 0 ? (
-            <VirtualizedList
-              scrollElement={mainElement}
-              items={list}
-              rowHeight={ROW_HEIGHT}
-              renderItem={({ item }: { item: CollectionItem }) => (
-                <ArchivedItem
-                  model={item.model ?? ""}
-                  name={Search.objectSelectors.getName(item)}
-                  icon={Search.objectSelectors.getIcon(item).name}
-                  color={Search.objectSelectors.getColor(item)}
-                  onUnarchive={() => {
-                    dispatch(Search.actions.setArchived(item, false));
-                  }}
-                  onDelete={() => {
-                    dispatch(Search.actions.delete(item));
-                  }}
-                  selected={getIsSelected(item)}
-                  onToggleSelected={() => toggleItem(item)}
-                  showSelect={selected.length > 0}
-                />
-              )}
-            />
-          ) : (
-            <ArchiveEmptyState>
-              <h2>{t`Items you archive will appear here.`}</h2>
-            </ArchiveEmptyState>
-          )}
-        </Card>
+        {list.length > 0 ? (
+          <VirtualizedList
+            Wrapper={({ children, ...props }) => (
+              <VirtualizedListWrapper {...props}>
+                <CardWithMaxWidth>{children}</CardWithMaxWidth>
+              </VirtualizedListWrapper>
+            )}
+          >
+            {list.map(item => (
+              <ArchivedItem
+                key={item.id}
+                model={item.model ?? ""}
+                name={Search.objectSelectors.getName(item)}
+                icon={Search.objectSelectors.getIcon(item).name}
+                color={Search.objectSelectors.getColor(item)}
+                onUnarchive={() => {
+                  dispatch(Search.actions.setArchived(item, false));
+                }}
+                onDelete={() => {
+                  dispatch(Search.actions.delete(item));
+                }}
+                selected={getIsSelected(item)}
+                onToggleSelected={() => toggleItem(item)}
+                showSelect={selected.length > 0}
+              />
+            ))}
+          </VirtualizedList>
+        ) : (
+          <VirtualizedListWrapper>
+            <CardWithMaxWidth>
+              <ArchiveEmptyState>
+                <h2>{t`Items you archive will appear here.`}</h2>
+              </ArchiveEmptyState>
+            </CardWithMaxWidth>
+          </VirtualizedListWrapper>
+        )}
       </ArchiveBody>
-      <BulkActionBar isNavbarOpen={isNavbarOpen} showing={selected.length > 0}>
+      <BulkActionBar
+        opened={selected.length > 0}
+        message={t`${selected.length} items selected`}
+      >
         <ArchiveBarContent>
           <SelectionControls
             allSelected={allSelected}
@@ -116,7 +111,6 @@ export function ArchiveApp() {
             clear={clear}
           />
           <BulkActionControls selected={selected} />
-          <ArchiveBarText>{t`${selected.length} items selected`}</ArchiveBarText>
         </ArchiveBarContent>
       </BulkActionBar>
     </ArchiveRoot>

@@ -2,21 +2,6 @@ import userEvent from "@testing-library/user-event";
 import fetchMock from "fetch-mock";
 import type { ComponentPropsWithoutRef } from "react";
 import { IndexRoute, Route } from "react-router";
-import type { Card, Dataset, UnsavedCard } from "metabase-types/api";
-import {
-  createMockCard,
-  createMockCollection,
-  createMockColumn,
-  createMockDataset,
-  createMockFieldValues,
-  createMockModelIndex,
-  createMockNativeDatasetQuery,
-  createMockNativeQuery,
-  createMockResultsMetadata,
-  createMockStructuredDatasetQuery,
-  createMockStructuredQuery,
-  createMockUnsavedCard,
-} from "metabase-types/api/mocks";
 
 import {
   setupAlertsEndpoints,
@@ -31,6 +16,7 @@ import {
   setupModelIndexEndpoints,
   setupSearchEndpoints,
   setupTimelinesEndpoints,
+  setupPropertiesEndpoints,
 } from "__support__/server-mocks";
 import {
   renderWithProviders,
@@ -39,17 +25,34 @@ import {
   waitForLoaderToBeRemoved,
   within,
 } from "__support__/ui";
+import NewItemMenu from "metabase/containers/NewItemMenu";
+import { LOAD_COMPLETE_FAVICON } from "metabase/hoc/Favicon";
+import { serializeCardForUrl } from "metabase/lib/card";
+import { checkNotNull } from "metabase/lib/types";
+import NewModelOptions from "metabase/models/containers/NewModelOptions";
+import type { Card, Dataset, UnsavedCard } from "metabase-types/api";
+import {
+  createMockCard,
+  createMockCollection,
+  createMockColumn,
+  createMockDataset,
+  createMockFieldValues,
+  createMockModelIndex,
+  createMockNativeDatasetQuery,
+  createMockNativeQuery,
+  createMockResultsMetadata,
+  createMockSettings,
+  createMockStructuredDatasetQuery,
+  createMockStructuredQuery,
+  createMockUnsavedCard,
+} from "metabase-types/api/mocks";
 import {
   ORDERS,
   ORDERS_ID,
   SAMPLE_DB_ID,
   createSampleDatabase,
 } from "metabase-types/api/mocks/presets";
-import NewItemMenu from "metabase/containers/NewItemMenu";
-import { LOAD_COMPLETE_FAVICON } from "metabase/hoc/Favicon";
-import { serializeCardForUrl } from "metabase/lib/card";
-import { checkNotNull } from "metabase/lib/types";
-import NewModelOptions from "metabase/models/containers/NewModelOptions";
+import type { RequestState, State } from "metabase-types/store";
 
 import QueryBuilder from "./QueryBuilder";
 
@@ -58,12 +61,12 @@ const TEST_DB = createSampleDatabase();
 export const TEST_CARD = createMockCard({
   id: 1,
   name: "Test card",
-  dataset: true,
+  type: "model",
 });
 
 export const TEST_TIME_SERIES_WITH_DATE_BREAKOUT_CARD = createMockCard({
   ...TEST_CARD,
-  dataset: false,
+  type: "question",
   dataset_query: {
     database: SAMPLE_DB_ID,
     type: "query",
@@ -77,7 +80,7 @@ export const TEST_TIME_SERIES_WITH_DATE_BREAKOUT_CARD = createMockCard({
 
 export const TEST_TIME_SERIES_WITH_CUSTOM_DATE_BREAKOUT_CARD = createMockCard({
   ...TEST_CARD,
-  dataset: false,
+  type: "question",
   dataset_query: {
     database: SAMPLE_DB_ID,
     type: "query",
@@ -112,7 +115,7 @@ export const TEST_MODEL_CARD = createMockCard({
       limit: 1,
     },
   },
-  dataset: true,
+  type: "model",
   display: "scalar",
   description: "Test description",
 });
@@ -230,6 +233,7 @@ export const setup = async ({
   setupDatabasesEndpoints([TEST_DB]);
   setupCardDataset(dataset);
   setupSearchEndpoints([]);
+  setupPropertiesEndpoints(createMockSettings());
   setupCollectionsEndpoints({ collections: [] });
   setupBookmarksEndpoints([]);
   setupTimelinesEndpoints([]);
@@ -245,14 +249,17 @@ export const setup = async ({
     setupModelIndexEndpoints(card.id, []);
   }
 
-  // this workaround can be removed when metabase#34523 is fixed
   if (card === null) {
     fetchMock.get("path:/api/model-index", [createMockModelIndex()]);
   }
 
   const mockEventListener = jest.spyOn(window, "addEventListener");
 
-  const { container, history } = renderWithProviders(
+  const {
+    store: { getState },
+    container,
+    history,
+  } = renderWithProviders(
     <Route>
       <Route path="/" component={TestHome} />
       <Route path="/model">
@@ -278,7 +285,9 @@ export const setup = async ({
     },
   );
 
+  await waitForLoadingRequests(getState);
   await waitForLoaderToBeRemoved();
+  await waitForLoadingRequests(getState);
 
   return {
     container,
@@ -287,16 +296,34 @@ export const setup = async ({
   };
 };
 
+const waitForLoadingRequests = async (getState: () => State) => {
+  await waitFor(
+    () => {
+      const requests = getRequests(getState());
+      const areRequestsLoading = requests.some(request => request.loading);
+      expect(areRequestsLoading).toBe(false);
+    },
+    { timeout: 5000 },
+  );
+};
+
+const getRequests = (state: State): RequestState[] => {
+  return Object.values(state.requests).flatMap(group =>
+    Object.values(group).flatMap(entity =>
+      Object.values(entity).flatMap(request => Object.values(request)),
+    ),
+  );
+};
+
 export const startNewNotebookModel = async () => {
-  userEvent.click(screen.getByText("Use the notebook editor"));
+  await userEvent.click(screen.getByText("Use the notebook editor"));
   await waitForLoaderToBeRemoved();
 
-  userEvent.click(screen.getByText("Pick your starting data"));
+  await userEvent.click(screen.getByText("Pick your starting data"));
   const popover = screen.getByTestId("popover");
-  userEvent.click(within(popover).getByText("Sample Database"));
+  await userEvent.click(within(popover).getByText("Sample Database"));
   await waitForLoaderToBeRemoved();
-  userEvent.click(within(popover).getByText("Orders"));
-  userEvent.click(within(screen.getByTestId("popover")).getByText("Orders"));
+  await userEvent.click(within(popover).getByText("Orders"));
 
   expect(screen.getByRole("button", { name: "Get Answer" })).toBeEnabled();
 };
@@ -308,45 +335,45 @@ export const triggerNativeQueryChange = async () => {
     screen.getByTestId("mock-native-query-editor"),
   ).getByRole("textbox");
 
-  userEvent.click(inputArea);
-  userEvent.type(inputArea, "0");
-  userEvent.tab();
+  await userEvent.click(inputArea);
+  await userEvent.type(inputArea, "0");
+  await userEvent.tab();
 };
 
 export const triggerMetadataChange = async () => {
   await waitFor(() => {
-    expect(screen.getByTitle("Display name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Display name")).toBeInTheDocument();
   });
 
-  const columnDisplayName = screen.getByTitle("Display name");
+  const columnDisplayName = screen.getByLabelText("Display name");
 
-  userEvent.click(columnDisplayName);
-  userEvent.type(columnDisplayName, "X");
-  userEvent.tab();
+  await userEvent.click(columnDisplayName);
+  await userEvent.type(columnDisplayName, "X");
+  await userEvent.tab();
 };
 
 export const triggerVisualizationQueryChange = async () => {
-  userEvent.click(screen.getByText("Filter"));
+  await userEvent.click(screen.getByText("Filter"));
 
   const modal = screen.getByRole("dialog");
   const total = within(modal).getByTestId("filter-column-Total");
   const maxInput = within(total).getByPlaceholderText("Max");
-  userEvent.type(maxInput, "1000");
-  userEvent.tab();
+  await userEvent.type(maxInput, "1000");
+  await userEvent.tab();
 
-  userEvent.click(screen.getByTestId("apply-filters"));
+  await userEvent.click(screen.getByTestId("apply-filters"));
 };
 
 export const triggerNotebookQueryChange = async () => {
-  userEvent.click(screen.getByText("Row limit"));
+  await userEvent.click(screen.getByText("Row limit"));
 
   const rowLimitInput = await within(
     screen.getByTestId("step-limit-0-0"),
   ).findByPlaceholderText("Enter a limit");
 
-  userEvent.click(rowLimitInput);
-  userEvent.type(rowLimitInput, "1");
-  userEvent.tab();
+  await userEvent.click(rowLimitInput);
+  await userEvent.type(rowLimitInput, "1");
+  await userEvent.tab();
 };
 
 /**
@@ -358,9 +385,9 @@ export const revertNotebookQueryChange = async () => {
     "Enter a limit",
   );
 
-  userEvent.click(limitInput);
-  userEvent.type(limitInput, "{backspace}");
-  userEvent.tab();
+  await userEvent.click(limitInput);
+  await userEvent.type(limitInput, "{backspace}");
+  await userEvent.tab();
 };
 
 export const waitForSaveChangesToBeEnabled = async () => {

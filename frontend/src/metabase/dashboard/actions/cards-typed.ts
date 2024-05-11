@@ -1,7 +1,11 @@
-import { createAction, createThunkAction } from "metabase/lib/redux";
 import Questions from "metabase/entities/questions";
+import {
+  DEFAULT_CARD_SIZE,
+  GRID_WIDTH,
+  getPositionForNewDashCard,
+} from "metabase/lib/dashboard_grid";
+import { createAction, createThunkAction } from "metabase/lib/redux";
 import { getDefaultSize } from "metabase/visualizations";
-
 import type {
   Card,
   CardId,
@@ -12,14 +16,13 @@ import type {
   VirtualCard,
 } from "metabase-types/api";
 import type { Dispatch, GetState } from "metabase-types/store";
-import {
-  DEFAULT_CARD_SIZE,
-  GRID_WIDTH,
-  getPositionForNewDashCard,
-} from "metabase/lib/dashboard_grid";
 
+import {
+  trackCardCreated,
+  trackQuestionReplaced,
+  trackSectionAdded,
+} from "../analytics";
 import type { SectionLayout } from "../sections";
-import { trackCardCreated, trackQuestionReplaced } from "../analytics";
 import { getDashCardById, getDashboardId } from "../selectors";
 import {
   createDashCard,
@@ -27,6 +30,7 @@ import {
   generateTemporaryDashcardId,
   isVirtualDashCard,
 } from "../utils";
+
 import { autoWireParametersToNewCard } from "./auto-wire-parameters/actions";
 import {
   ADD_CARD_TO_DASH,
@@ -129,6 +133,7 @@ export const addSectionToDashboard =
       );
 
     dispatch(_addManyDashCards(sectionDashcards));
+    trackSectionAdded(dashId, sectionLayout.id);
   };
 
 type AddCardToDashboardOpts = NewDashCardOpts & {
@@ -234,23 +239,33 @@ export const replaceCard =
     dashboardId && trackQuestionReplaced(dashboardId);
   };
 
-export const removeCardFromDashboard = createThunkAction<
-  [{ dashcardId: DashCardId; cardId: CardId }]
->(REMOVE_CARD_FROM_DASH, ({ dashcardId, cardId }) => dispatch => {
-  // @ts-expect-error — data-fetching.js actions must be converted to TypeScript
-  dispatch(cancelFetchCardData(cardId, dashcardId));
-  return { dashcardId };
-});
+export const removeCardFromDashboard = createThunkAction(
+  REMOVE_CARD_FROM_DASH,
+  ({
+      dashcardId,
+      cardId,
+    }: {
+      dashcardId: DashCardId;
+      cardId: DashboardCard["card_id"];
+    }) =>
+    dispatch => {
+      // @ts-expect-error — data-fetching.js actions must be converted to TypeScript
+      dispatch(cancelFetchCardData(cardId, dashcardId));
+      return { dashcardId };
+    },
+);
 
-export const undoRemoveCardFromDashboard = createThunkAction<
-  [{ dashcardId: DashCardId }]
->(UNDO_REMOVE_CARD_FROM_DASH, ({ dashcardId }) => (dispatch, getState) => {
-  const dashcard = getDashCardById(getState(), dashcardId);
-  const card = dashcard.card;
+export const undoRemoveCardFromDashboard = createThunkAction(
+  UNDO_REMOVE_CARD_FROM_DASH,
+  ({ dashcardId }) =>
+    (dispatch, getState) => {
+      const dashcard = getDashCardById(getState(), dashcardId);
+      const card = dashcard.card;
 
-  if (!isVirtualDashCard(dashcard)) {
-    dispatch(fetchCardData(card, dashcard));
-  }
+      if (!isVirtualDashCard(dashcard)) {
+        dispatch(fetchCardData(card, dashcard));
+      }
 
-  return { dashcardId };
-});
+      return { dashcardId };
+    },
+);

@@ -1,19 +1,21 @@
 /* eslint-disable react/prop-types */
+import cx from "classnames";
 import { Component } from "react";
 import { connect } from "react-redux";
 import { goBack } from "react-router-redux";
 import { t } from "ttag";
 import _ from "underscore";
 
-import User from "metabase/entities/users";
-
-import MetabaseSettings from "metabase/lib/settings";
-
-import Button from "metabase/core/components/Button";
 import ModalContent from "metabase/components/ModalContent";
 import PasswordReveal from "metabase/components/PasswordReveal";
-import { getUserTemporaryPassword } from "../selectors";
+import Button from "metabase/core/components/Button";
+import CS from "metabase/css/core/index.css";
+import Users from "metabase/entities/users";
+import MetabaseSettings from "metabase/lib/settings";
+
 import { clearTemporaryPassword } from "../people";
+import { getUserTemporaryPassword } from "../selectors";
+
 import { ButtonContainer } from "./UserPasswordResetModal.styled";
 
 class UserPasswordResetModal extends Component {
@@ -38,7 +40,9 @@ class UserPasswordResetModal extends Component {
         footer={<Button primary onClick={this.handleClose}>{t`Done`}</Button>}
         onClose={this.handleClose}
       >
-        <span className="pb3 block">{t`Here’s a temporary password they can use to log in and then change their password.`}</span>
+        <span
+          className={cx(CS.pb3, CS.block)}
+        >{t`Here’s a temporary password they can use to log in and then change their password.`}</span>
 
         <PasswordReveal password={temporaryPassword} />
       </ModalContent>
@@ -51,7 +55,7 @@ class UserPasswordResetModal extends Component {
 
         <ButtonContainer>
           <Button
-            className="ml-auto"
+            className={CS.mlAuto}
             disabled={this.state.resetButtonDisabled}
             onClick={async () => {
               this.setState({ resetButtonDisabled: true });
@@ -73,7 +77,7 @@ class UserPasswordResetModal extends Component {
 }
 
 export default _.compose(
-  User.load({
+  Users.load({
     id: (state, props) => props.params.userId,
     wrapped: true,
   }),

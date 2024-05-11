@@ -1,4 +1,5 @@
 import * as Lib from "metabase-lib";
+
 import type { ColumnItem } from "../types";
 
 function isCreationDateOrTimestamp(column: Lib.ColumnMetadata) {
@@ -19,7 +20,7 @@ function isNumberAndNotCoordinate(column: Lib.ColumnMetadata) {
 }
 
 function isShortText(column: Lib.ColumnMetadata) {
-  return Lib.isString(column) && !isLongText(column);
+  return Lib.isStringOrStringLike(column) && !isLongText(column);
 }
 
 function isLongText(column: Lib.ColumnMetadata) {

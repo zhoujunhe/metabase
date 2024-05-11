@@ -1,17 +1,14 @@
 /* eslint-disable react/prop-types */
 import { Component } from "react";
-import _ from "underscore";
-
 import { connect } from "react-redux";
 import { withRouter } from "react-router";
 import { push } from "react-router-redux";
 import { t } from "ttag";
+import _ from "underscore";
 
 import ArchiveModal from "metabase/components/ArchiveModal";
-
-import * as Urls from "metabase/lib/urls";
-
 import Collection from "metabase/entities/collections";
+import * as Urls from "metabase/lib/urls";
 
 const mapDispatchToProps = {
   setCollectionArchived: Collection.actions.setArchived,
@@ -32,7 +29,7 @@ class ArchiveCollectionModalInner extends Component {
     if (object.archived) {
       const parent =
         object.effective_ancestors.length > 0
-          ? object.effective_ancestors.pop()
+          ? object.effective_ancestors.at(-1)
           : null;
       push(Urls.collection(parent));
     }

@@ -24,7 +24,7 @@
 (comment premium-features/keep-me)
 
 (defsetting application-name
-  (deferred-tru "This will replace the word \"Metabase\" wherever it appears.")
+  (deferred-tru "Replace the word “Metabase” wherever it appears.")
   :visibility :public
   :export?    true
   :type       :string
@@ -40,7 +40,7 @@
   []
   (if *compile-files*
     "Metabase"
-    (binding [setting/*disable-cache* true]
+    (binding [config/*disable-setting-cache* true]
       (application-name))))
 
 (defn- google-auth-enabled? []
@@ -101,7 +101,7 @@
   :export?    true)
 
 (defsetting custom-homepage
-  (deferred-tru "Pick a dashboard to serve as the homepage. If people lack permissions to view the selected dashboard, Metabase will redirect them to the default homepage. To revert to the default Metabase homepage, simply turn off the toggle.")
+  (deferred-tru "Pick one of your dashboards to serve as homepage. Users without dashboard access will be directed to the default homepage.")
   :default    false
   :type       :boolean
   :audit      :getter
@@ -112,23 +112,6 @@
   :type       :integer
   :visibility :public
   :audit      :getter)
-
-(defsetting dismissed-custom-dashboard-toast
-  (deferred-tru "Toggle which is true after a user has dismissed the custom dashboard toast.")
-  :user-local :only
-  :visibility :authenticated
-  :type       :boolean
-  :default    false
-  :audit      :never)
-
-(defsetting dismissed-browse-models-banner
-  (deferred-tru "Whether the user has dismissed the explanatory banner about models that appears on the Browse Data page")
-  :user-local :only
-  :export?    false
-  :visibility :authenticated
-  :type       :boolean
-  :default    false
-  :audit      :never)
 
 (defsetting site-uuid
   ;; Don't i18n this docstring because it's not user-facing! :)
@@ -187,14 +170,17 @@
                 (try
                   (some-> (setting/get-value-of-type :string :site-url) normalize-site-url)
                   (catch clojure.lang.ExceptionInfo e
-                    (log/error e (trs "site-url is invalid; returning nil for now. Will be reset on next request.")))))
+                    (log/error e "site-url is invalid; returning nil for now. Will be reset on next request."))))
   :setter     (fn [new-value]
                 (let [new-value (some-> new-value normalize-site-url)
                       https?    (some-> new-value (str/starts-with?  "https:"))]
                   ;; if the site URL isn't HTTPS then disable force HTTPS redirects if set
                   (when-not https?
                     (redirect-all-requests-to-https! false))
-                  (setting/set-value-of-type! :string :site-url new-value))))
+                  (setting/set-value-of-type! :string :site-url new-value)))
+  :doc "This URL is critical for things like SSO authentication, email links, embedding and more.
+        Even difference with `http://` vs `https://` can cause problems.
+        Make sure that the address defined is how Metabase is being accessed.")
 
 (defsetting site-locale
   (deferred-tru
@@ -260,7 +246,7 @@
     :else landing-page))
 
 (defsetting landing-page
-  (deferred-tru "Default page to show people when they log in.")
+  (deferred-tru "Enter a URL of the landing page to show the user. This overrides the custom homepage setting above.")
   :visibility :public
   :export?    true
   :type       :string
@@ -324,7 +310,7 @@
   ;; the results as stored will vary somewhat, since this measurement doesn't include metadata returned with the
   ;; results, and doesn't consider whether the results are compressed, as the `:db` backend does.)
   :type    :integer
-  :default 1000
+  :default 2000
   :audit   :getter
   :setter  (fn [new-value]
              (when (and new-value
@@ -342,24 +328,7 @@
 (defsetting query-caching-max-ttl
   (deferred-tru "The absolute maximum time to keep any cached query results, in seconds.")
   :type    :double
-  :default (* 60.0 60.0 24.0 100.0) ; 100 days
-  :audit   :getter)
-
-;; TODO -- this isn't really a TTL at all. Consider renaming to something like `-min-duration`
-(defsetting query-caching-min-ttl
-  (deferred-tru "{0} will cache all saved questions with an average query execution time longer than this many seconds:"
-                 (application-name-for-setting-descriptions))
-  :type    :double
-  :default 60.0
-  :audit   :getter)
-
-(defsetting query-caching-ttl-ratio
-  (deferred-tru
-   (str "To determine how long each saved question''s cached result should stick around, we take the query''s average "
-        "execution time and multiply that by whatever you input here. So if a query takes on average 2 minutes to run, "
-        "and you input 10 for your multiplier, its cache entry will persist for 20 minutes."))
-  :type    :integer
-  :default 10
+  :default (* 60.0 60.0 24.0 35.0) ; 35 days
   :audit   :getter)
 
 (defsetting notification-link-base-url
@@ -376,7 +345,7 @@
   :audit      :never)
 
 (defsetting loading-message
-  (deferred-tru "Message to show while a query is running.")
+  (deferred-tru "Choose the message to show while a query is running.")
   :visibility :public
   :export?    true
   :feature    :whitelabel
@@ -385,19 +354,40 @@
   :audit      :getter)
 
 (defsetting application-colors
-  (deferred-tru
-    (str "These are the primary colors used in charts and throughout {0}. "
-         "You might need to refresh your browser to see your changes take effect.")
-    (application-name-for-setting-descriptions))
+  (deferred-tru "Choose the colors used in the user interface throughout Metabase and others specifically for the charts. You need to refresh your browser to see your changes take effect.")
   :visibility :public
   :export?    true
   :type       :json
   :feature    :whitelabel
   :default    {}
-  :audit      :getter)
+  :audit      :getter
+  :doc "To change the user interface colors:
+
+```
+{
+ \"brand\":\"#ff003b\",
+ \"filter\":\"#FF003B\",
+ \"summarize\":\"#FF003B\"
+}
+```
+
+To change the chart colors:
+
+```
+{
+ \"accent0\":\"#FF0005\",
+ \"accent1\":\"#E6C367\",
+ \"accent2\":\"#B9E68A\",
+ \"accent3\":\"#8AE69F\",
+ \"accent4\":\"#8AE6E4\",
+ \"accent5\":\"#8AA2E6\",
+ \"accent6\":\"#B68AE6\",
+ \"accent7\":\"#E68AD0\"
+}
+```")
 
 (defsetting application-font
-  (deferred-tru "This will replace “Lato” as the font family.")
+  (deferred-tru "Replace “Lato” as the font family.")
   :visibility :public
   :export?    true
   :type       :string
@@ -416,7 +406,25 @@
   :export?    true
   :type       :json
   :audit      :getter
-  :feature    :whitelabel)
+  :feature    :whitelabel
+  :doc "Example value:
+
+```
+[
+  {
+    \"src\": \"https://example.com/resources/font-400\",
+    \"fontFormat\": \"ttf\",
+    \"fontWeight\": 400
+  },
+  {
+    \"src\": \"https://example.com/resources/font-700\",
+    \"fontFormat\": \"woff\",
+    \"fontWeight\": 700
+  }
+]
+```
+
+See [fonts](../configuring-metabase/fonts.md).")
 
 (defn application-color
   "The primary color, a.k.a. brand color"
@@ -429,16 +437,17 @@
   (or (:accent3 (application-colors)) "#EF8C8C"))
 
 (defsetting application-logo-url
-  (deferred-tru "For best results, use an SVG file with a transparent background.")
+  (deferred-tru "Upload a file to replace the Metabase logo on the top bar.")
   :visibility :public
   :export?    true
   :type       :string
   :audit      :getter
   :feature    :whitelabel
-  :default    "app/assets/img/logo.svg")
+  :default    "app/assets/img/logo.svg"
+  :doc "Inline styling and inline scripts are not supported.")
 
 (defsetting application-favicon-url
-  (deferred-tru "The url or image that you want to use as the favicon.")
+  (deferred-tru "Upload a file to use as the favicon.")
   :visibility :public
   :export?    true
   :type       :string
@@ -455,14 +464,73 @@
   :feature    :whitelabel
   :default    true)
 
-(defsetting show-lighthouse-illustration
-  (deferred-tru "Display the lighthouse illustration on the home and login pages.")
+(defsetting login-page-illustration
+  (deferred-tru "Options for displaying the illustration on the login page.")
   :visibility :public
   :export?    true
-  :type       :boolean
+  :type       :string
   :audit      :getter
   :feature    :whitelabel
-  :default    true)
+  :default    "default")
+
+(defsetting login-page-illustration-custom
+  (deferred-tru "The custom illustration for the login page.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel)
+
+(defsetting landing-page-illustration
+  (deferred-tru "Options for displaying the illustration on the landing page.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel
+  :default    "default")
+
+(defsetting landing-page-illustration-custom
+  (deferred-tru "The custom illustration for the landing page.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel)
+
+(defsetting no-data-illustration
+  (deferred-tru "Options for displaying the illustration when there are no results after running a question.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel
+  :default    "default")
+
+(defsetting no-data-illustration-custom
+  (deferred-tru "The custom illustration for when there are no results after running a question.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel)
+
+(defsetting no-object-illustration
+  (deferred-tru "Options for displaying the illustration when there are no results after searching.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel
+  :default    "default")
+
+(defsetting no-object-illustration-custom
+  (deferred-tru "The custom illustration for when there are no results after searching.")
+  :visibility :public
+  :export?    true
+  :type       :string
+  :audit      :getter
+  :feature    :whitelabel)
 
 (def ^:private help-link-options
   #{:metabase :hidden :custom})
@@ -687,7 +755,9 @@
                       :sso_jwt                        (premium-features/enable-sso-jwt?)
                       :sso_ldap                       (premium-features/enable-sso-ldap?)
                       :sso_saml                       (premium-features/enable-sso-saml?)
-                      :whitelabel                     (premium-features/enable-whitelabeling?)})
+                      :upload_management              (premium-features/enable-upload-management?)
+                      :whitelabel                     (premium-features/enable-whitelabeling?)
+                      :llm_autodescription            (premium-features/enable-llm-autodescription?)})
   :doc        false)
 
 (defsetting redirect-all-requests-to-https
@@ -806,3 +876,23 @@
                   (if-not (pos-int? value)
                     20
                     value))))
+
+;; This is used by the embedding homepage
+(defsetting example-dashboard-id
+  (deferred-tru "The ID of the example dashboard.")
+  :visibility :authenticated
+  :export?    false
+  :type       :integer
+  :setter     :none
+  :getter     (fn []
+                (let [id (setting/get-value-of-type :integer :example-dashboard-id)]
+                  (when (and id (t2/exists? :model/Dashboard :id id :archived false))
+                    id)))
+  :doc        false)
+
+(defsetting sql-parsing-enabled
+  (deferred-tru "SQL Parsing is disabled")
+  :visibility :internal
+  :export?    false
+  :default    true
+  :type       :boolean)

@@ -1,7 +1,21 @@
 import _ from "underscore";
-import { isQuestionDashCard } from "metabase/dashboard/utils";
-import { generateParameterId } from "metabase/parameters/utils/parameter-id";
+
+import { isQuestionCard, isQuestionDashCard } from "metabase/dashboard/utils";
 import { slugify } from "metabase/lib/formatting";
+import { generateParameterId } from "metabase/parameters/utils/parameter-id";
+import Question from "metabase-lib/v1/Question";
+import type Field from "metabase-lib/v1/metadata/Field";
+import type Metadata from "metabase-lib/v1/metadata/Metadata";
+import type {
+  UiParameter,
+  FieldFilterUiParameter,
+  ParameterWithTarget,
+} from "metabase-lib/v1/parameters/types";
+import { isFieldFilterParameter } from "metabase-lib/v1/parameters/utils/parameter-type";
+import {
+  getParameterTargetField,
+  isParameterVariableTarget,
+} from "metabase-lib/v1/parameters/utils/targets";
 import type {
   Card,
   Dashboard,
@@ -13,19 +27,6 @@ import type {
   CardId,
   ParameterTarget,
 } from "metabase-types/api";
-import { isFieldFilterParameter } from "metabase-lib/parameters/utils/parameter-type";
-import type {
-  UiParameter,
-  FieldFilterUiParameter,
-  ParameterWithTarget,
-} from "metabase-lib/parameters/types";
-import {
-  getParameterTargetField,
-  isParameterVariableTarget,
-} from "metabase-lib/parameters/utils/targets";
-import type Metadata from "metabase-lib/metadata/Metadata";
-import type Field from "metabase-lib/metadata/Field";
-import Question from "metabase-lib/Question";
 
 type ExtendedMapping = DashboardParameterMapping & {
   dashcard_id: DashCardId;
@@ -66,8 +67,23 @@ export function setParameterName(
   };
 }
 
+export function setParameterType(
+  parameter: Parameter,
+  type: string,
+  sectionId: string,
+): Parameter {
+  // reset default value
+  const { default: _, ...rest } = parameter;
+
+  return {
+    ...rest,
+    type,
+    sectionId,
+  };
+}
+
 export function getIsMultiSelect(parameter: Parameter): boolean {
-  return parameter.isMultiSelect == null ? true : parameter.isMultiSelect;
+  return parameter.isMultiSelect ?? true;
 }
 
 export function hasMapping(parameter: Parameter, dashboard: Dashboard) {
@@ -76,22 +92,6 @@ export function hasMapping(parameter: Parameter, dashboard: Dashboard) {
       return parameter_mapping.parameter_id === parameter.id;
     });
   });
-}
-
-export function isDashboardParameterWithoutMapping(
-  parameter: Parameter,
-  dashboard: Dashboard,
-) {
-  if (!dashboard || !dashboard.parameters) {
-    return false;
-  }
-
-  const parameterExistsOnDashboard = dashboard.parameters.some(
-    dashParam => dashParam.id === parameter.id,
-  );
-  const parameterHasMapping = hasMapping(parameter, dashboard);
-
-  return parameterExistsOnDashboard && !parameterHasMapping;
 }
 
 function getMappings(dashcards: QuestionDashboardCard[]): ExtendedMapping[] {
@@ -165,8 +165,14 @@ function buildFieldFilterUiParameter(
 
   const mappedFields = uniqueMappingsForParameters.map(mapping => {
     const { target, card } = mapping;
-    const question = questions[card.id] ?? new Question(card, metadata);
+    if (!isQuestionCard(card)) {
+      return {
+        field: null,
+        shouldResolveFkField: false,
+      };
+    }
 
+    const question = questions[card.id] ?? new Question(card, metadata);
     try {
       const field = getParameterTargetField(target, question);
 

@@ -1,7 +1,12 @@
 /* eslint-disable react/prop-types */
-import { Component } from "react";
 import PropTypes from "prop-types";
+import { Component } from "react";
+
+import { Sortable } from "metabase/core/components/Sortable";
+import CS from "metabase/css/core/index.css";
+
 import ParameterValueWidget from "../ParameterValueWidget";
+
 import {
   ParameterContainer,
   ParameterFieldSet,
@@ -25,6 +30,7 @@ export class ParameterWidget extends Component {
   static defaultProps = {
     parameter: null,
     commitImmediately: false,
+    isSortable: false,
   };
 
   renderPopover(value, setValue, placeholder, isFullscreen) {
@@ -37,6 +43,8 @@ export class ParameterWidget extends Component {
       parameters,
       setParameterValueToDefault,
       enableParameterRequiredBehavior,
+      isSortable,
+      isEditing,
     } = this.props;
 
     const isEditingParameter = editingParameter?.id === parameter.id;
@@ -57,6 +65,7 @@ export class ParameterWidget extends Component {
         commitImmediately={commitImmediately}
         setParameterValueToDefault={setParameterValueToDefault}
         enableRequiredBehavior={enableParameterRequiredBehavior}
+        isSortable={isSortable && isEditing}
       />
     );
   }
@@ -107,28 +116,31 @@ export class ParameterWidget extends Component {
     };
 
     const renderEditing = () => (
-      <ParameterContainer
-        isEditingParameter={isEditingParameter}
-        onClick={() =>
-          setEditingParameter(isEditingParameter ? null : parameter.id)
-        }
+      <Sortable
+        id={parameter.id}
+        draggingStyle={{ opacity: 0.5 }}
+        disabled={!isEditing}
+        role="listitem"
       >
-        <div className="mr1" onClick={e => e.stopPropagation()}>
-          {dragHandle}
-        </div>
-        {parameter.name}
-        <SettingsIcon name="gear" size={16} />
-      </ParameterContainer>
+        <ParameterContainer
+          isEditingParameter={isEditingParameter}
+          onClick={() =>
+            setEditingParameter(isEditingParameter ? null : parameter.id)
+          }
+        >
+          <div className={CS.mr1} onClick={e => e.stopPropagation()}>
+            {dragHandle}
+          </div>
+          {parameter.name}
+          <SettingsIcon name="gear" size={16} />
+        </ParameterContainer>
+      </Sortable>
     );
 
     if (isFullscreen) {
-      if (parameter.value != null) {
-        return (
-          <div style={{ fontSize: "0.833em" }}>{renderFieldInNormalMode()}</div>
-        );
-      } else {
-        return <span className="hide" />;
-      }
+      return (
+        <div style={{ fontSize: "0.833em" }}>{renderFieldInNormalMode()}</div>
+      );
     } else if (isEditing && setEditingParameter) {
       return renderEditing();
     } else {

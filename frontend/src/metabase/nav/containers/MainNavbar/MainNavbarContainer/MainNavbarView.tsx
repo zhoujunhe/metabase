@@ -1,23 +1,21 @@
 import { useCallback } from "react";
-import { t } from "ttag";
+import { c, t } from "ttag";
 import _ from "underscore";
 
-import type { IconName, IconProps } from "metabase/ui";
-import { Tree } from "metabase/components/tree";
+import { useUserSetting } from "metabase/common/hooks";
+import CollapseSection from "metabase/components/CollapseSection";
 import TippyPopoverWithTrigger from "metabase/components/PopoverWithTrigger/TippyPopoverWithTrigger";
-
+import { Tree } from "metabase/components/tree";
+import CS from "metabase/css/core/index.css";
 import {
   getCollectionIcon,
   PERSONAL_COLLECTIONS,
 } from "metabase/entities/collections";
 import { isSmallScreen } from "metabase/lib/dom";
 import * as Urls from "metabase/lib/urls";
-
-import type { Bookmark, Collection, User } from "metabase-types/api";
-
 import { WhatsNewNotification } from "metabase/nav/components/WhatsNewNotification";
-import type { SelectedItem } from "../types";
-import { SidebarCollectionLink, SidebarLink } from "../SidebarItems";
+import type { IconName, IconProps } from "metabase/ui";
+import type { Bookmark, Collection, User } from "metabase-types/api";
 
 import {
   AddYourOwnDataLink,
@@ -30,6 +28,8 @@ import {
   SidebarHeadingWrapper,
   SidebarSection,
 } from "../MainNavbar.styled";
+import { SidebarCollectionLink, SidebarLink } from "../SidebarItems";
+import type { SelectedItem } from "../types";
 
 import BookmarkList from "./BookmarkList";
 
@@ -37,7 +37,6 @@ interface CollectionTreeItem extends Collection {
   icon: IconName | IconProps;
   children: CollectionTreeItem[];
 }
-
 type Props = {
   isAdmin: boolean;
   isOpen: boolean;
@@ -58,8 +57,8 @@ type Props = {
     oldIndex: number;
   }) => void;
 };
-
-const BROWSE_URL = "/browse";
+const BROWSE_MODELS_URL = "/browse/models";
+const BROWSE_DATA_URL = "/browse/databases";
 const OTHER_USERS_COLLECTIONS_URL = Urls.otherUsersPersonalCollections();
 const ARCHIVE_URL = "/archive";
 const ADD_YOUR_OWN_DATA_URL = "/admin/databases/create";
@@ -89,44 +88,75 @@ function MainNavbarView({
     }
   }, [handleCloseNavbar]);
 
+  const [expandBrowse = true, setExpandBrowse] = useUserSetting(
+    "expand-browse-in-nav",
+  );
+  const [expandBookmarks = true, setExpandBookmarks] = useUserSetting(
+    "expand-bookmarks-in-nav",
+  );
+
   return (
     <SidebarContentRoot>
       <div>
         <SidebarSection>
-          <ul>
+          <PaddedSidebarLink
+            isSelected={nonEntityItem?.url === "/"}
+            icon="home"
+            onClick={onItemSelect}
+            url="/"
+          >
+            {t`Home`}
+          </PaddedSidebarLink>
+        </SidebarSection>
+        <SidebarSection>
+          <CollapseSection
+            header={
+              <SidebarHeading>{c("A verb, shown in the sidebar")
+                .t`Browse`}</SidebarHeading>
+            }
+            initialState={expandBrowse ? "expanded" : "collapsed"}
+            iconPosition="right"
+            iconSize={8}
+            headerClass={CS.mb1}
+            onToggle={setExpandBrowse}
+          >
             <PaddedSidebarLink
-              isSelected={nonEntityItem?.url === "/"}
-              icon="home"
+              icon="model"
+              url={BROWSE_MODELS_URL}
+              isSelected={nonEntityItem?.url?.startsWith(BROWSE_MODELS_URL)}
               onClick={onItemSelect}
-              url="/"
+              aria-label={t`Browse models`}
             >
-              {t`Home`}
+              {t`Models`}
             </PaddedSidebarLink>
             {hasDataAccess && (
-              <>
-                <PaddedSidebarLink
-                  icon="database"
-                  url={BROWSE_URL}
-                  isSelected={nonEntityItem?.url?.startsWith(BROWSE_URL)}
+              <PaddedSidebarLink
+                icon="database"
+                url={BROWSE_DATA_URL}
+                isSelected={nonEntityItem?.url?.startsWith(BROWSE_DATA_URL)}
+                onClick={onItemSelect}
+                aria-label={t`Browse data`}
+              >
+                {t`Data`}
+              </PaddedSidebarLink>
+            )}
+          </CollapseSection>
+          {hasDataAccess && (
+            <>
+              {!hasOwnDatabase && isAdmin && (
+                <AddYourOwnDataLink
+                  icon="add"
+                  url={ADD_YOUR_OWN_DATA_URL}
+                  isSelected={nonEntityItem?.url?.startsWith(
+                    ADD_YOUR_OWN_DATA_URL,
+                  )}
                   onClick={onItemSelect}
                 >
-                  {t`Browse data`}
-                </PaddedSidebarLink>
-                {!hasOwnDatabase && isAdmin && (
-                  <AddYourOwnDataLink
-                    icon="add"
-                    url={ADD_YOUR_OWN_DATA_URL}
-                    isSelected={nonEntityItem?.url?.startsWith(
-                      ADD_YOUR_OWN_DATA_URL,
-                    )}
-                    onClick={onItemSelect}
-                  >
-                    {t`Add your own data`}
-                  </AddYourOwnDataLink>
-                )}
-              </>
-            )}
-          </ul>
+                  {t`Add your own data`}
+                </AddYourOwnDataLink>
+              )}
+            </>
+          )}
         </SidebarSection>
 
         {bookmarks.length > 0 && (
@@ -136,6 +166,8 @@ function MainNavbarView({
               selectedItem={cardItem ?? dashboardItem ?? collectionItem}
               onSelect={onItemSelect}
               reorderBookmarks={reorderBookmarks}
+              onToggle={setExpandBookmarks}
+              initialState={expandBookmarks ? "expanded" : "collapsed"}
             />
           </SidebarSection>
         )}
@@ -159,12 +191,10 @@ function MainNavbarView({
     </SidebarContentRoot>
   );
 }
-
 interface CollectionSectionHeadingProps {
   currentUser: User;
   handleCreateNewCollection: () => void;
 }
-
 function CollectionSectionHeading({
   currentUser,
   handleCreateNewCollection,
@@ -220,6 +250,5 @@ function CollectionSectionHeading({
     </SidebarHeadingWrapper>
   );
 }
-
 // eslint-disable-next-line import/no-default-export -- deprecated usage
 export default MainNavbarView;

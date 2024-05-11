@@ -1,6 +1,5 @@
 /* eslint-disable react/prop-types */
 import { Component } from "react";
-
 import { DragSource } from "react-dnd";
 import { getEmptyImage } from "react-dnd-html5-backend";
 
@@ -66,7 +65,7 @@ export default DragSource(
 
           onDrop && onDrop();
         } catch (e) {
-          console.error("There was a problem moving these items: " + e);
+          console.error("There was a problem moving these items: ", e);
         }
       }
     },

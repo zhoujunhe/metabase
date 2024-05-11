@@ -1,27 +1,24 @@
 /* eslint "react/prop-types": "warn" */
+import cx from "classnames";
 import PropTypes from "prop-types";
 import { connect } from "react-redux";
 import { t } from "ttag";
-import visualizations from "metabase/visualizations";
-import * as Urls from "metabase/lib/urls";
 
 import { useQuestionListQuery } from "metabase/common/hooks";
-import S from "metabase/components/List/List.css";
-
-import List from "metabase/components/List";
-import ListItem from "metabase/components/ListItem";
 import AdminAwareEmptyState from "metabase/components/AdminAwareEmptyState";
-
+import List from "metabase/components/List";
+import S from "metabase/components/List/List.module.css";
+import ListItem from "metabase/components/ListItem";
 import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
-
+import CS from "metabase/css/core/index.css";
+import * as Urls from "metabase/lib/urls";
 import * as metadataActions from "metabase/redux/metadata";
 import { getMetadata } from "metabase/selectors/metadata";
+import visualizations from "metabase/visualizations";
 
 import ReferenceHeader from "../components/ReferenceHeader";
-
-import { getQuestionUrl, getDescription } from "../utils";
-
 import { getTable, getMetric } from "../selectors";
+import { getQuestionUrl, getDescription } from "../utils";
 
 const emptyStateData = (table, metric, metadata) => {
   return {
@@ -57,7 +54,7 @@ export const MetricQuestions = ({ style, table, metric, metadata }) => {
   });
 
   return (
-    <div style={style} className="full">
+    <div style={style} className={CS.full}>
       <ReferenceHeader
         name={t`Questions about ${metric.name}`}
         type="questions"
@@ -66,7 +63,7 @@ export const MetricQuestions = ({ style, table, metric, metadata }) => {
       <LoadingAndErrorWrapper loading={!error && isLoading} error={error}>
         {() =>
           data.length > 0 ? (
-            <div className="wrapper wrapper--trim">
+            <div className={cx(CS.wrapper, CS.wrapperTrim)}>
               <List>
                 {data.map(
                   question =>

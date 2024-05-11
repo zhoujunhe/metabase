@@ -1,4 +1,7 @@
 import cx from "classnames";
+
+import AdminS from "metabase/css/admin.module.css";
+
 import { SettingInputBlurChange } from "./SettingInput.styled";
 
 const getValue = (value: string, type: string) => {
@@ -30,6 +33,9 @@ export interface SettingInputProps {
 
 const identity = (value: Value) => value;
 
+/**
+ * @deprecated use SettingTextInput instead
+ */
 export const SettingInput = ({
   setting,
   onChange,
@@ -48,8 +54,8 @@ export const SettingInput = ({
   return (
     <SettingInputBlurChange
       className={cx({
-        SettingsInput: type !== "password",
-        SettingsPassword: type === "password",
+        [AdminS.SettingsInput]: type !== "password",
+        [AdminS.SettingsPassword]: type === "password",
       })}
       normalize={normalize}
       size="large"

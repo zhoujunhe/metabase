@@ -1,12 +1,10 @@
 import { useState } from "react";
 
 import DatePicker from "metabase/admin/datamodel/components/filters/pickers/DatePicker/DatePicker";
-import { filterToUrlEncoded } from "metabase/parameters/utils/date-formatting";
-
-import { WidgetRoot } from "metabase/parameters/components/widgets/Widget.styled";
-
 import { UpdateFilterButton } from "metabase/parameters/components/UpdateFilterButton";
-import { dateParameterValueToMBQL } from "metabase-lib/parameters/utils/mbql";
+import { WidgetRoot } from "metabase/parameters/components/widgets/Widget.styled";
+import { filterToUrlEncoded } from "metabase/parameters/utils/date-formatting";
+import { dateParameterValueToMBQL } from "metabase-lib/v1/parameters/utils/mbql";
 
 // Use a placeholder value as field references are not used in dashboard filters
 const noopRef = null;

@@ -1,5 +1,6 @@
 import type { ExportFormatType } from "metabase/dashboard/components/PublicLinkPopover/types";
 import { trackSchemaEvent } from "metabase/lib/analytics";
+
 import type {
   EmbeddingDisplayOptions,
   EmbedResource,
@@ -7,7 +8,7 @@ import type {
 } from "./types";
 
 const SCHEMA_NAME = "embed_flow";
-const SCHEMA_VERSION = "1-0-0";
+const SCHEMA_VERSION = "1-0-1";
 
 type Appearance = {
   titled: boolean;
@@ -32,10 +33,12 @@ export const trackStaticEmbedPublished = ({
   artifact,
   resource,
   params,
+  isExampleDashboard,
 }: {
   artifact: EmbedResourceType;
   resource: EmbedResource;
   params: Record<string, number>;
+  isExampleDashboard: boolean;
 }): void => {
   const now = Date.now();
   trackSchemaEvent(SCHEMA_NAME, SCHEMA_VERSION, {
@@ -49,6 +52,7 @@ export const trackStaticEmbedPublished = ({
       ? toSecond(now - new Date(resource.initially_published_at).getTime())
       : null,
     params,
+    is_example_dashboard: isExampleDashboard,
   });
 };
 

@@ -1,13 +1,14 @@
 import * as ML from "cljs/metabase.lib.js";
 import type { DatasetColumn, RowValue } from "metabase-types/api";
+
 import type {
-  FilterDrillDetails,
-  ColumnMetadata,
   ClickObjectDataRow,
   ClickObjectDimension,
+  ColumnMetadata,
   DrillThru,
-  Query,
+  FilterDrillDetails,
   PivotType,
+  Query,
 } from "./types";
 
 // NOTE: value might be null or undefined, and they mean different things!
@@ -15,7 +16,7 @@ import type {
 export function availableDrillThrus(
   query: Query,
   stageIndex: number,
-  column: ColumnMetadata | DatasetColumn | undefined,
+  column: DatasetColumn | undefined,
   value: RowValue | undefined,
   row: ClickObjectDataRow[] | undefined,
   dimensions: ClickObjectDimension[] | undefined,

@@ -1,5 +1,7 @@
 import userEvent from "@testing-library/user-event";
+
 import { render, screen, act } from "__support__/ui";
+
 import { DelayGroup, useDelayGroup } from "./DelayGroup";
 
 interface SetupOpts {
@@ -27,6 +29,10 @@ describe("DelayGroup", () => {
   it("should be delayed by default and only remove delay after a timeout", async () => {
     jest.useFakeTimers();
 
+    const user = userEvent.setup({
+      advanceTimers: jest.advanceTimersByTime,
+    });
+
     const timeout = 500;
     setup({ timeout });
 
@@ -34,10 +40,11 @@ describe("DelayGroup", () => {
 
     expect(button).toHaveTextContent("delay: true");
 
-    userEvent.hover(button);
+    await user.hover(button);
+
     expect(button).toHaveTextContent("delay: false");
 
-    userEvent.unhover(button);
+    await user.unhover(button);
     expect(button).toHaveTextContent("delay: false");
 
     act(function () {

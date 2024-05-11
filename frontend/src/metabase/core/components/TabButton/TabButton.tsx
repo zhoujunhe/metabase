@@ -1,3 +1,7 @@
+import type { UniqueIdentifier } from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
+import { css } from "@emotion/react";
+import styled from "@emotion/styled";
 import type {
   HTMLAttributes,
   ChangeEventHandler,
@@ -13,15 +17,11 @@ import {
   useState,
   forwardRef,
 } from "react";
-import styled from "@emotion/styled";
 import { t } from "ttag";
 
-import { css } from "@emotion/react";
-import { useSortable } from "@dnd-kit/sortable";
-import type { UniqueIdentifier } from "@dnd-kit/core";
 import ControlledPopoverWithTrigger from "metabase/components/PopoverWithTrigger/ControlledPopoverWithTrigger";
-
 import { color, lighten } from "metabase/lib/colors";
+
 import type { TabContextType } from "../Tab";
 import {
   getTabButtonInputId,
@@ -29,7 +29,7 @@ import {
   getTabPanelId,
   TabContext,
 } from "../Tab";
-import { TabButtonMenu } from "./TabButtonMenu";
+
 import {
   TabButtonInput,
   TabButtonRoot,
@@ -37,6 +37,7 @@ import {
   TabButtonInputWrapper,
   TabButtonInputResizer,
 } from "./TabButton.styled";
+import { TabButtonMenu } from "./TabButtonMenu";
 
 export const INPUT_WRAPPER_TEST_ID = "tab-button-input-wrapper";
 
@@ -87,7 +88,7 @@ const _TabButton = forwardRef(function TabButton(
     showMenuProp && menuItems !== undefined && menuItems.length > 0;
 
   const handleButtonClick: MouseEventHandler<HTMLDivElement> = useCallback(
-    event => {
+    (event: React.MouseEvent<HTMLDivElement>) => {
       if (
         disabled ||
         menuButtonRef.current?.contains(event.target as Node) ||
@@ -104,7 +105,7 @@ const _TabButton = forwardRef(function TabButton(
 
   const handleInputKeyPress: KeyboardEventHandler<HTMLInputElement> =
     useCallback(
-      event => {
+      (event: React.KeyboardEvent) => {
         if (event.key === "Enter" && typeof inputRef === "object") {
           inputRef?.current?.blur();
         }

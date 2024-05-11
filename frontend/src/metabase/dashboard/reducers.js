@@ -1,12 +1,12 @@
 import { assoc, dissoc, assocIn, updateIn, chain, merge } from "icepick";
+import produce from "immer";
 import reduceReducers from "reduce-reducers";
 import _ from "underscore";
 
-import produce from "immer";
-import { handleActions, combineReducers } from "metabase/lib/redux";
+import Actions from "metabase/entities/actions";
 import Dashboards from "metabase/entities/dashboards";
 import Questions from "metabase/entities/questions";
-import Actions from "metabase/entities/actions";
+import { handleActions, combineReducers } from "metabase/lib/redux";
 import { NAVIGATE_BACK_TO_DASHBOARD } from "metabase/query_builder/actions";
 
 import {
@@ -47,11 +47,11 @@ import {
   FETCH_CARD_DATA_PENDING,
   fetchDashboard,
 } from "./actions";
+import { INITIAL_DASHBOARD_STATE } from "./constants";
 import {
   calculateDashCardRowAfterUndo,
   syncParametersAndEmbeddingParams,
 } from "./utils";
-import { INITIAL_DASHBOARD_STATE } from "./constants";
 
 const dashboardId = handleActions(
   {
@@ -66,15 +66,15 @@ const dashboardId = handleActions(
   INITIAL_DASHBOARD_STATE.dashboardId,
 );
 
-const isEditing = handleActions(
+const editingDashboard = handleActions(
   {
-    [INITIALIZE]: { next: state => null },
+    [INITIALIZE]: { next: () => INITIAL_DASHBOARD_STATE.editingDashboard },
     [SET_EDITING_DASHBOARD]: {
-      next: (state, { payload }) => (payload ? payload : null),
+      next: (state, { payload }) => payload ?? null,
     },
-    [RESET]: { next: state => null },
+    [RESET]: { next: () => INITIAL_DASHBOARD_STATE.editingDashboard },
   },
-  INITIAL_DASHBOARD_STATE.isEditing,
+  INITIAL_DASHBOARD_STATE.editingDashboard,
 );
 
 const loadingControls = handleActions(
@@ -239,10 +239,10 @@ const dashcards = handleActions(
       [dashcard.id]: { ...dashcard, isAdded: true, justAdded: true },
     }),
     [ADD_MANY_CARDS_TO_DASH]: (state, { payload: dashcards }) => {
-      const storeDashcards = dashcards.map(dc => ({
+      const storeDashcards = dashcards.map((dc, index) => ({
         ...dc,
         isAdded: true,
-        justAdded: true,
+        justAdded: index === 0,
       }));
       const storeDashCardsMap = _.indexBy(storeDashcards, "id");
       return {
@@ -502,7 +502,7 @@ const missingActionParameters = handleActions(
   INITIAL_DASHBOARD_STATE.missingActionParameters,
 );
 
-export const autoApplyFilters = handleActions(
+const autoApplyFilters = handleActions(
   {
     [SHOW_AUTO_APPLY_FILTERS_TOAST]: {
       next: (state, { payload: { toastId, dashboardId } }) => ({
@@ -519,7 +519,7 @@ export const dashboardReducers = reduceReducers(
   INITIAL_DASHBOARD_STATE,
   combineReducers({
     dashboardId,
-    isEditing,
+    editingDashboard,
     loadingControls,
     dashboards,
     dashcards,

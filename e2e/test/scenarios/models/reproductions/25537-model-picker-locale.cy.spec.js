@@ -1,5 +1,5 @@
-import { restore, startNewQuestion } from "e2e/support/helpers";
 import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+import { restore, startNewQuestion } from "e2e/support/helpers";
 
 const { ORDERS_ID } = SAMPLE_DATABASE;
 
@@ -21,7 +21,7 @@ describe("issue 25537", () => {
     cy.createQuestion(questionDetails);
 
     startNewQuestion();
-    cy.icon("model").click();
+    cy.findByRole("menuitem", { name: /Modelle/i }).click();
     cy.wait("@getCollectionContent");
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage

@@ -1,13 +1,15 @@
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+import { ORDERS_QUESTION_ID } from "e2e/support/cypress_sample_instance_data";
 import {
   restore,
   visitQuestion,
   popover,
   visitIframe,
   openStaticEmbeddingModal,
+  echartsContainer,
+  cartesianChartCircle,
 } from "e2e/support/helpers";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 
-import { ORDERS_QUESTION_ID } from "e2e/support/cypress_sample_instance_data";
 import {
   regularQuestion,
   questionWithAggregation,
@@ -92,12 +94,15 @@ describe("scenarios > embedding > questions", () => {
 
     assertOnXYAxisLabels({ xLabel: "Created At", yLabel: "Count" });
 
-    cy.get(".x.axis .tick").should("have.length", 5).and("contain", "Apr 2022");
+    echartsContainer()
+      .findAllByText(/2022/)
+      .should("have.length", 5)
+      .and("contain", "Apr 2022");
 
-    cy.get(".y.axis .tick").should("contain", "60");
+    echartsContainer().should("contain", "60");
 
     // Check the tooltip for the last point on the line
-    cy.get(".dot").last().realHover();
+    cartesianChartCircle().last().realHover();
 
     popover().within(() => {
       testPairedTooltipValues("Created At", "Aug 2022");
@@ -219,7 +224,7 @@ function testPairedTooltipValues(val1, val2) {
 }
 
 function assertOnXYAxisLabels({ xLabel, yLabel } = {}) {
-  cy.get(".x-axis-label").invoke("text").should("eq", xLabel);
+  echartsContainer().get("text").contains(xLabel);
 
-  cy.get(".y-axis-label").invoke("text").should("eq", yLabel);
+  echartsContainer().get("text").contains(yLabel);
 }

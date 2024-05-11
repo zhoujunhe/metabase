@@ -1,15 +1,35 @@
-import type { ComponentType, HTMLAttributes, ReactNode } from "react";
-import { t } from "ttag";
-
-import type { IconName, IconProps } from "metabase/ui";
-import PluginPlaceholder from "metabase/plugins/components/PluginPlaceholder";
-
 import type {
-  DataPermission,
-  DatabaseEntityId,
-  PermissionSubject,
-} from "metabase/admin/permissions/types";
+  ComponentType,
+  Dispatch,
+  HTMLAttributes,
+  ReactNode,
+  SetStateAction,
+} from "react";
+import { t } from "ttag";
+import _ from "underscore";
+import type { AnySchema } from "yup";
 
+import noResultsSource from "assets/img/no_results.svg";
+import { UNABLE_TO_CHANGE_ADMIN_PERMISSIONS } from "metabase/admin/permissions/constants/messages";
+import {
+  type DataPermission,
+  type DatabaseEntityId,
+  type PermissionSubject,
+  DataPermissionValue,
+  type EntityId,
+} from "metabase/admin/permissions/types";
+import type { ADMIN_SETTINGS_SECTIONS } from "metabase/admin/settings/selectors";
+import type {
+  ActualModelFilters,
+  AvailableModelFilters,
+  ModelFilterControlsProps,
+} from "metabase/browse/utils";
+import { getIconBase } from "metabase/lib/icon";
+import PluginPlaceholder from "metabase/plugins/components/PluginPlaceholder";
+import type { SearchFilterComponent } from "metabase/search/types";
+import type { IconName, IconProps } from "metabase/ui";
+import type Question from "metabase-lib/v1/Question";
+import type Database from "metabase-lib/v1/metadata/Database";
 import type {
   Bookmark,
   Collection,
@@ -26,23 +46,16 @@ import type {
   User,
   UserListResult,
 } from "metabase-types/api";
-
-import { UNABLE_TO_CHANGE_ADMIN_PERMISSIONS } from "metabase/admin/permissions/constants/messages";
-
 import type { AdminPathKey, State } from "metabase-types/store";
-import type { ADMIN_SETTINGS_SECTIONS } from "metabase/admin/settings/selectors";
-import type { SearchFilterComponent } from "metabase/search/types";
-import type {
-  AvailableModelFilters,
-  ModelFilterControlsProps,
-} from "metabase/browse/utils";
-import type Question from "metabase-lib/Question";
 
-import type Database from "metabase-lib/metadata/Database";
-import type { GetAuthProviders, PluginGroupManagersType } from "./types";
+import type {
+  GetAuthProviders,
+  PluginGroupManagersType,
+  PluginLLMAutoDescription,
+} from "./types";
 
 // functions called when the application is started
-export const PLUGIN_APP_INIT_FUCTIONS = [];
+export const PLUGIN_APP_INIT_FUNCTIONS = [];
 
 // function to determine the landing page
 export const PLUGIN_LANDING_PAGE = [];
@@ -83,14 +96,19 @@ export const PLUGIN_ADMIN_PERMISSIONS_DATABASE_ACTIONS = {
 export const PLUGIN_ADMIN_PERMISSIONS_TABLE_ROUTES = [];
 export const PLUGIN_ADMIN_PERMISSIONS_TABLE_GROUP_ROUTES = [];
 export const PLUGIN_ADMIN_PERMISSIONS_TABLE_FIELDS_OPTIONS = [];
+export const PLUGIN_ADMIN_PERMISSIONS_TABLE_FIELDS_CONFIRMATIONS = [] as Array<
+  (
+    _permissions: GroupsPermissions,
+    _groupId: number,
+    _entityId: EntityId,
+    _value: DataPermissionValue,
+  ) => any
+>;
 export const PLUGIN_ADMIN_PERMISSIONS_TABLE_FIELDS_ACTIONS = {
-  controlled: [],
+  sandboxed: [],
 };
 export const PLUGIN_ADMIN_PERMISSIONS_TABLE_FIELDS_POST_ACTION = {
-  controlled: null,
-};
-export const PLUGIN_ADMIN_PERMISSIONS_TABLE_FIELDS_PERMISSION_VALUE = {
-  controlled: null,
+  sandboxed: null,
 };
 
 export const PLUGIN_DATA_PERMISSIONS: {
@@ -98,7 +116,16 @@ export const PLUGIN_DATA_PERMISSIONS: {
     state: State,
   ) => Record<string, unknown>)[];
   hasChanges: ((state: State) => boolean)[];
-  updateNativePermission:
+  shouldRestrictNativeQueryPermissions: (
+    permissions: GroupsPermissions,
+    groupId: number,
+    entityId: EntityId,
+    permission: DataPermission,
+    value: DataPermissionValue,
+    database: Database,
+  ) => boolean;
+
+  upgradeViewPermissionsIfNeeded:
     | ((
         permissions: GroupsPermissions,
         groupId: number,
@@ -111,7 +138,8 @@ export const PLUGIN_DATA_PERMISSIONS: {
 } = {
   permissionsPayloadExtraSelectors: [],
   hasChanges: [],
-  updateNativePermission: null,
+  upgradeViewPermissionsIfNeeded: null,
+  shouldRestrictNativeQueryPermissions: () => false,
 };
 
 // user form fields, e.x. login attributes
@@ -126,6 +154,28 @@ export const PLUGIN_ADMIN_USER_MENU_ROUTES = [];
 // authentication providers
 export const PLUGIN_AUTH_PROVIDERS: GetAuthProviders[] = [];
 
+export const PLUGIN_LDAP_FORM_FIELDS = {
+  formFieldAttributes: [] as string[],
+  defaultableFormFieldAttributes: [] as string[],
+  formFieldsSchemas: {} as Record<string, AnySchema>,
+  UserProvisioning: (() => null) as ComponentType<{
+    settings: {
+      [setting: string]: {
+        display_name?: string | undefined;
+        warningMessage?: string | undefined;
+        description?: string | undefined;
+        note?: string | undefined;
+      };
+    };
+    fields: {
+      [field: string]: {
+        name: string;
+        default: boolean;
+      };
+    };
+  }>,
+};
+
 // Only show the password tab in account settings if these functions all return true.
 // Otherwise, the user is logged in via SSO and should hide first name, last name, and email field in profile settings metabase#23298.
 export const PLUGIN_IS_PASSWORD_USER: ((user: User) => boolean)[] = [];
@@ -133,13 +183,36 @@ export const PLUGIN_IS_PASSWORD_USER: ((user: User) => boolean)[] = [];
 // selectors that customize behavior between app versions
 export const PLUGIN_SELECTORS = {
   canWhitelabel: (_state: State) => false,
-  getLoadingMessage: (_state: State) => t`Doing science...`,
+  getLoadingMessageFactory: (_state: State) => (isSlow: boolean) =>
+    isSlow ? t`Waiting for results...` : t`Doing science...`,
   getIsWhiteLabeling: (_state: State) => false,
   // eslint-disable-next-line no-literal-metabase-strings -- This is the actual Metabase name, so we don't want to translate it.
   getApplicationName: (_state: State) => "Metabase",
   getShowMetabaseLinks: (_state: State) => true,
-  getDashboardOverviewId: (_state: State) => undefined,
+  getLoginPageIllustration: (_state: State): IllustrationValue => {
+    return {
+      src: "app/img/bridge.svg",
+      isDefault: true,
+    };
+  },
+  getLandingPageIllustration: (_state: State): IllustrationValue => {
+    return {
+      src: "app/img/bridge.svg",
+      isDefault: true,
+    };
+  },
+  getNoDataIllustration: (_state: State): string => {
+    return noResultsSource;
+  },
+  getNoObjectIllustration: (_state: State): string => {
+    return noResultsSource;
+  },
 };
+
+export type IllustrationValue = {
+  src: string;
+  isDefault: boolean;
+} | null;
 
 export const PLUGIN_FORM_WIDGETS: Record<string, ComponentType<any>> = {};
 
@@ -151,6 +224,11 @@ export const PLUGIN_SNIPPET_SIDEBAR_HEADER_BUTTONS = [];
 
 export const PLUGIN_DASHBOARD_SUBSCRIPTION_PARAMETERS_SECTION_OVERRIDE = {
   Component: undefined,
+};
+
+export const PLUGIN_LLM_AUTODESCRIPTION: PluginLLMAutoDescription = {
+  isEnabled: () => false,
+  LLMSuggestQuestionInfo: PluginPlaceholder,
 };
 
 const AUTHORITY_LEVEL_REGULAR: CollectionAuthorityLevelConfig = {
@@ -187,6 +265,7 @@ export const PLUGIN_COLLECTIONS = {
     _collection: Collection,
     _onUpdate: (collection: Collection, values: Partial<Collection>) => void,
   ): AuthorityLevelMenuItem[] => [],
+  getIcon: getIconBase,
 };
 
 export type CollectionAuthorityLevelIcon = ComponentType<
@@ -246,27 +325,36 @@ export const PLUGIN_MODERATION = {
   ) => [],
 };
 
+export type InvalidateNowButtonProps = {
+  targetId: number;
+  targetName: string;
+};
+
 export const PLUGIN_CACHING = {
+  cacheTTLFormField: null as any,
   dashboardCacheTTLFormField: null,
   questionCacheTTLFormField: null,
-  getQuestionsImplicitCacheTTL: (_question?: any) => null,
-  QuestionCacheSection: PluginPlaceholder,
-  DashboardCacheSection: PluginPlaceholder,
-  DatabaseCacheTimeField: PluginPlaceholder,
+  getQuestionsImplicitCacheTTL: (_question?: any) => null as number | null,
+  QuestionCacheSection: PluginPlaceholder as any,
+  DashboardCacheSection: PluginPlaceholder as any,
+  DatabaseCacheTimeField: PluginPlaceholder as any,
+  StrategyFormLauncherPanel: PluginPlaceholder as any,
+  GranularControlsExplanation: PluginPlaceholder as any,
+  InvalidateNowButton:
+    PluginPlaceholder as ComponentType<InvalidateNowButtonProps>,
   isEnabled: () => false,
   hasQuestionCacheSection: (_question: Question) => false,
+  canOverrideRootStrategy: false,
 };
 
 export const PLUGIN_REDUCERS: {
   applicationPermissionsPlugin: any;
   sandboxingPlugin: any;
   shared: any;
-  auditInfo: any;
 } = {
   applicationPermissionsPlugin: () => null,
   sandboxingPlugin: () => null,
   shared: () => null,
-  auditInfo: () => null,
 };
 
 export const PLUGIN_ADVANCED_PERMISSIONS = {
@@ -281,6 +369,9 @@ export const PLUGIN_ADVANCED_PERMISSIONS = {
     _value: string,
     _subject: "schemas" | "tables" | "fields",
   ) => false,
+  isRestrictivePermission: (_value: string) => false,
+  shouldShowViewDataColumn: false,
+  defaultViewDataPermission: DataPermissionValue.UNRESTRICTED,
 };
 
 export const PLUGIN_FEATURE_LEVEL_PERMISSIONS = {
@@ -289,7 +380,7 @@ export const PLUGIN_FEATURE_LEVEL_PERMISSIONS = {
     _groupId: number,
     _isAdmin: boolean,
     _permissions: GroupsPermissions,
-    _dataAccessPermissionValue: string,
+    _dataAccessPermissionValue: DataPermissionValue,
     _defaultGroup: Group,
     _permissionSubject: PermissionSubject,
   ) => {
@@ -341,6 +432,11 @@ export const PLUGIN_CONTENT_VERIFICATION = {
     _a: CollectionEssentials,
     _b: CollectionEssentials,
   ) => 0,
+  useModelFilterSettings: () =>
+    [{}, _.noop] as [
+      ActualModelFilters,
+      Dispatch<SetStateAction<ActualModelFilters>>,
+    ],
 };
 
 export const PLUGIN_DASHBOARD_HEADER = {
@@ -349,4 +445,12 @@ export const PLUGIN_DASHBOARD_HEADER = {
 
 export const PLUGIN_QUERY_BUILDER_HEADER = {
   extraButtons: (_question: Question) => [],
+};
+
+export const PLUGIN_UPLOAD_MANAGEMENT = {
+  UploadManagementTable: PluginPlaceholder,
+};
+
+export const PLUGIN_IS_EE_BUILD = {
+  isEEBuild: () => false,
 };

@@ -1,3 +1,5 @@
+import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
   restore,
   popover,
@@ -10,10 +12,9 @@ import {
   openOrdersTable,
   getNotebookStep,
   rightSidebar,
+  chartPathWithFillColor,
+  cartesianChartCircle,
 } from "e2e/support/helpers";
-
-import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 
 const { ORDERS, ORDERS_ID } = SAMPLE_DATABASE;
 
@@ -124,7 +125,7 @@ describe("binning related reproductions", () => {
       .findByRole("option", { name: "CREATED_AT" })
       .findByLabelText("Temporal bucket")
       .click();
-    cy.findByRole("menuitem", { name: "Quarter" }).click();
+    popover().last().findByText("Quarter").click();
 
     getNotebookStep("sort").findByText("CREATED_AT: Quarter");
   });
@@ -165,10 +166,12 @@ describe("binning related reproductions", () => {
     popover().findByText("18646").click();
 
     popover().within(() => {
-      cy.findByRole("option", { name: "CREATED_AT" })
+      cy.findByRole("option", { name: /CREATED_AT/ })
         .findByText("by month")
         .should("exist");
-      cy.findByRole("option", { name: "CREATED_AT" }).click();
+      cy.findByRole("option", { name: /CREATED_AT/ }).click({
+        position: "left",
+      });
     });
 
     getNotebookStep("summarize").findByText(
@@ -176,7 +179,7 @@ describe("binning related reproductions", () => {
     );
 
     visualize();
-    cy.get("circle");
+    cartesianChartCircle();
   });
 
   it("should display date granularity on Summarize when opened from saved question (metabase#10441, metabase#11439)", () => {
@@ -197,7 +200,8 @@ describe("binning related reproductions", () => {
     summarize();
 
     rightSidebar().within(() => {
-      cy.findByRole("listitem", { name: "Created At" })
+      cy.findAllByRole("listitem", { name: "Created At" })
+        .eq(0)
         .findByLabelText("Temporal bucket")
         .click();
     });
@@ -241,7 +245,7 @@ describe("binning related reproductions", () => {
       .click();
     cy.wait("@dataset");
 
-    cy.get(".Visualization").findByText("Count");
+    cy.findByTestId("query-visualization-root").findByText("Count");
 
     cy.findByTestId("sidebar-right")
       .findAllByText("Created At")
@@ -249,8 +253,8 @@ describe("binning related reproductions", () => {
       .click();
     cy.wait("@dataset");
 
-    cy.get(".Visualization").within(() => {
-      // ALl of these are implicit assertions and will fail if there's more than one string
+    cy.findByTestId("query-visualization-root").within(() => {
+      // All of these are implicit assertions and will fail if there's more than one string
       cy.findByText("Count");
       cy.findByText("Created At: Month");
       cy.findByText("June 2022");
@@ -281,7 +285,7 @@ describe("binning related reproductions", () => {
         toBinning: "10 bins",
       });
 
-      cy.get(".bar");
+      chartPathWithFillColor("#509EE3");
     });
 
     it("should work for notebook mode", () => {
@@ -302,7 +306,7 @@ describe("binning related reproductions", () => {
 
       visualize();
 
-      cy.get(".bar");
+      chartPathWithFillColor("#509EE3");
     });
   });
 

@@ -1,6 +1,7 @@
 import { screen } from "__support__/ui";
-import { setup as baseSetup } from "./setup";
+
 import type { SetupOpts } from "./setup";
+import { setup as baseSetup } from "./setup";
 
 function setup(opts: SetupOpts) {
   baseSetup({
@@ -16,7 +17,7 @@ describe("DashCardParameterMapper > DisabledNativeCardHelpText (EE with token)",
 
     expect(
       screen.getByText(
-        "Add a string variable to this question to connect it to a dashboard filter.",
+        "A text variable in this card can only be connected to a text filter with Is operator.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Learn how")).toBeInTheDocument();
@@ -27,7 +28,7 @@ describe("DashCardParameterMapper > DisabledNativeCardHelpText (EE with token)",
 
     expect(
       screen.getByText(
-        "Add a string variable to this question to connect it to a dashboard filter.",
+        "A text variable in this card can only be connected to a text filter with Is operator.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Learn how")).not.toBeInTheDocument();

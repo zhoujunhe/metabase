@@ -1,11 +1,14 @@
 import type { ReactNode } from "react";
 import { useCallback } from "react";
+
 import type { IconProps } from "metabase/ui";
+import type { OnChangeCardAndRun } from "metabase/visualizations/types";
 import type {
   Series,
   TransformedSeries,
   VisualizationSettings,
 } from "metabase-types/api";
+
 import { ChartCaptionRoot } from "./ChartCaption.styled";
 
 interface ChartCaptionProps {
@@ -13,8 +16,8 @@ interface ChartCaptionProps {
   settings: VisualizationSettings;
   icon?: IconProps;
   actionButtons?: ReactNode;
-  width: number;
-  onChangeCardAndRun: (data: Record<string, unknown>) => void;
+  width?: number;
+  onChangeCardAndRun: OnChangeCardAndRun;
 }
 
 const ChartCaption = ({
@@ -35,7 +38,6 @@ const ChartCaption = ({
   const handleSelectTitle = useCallback(() => {
     onChangeCardAndRun({
       nextCard: card,
-      seriesIndex: 0,
     });
   }, [card, onChangeCardAndRun]);
 

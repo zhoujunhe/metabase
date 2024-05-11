@@ -1,21 +1,23 @@
 import styled from "@emotion/styled";
-import { color } from "metabase/lib/colors";
-import Card from "metabase/components/Card";
-import { BrowseGrid } from "./BrowseApp.styled";
+import { Link } from "react-router";
 
-export const DatabaseGrid = styled(BrowseGrid)`
-  margin-top: 1rem;
-`;
+import Card from "metabase/components/Card";
+import { color } from "metabase/lib/colors";
+
+import { BrowseGrid } from "./BrowseContainer.styled";
+
+export const DatabaseGrid = styled(BrowseGrid)``;
 
 export const DatabaseCard = styled(Card)`
   padding: 1.5rem;
+  margin-bottom: 1rem;
   box-shadow: none;
   &:hover {
     color: ${color("brand")};
   }
 `;
 
-export const DatabaseGridItem = styled.div`
+export const DatabaseCardLink = styled(Link)`
   &:hover {
     color: ${color("brand")};
   }

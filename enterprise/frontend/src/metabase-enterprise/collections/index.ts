@@ -1,14 +1,15 @@
 import { t } from "ttag";
+
 import {
   PLUGIN_COLLECTIONS,
   PLUGIN_COLLECTION_COMPONENTS,
 } from "metabase/plugins";
-import type { Collection } from "metabase-types/api";
 import { hasPremiumFeature } from "metabase-enterprise/settings";
+import type { Collection } from "metabase-types/api";
 
 import { CollectionAuthorityLevelIcon } from "./components/CollectionAuthorityLevelIcon";
-import { FormCollectionAuthorityLevel } from "./components/FormCollectionAuthorityLevel";
 import { CollectionInstanceAnalyticsIcon } from "./components/CollectionInstanceAnalyticsIcon";
+import { FormCollectionAuthorityLevel } from "./components/FormCollectionAuthorityLevel";
 import {
   AUTHORITY_LEVELS,
   REGULAR_COLLECTION,
@@ -19,6 +20,7 @@ import {
   getCollectionType,
   isRegularCollection,
   getInstanceAnalyticsCustomCollection,
+  getIcon,
 } from "./utils";
 
 if (hasPremiumFeature("official_collections")) {
@@ -27,6 +29,8 @@ if (hasPremiumFeature("official_collections")) {
   PLUGIN_COLLECTIONS.REGULAR_COLLECTION = REGULAR_COLLECTION;
 
   PLUGIN_COLLECTIONS.AUTHORITY_LEVEL = AUTHORITY_LEVELS;
+
+  PLUGIN_COLLECTIONS.getIcon = getIcon;
 
   PLUGIN_COLLECTIONS.getAuthorityLevelMenuItems = (
     collection: Collection,

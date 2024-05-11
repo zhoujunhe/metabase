@@ -1,4 +1,7 @@
 import _ from "underscore";
+
+import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
   editDashboard,
   getDashboardCard,
@@ -8,9 +11,6 @@ import {
   saveDashboard,
   visitDashboard,
 } from "e2e/support/helpers";
-import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
-
 import { GRID_WIDTH } from "metabase/lib/dashboard_grid";
 
 const VISUALIZATION_SIZES = {
@@ -254,7 +254,7 @@ describe("scenarios > dashboard card resizing", () => {
   );
 
   it(
-    `should not allow cards to be resized smaller than min height`,
+    "should not allow cards to be resized smaller than min height",
     { requestTimeout: 15000, tags: "@slow" },
     () => {
       const cardIds = [];
@@ -280,7 +280,10 @@ describe("scenarios > dashboard card resizing", () => {
         cy.request("GET", `/api/dashboard/${dashId}`).then(({ body }) => {
           const dashcards = body.dashcards;
           dashcards.forEach(({ card }) => {
-            const dashcard = cy.contains(".DashCard", card.name);
+            const dashcard = cy.contains(
+              "[data-testid=dashcard-container]",
+              card.name,
+            );
             resizeDashboardCard({
               card: dashcard,
               x: getDefaultSize(card.display).width * 100,
@@ -292,7 +295,10 @@ describe("scenarios > dashboard card resizing", () => {
           editDashboard();
 
           dashcards.forEach(({ card }) => {
-            const dashcard = cy.contains(".DashCard", card.name);
+            const dashcard = cy.contains(
+              "[data-testid=dashcard-container]",
+              card.name,
+            );
             dashcard.within(() => {
               resizeDashboardCard({
                 card: dashcard,

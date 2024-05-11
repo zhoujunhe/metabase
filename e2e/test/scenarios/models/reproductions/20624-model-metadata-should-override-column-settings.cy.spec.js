@@ -1,4 +1,5 @@
 import { restore } from "e2e/support/helpers";
+
 import { openDetailsSidebar } from "../helpers/e2e-models-helpers";
 
 const renamedColumn = "TITLE renamed";
@@ -36,6 +37,6 @@ describe.skip("issue 20624", () => {
     cy.button("Save changes").click();
     cy.wait("@updateCard");
 
-    cy.get(".cellData").should("contain", "Foo");
+    cy.get("[data-testid=cell-data]").should("contain", "Foo");
   });
 });

@@ -1,21 +1,21 @@
-import styled from "@emotion/styled";
 import { css } from "@emotion/react";
-
-import { Icon } from "metabase/ui";
-import { NAV_SIDEBAR_WIDTH } from "metabase/nav/constants";
+import styled from "@emotion/styled";
 
 import { color, lighten } from "metabase/lib/colors";
+import { NAV_SIDEBAR_WIDTH } from "metabase/nav/constants";
 import {
   breakpointMaxSmall,
   breakpointMinSmall,
   space,
 } from "metabase/styled-components/theme";
+import { Icon } from "metabase/ui";
+
 import { SidebarLink } from "./SidebarItems";
 
 const openSidebarCSS = css`
   width: ${NAV_SIDEBAR_WIDTH};
 
-  border-right: 1px solid ${color("border")};
+  border-inline-end: 1px solid ${color("border")};
 
   ${breakpointMaxSmall} {
     width: 90vw;
@@ -44,7 +44,7 @@ export const Sidebar = styled.aside<{ isOpen: boolean }>`
   ${breakpointMaxSmall} {
     position: absolute;
     top: 0;
-    left: 0;
+    inline-start: 0;
   }
 `;
 
@@ -85,8 +85,8 @@ export const SidebarContentRoot = styled.div`
 export const SidebarSection = styled.div`
   margin-top: ${space(1)};
   margin-bottom: ${space(2)};
-  padding-left: ${space(2)};
-  padding-right: ${space(2)};
+  padding-inline-start: ${space(2)};
+  padding-inline-end: ${space(2)};
 `;
 
 export const SidebarHeadingWrapper = styled.div`
@@ -101,12 +101,12 @@ export const SidebarHeading = styled.h4`
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.45px;
-  padding-left: ${space(2)};
+  padding-inline-start: ${space(2)};
 `;
 
 export const CollectionsMoreIconContainer = styled.button`
-  margin-left: auto;
-  margin-right: ${space(1)};
+  margin-inline-start: auto;
+  margin-inline-end: ${space(1)};
   cursor: pointer;
 `;
 
@@ -118,14 +118,14 @@ export const CollectionMenuList = styled.ul`
   padding: 0.5rem;
 `;
 
-export const LoadingContainer = styled.div`
+export const LoadingAndErrorContainer = styled.div`
   display: flex;
   flex: 1;
   align-items: center;
   justify-content: center;
 `;
 
-export const LoadingContent = styled.div`
+export const LoadingAndErrorContent = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -133,14 +133,14 @@ export const LoadingContent = styled.div`
   text-align: center;
 `;
 
-export const LoadingTitle = styled.h2`
+export const LoadingAndErrorTitle = styled.h2`
   color: ${color("text-light")};
   font-weight: 400;
   margin-top: ${space(1)};
 `;
 
 export const PaddedSidebarLink = styled(SidebarLink)`
-  padding-left: 12px;
+  padding-inline-start: 12px;
 `;
 
 export const AddYourOwnDataLink = styled(SidebarLink)`

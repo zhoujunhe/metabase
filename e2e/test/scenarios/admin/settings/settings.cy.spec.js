@@ -1,3 +1,5 @@
+import { SAMPLE_DB_ID, SAMPLE_DB_SCHEMA_ID } from "e2e/support/cypress_data";
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
   restore,
   openOrdersTable,
@@ -9,9 +11,6 @@ import {
   setTokenFeatures,
   undoToast,
 } from "e2e/support/helpers";
-
-import { SAMPLE_DB_ID, SAMPLE_DB_SCHEMA_ID } from "e2e/support/cypress_data";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 
 const { ORDERS, ORDERS_ID } = SAMPLE_DATABASE;
 
@@ -172,7 +171,7 @@ describe("scenarios > admin > settings", () => {
     openOrdersTable({ limit: 2 });
 
     cy.findByTextEnsureVisible("Created At");
-    cy.get(".cellData")
+    cy.get("[data-testid=cell-data]")
       .should("contain", "Created At")
       .and("contain", "2025/2/11, 21:40");
 
@@ -189,7 +188,7 @@ describe("scenarios > admin > settings", () => {
     openOrdersTable({ limit: 2 });
 
     cy.findByTextEnsureVisible("Created At");
-    cy.get(".cellData").and("contain", "2025/2/11, 9:40 PM");
+    cy.get("[data-testid=cell-data]").and("contain", "2025/2/11, 9:40 PM");
   });
 
   it("should show where to display the unit of currency (metabase#table-metadata-missing-38021 and update the formatting", () => {
@@ -278,11 +277,11 @@ describe("scenarios > admin > settings", () => {
       const lastItem = isOSS ? "Caching" : "Appearance";
 
       cy.visit("/admin/settings/setup");
-      cy.get(".AdminList .AdminList-item")
-        .as("settingsOptions")
-        .first()
-        .contains("Setup");
-      cy.get("@settingsOptions").last().contains(lastItem);
+      cy.findByTestId("admin-list-settings-items").within(() => {
+        cy.findAllByTestId("settings-sidebar-link").as("settingsOptions");
+        cy.get("@settingsOptions").first().contains("Setup");
+        cy.get("@settingsOptions").last().contains(lastItem);
+      });
     },
   );
 

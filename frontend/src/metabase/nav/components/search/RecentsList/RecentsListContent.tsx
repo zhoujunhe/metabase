@@ -1,30 +1,31 @@
 import { t } from "ttag";
-import type { RecentItem } from "metabase-types/api";
+
 import { getTranslatedEntityName } from "metabase/common/utils/model-names";
 import EmptyState from "metabase/components/EmptyState";
 import { useListKeyboardNavigation } from "metabase/hooks/use-list-keyboard-navigation";
+import { getName } from "metabase/lib/name";
 import { isSyncCompleted } from "metabase/lib/syncing";
-import type { WrappedRecentItem } from "metabase/nav/components/search/RecentsList";
 import {
   SearchLoadingSpinner,
   EmptyStateContainer,
 } from "metabase/nav/components/search/SearchResults";
-
+import { PLUGIN_MODERATION } from "metabase/plugins";
 import {
   ItemIcon,
   LoadingSection,
-  ModerationIcon,
   ResultNameSection,
   ResultTitle,
   SearchResultContainer,
 } from "metabase/search/components/SearchResult";
 import { SearchResultLink } from "metabase/search/components/SearchResultLink";
 import { Group, Loader, Stack, Title } from "metabase/ui";
-import { getItemName, getItemUrl, isItemActive } from "./util";
+import type { RecentItem } from "metabase-types/api";
+
+import { getItemUrl, isItemActive } from "./util";
 
 type RecentsListContentProps = {
   isLoading: boolean;
-  results: WrappedRecentItem[];
+  results: RecentItem[];
   onClick?: (item: RecentItem) => void;
 };
 
@@ -34,11 +35,11 @@ export const RecentsListContent = ({
   onClick,
 }: RecentsListContentProps) => {
   const { getRef, cursorIndex } = useListKeyboardNavigation<
-    WrappedRecentItem,
+    RecentItem,
     HTMLButtonElement
   >({
     list: results,
-    onEnter: (item: WrappedRecentItem) => onClick?.(item),
+    onEnter: (item: RecentItem) => onClick?.(item),
   });
 
   if (isLoading) {
@@ -57,7 +58,13 @@ export const RecentsListContent = ({
   }
 
   return (
-    <Stack spacing="md" px="sm" py="md" data-testid="recents-list-container">
+    <Stack
+      spacing="sm"
+      px="sm"
+      pt="md"
+      pb="sm"
+      data-testid="recents-list-container"
+    >
       <Title order={4} px="sm">{t`Recently viewed`}</Title>
       <Stack spacing={0}>
         {results.map((item, index) => {
@@ -82,9 +89,9 @@ export const RecentsListContent = ({
                     truncate
                     href={onClick ? undefined : getItemUrl(item)}
                   >
-                    {getItemName(item)}
+                    {getName(item.model_object)}
                   </ResultTitle>
-                  <ModerationIcon
+                  <PLUGIN_MODERATION.ModerationStatusIcon
                     status={getModeratedStatus(item)}
                     filled
                     size={14}

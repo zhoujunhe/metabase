@@ -1,16 +1,12 @@
 import { t } from "ttag";
-import type {
-  RowValue,
-  RowValues,
-  SeriesOrderSetting,
-  DatasetData,
-} from "metabase-types/api";
 
+import { formatNullable } from "metabase/lib/formatting/nullable";
+import { sumMetric } from "metabase/visualizations/echarts/cartesian/model/dataset";
 import type {
-  ChartColumns,
+  CartesianChartColumns,
   ColumnDescriptor,
 } from "metabase/visualizations/lib/graph/columns";
-import type { ColumnFormatter } from "metabase/visualizations/shared/types/format";
+import type { Series } from "metabase/visualizations/shared/components/RowChart/types";
 import type {
   GroupedDataset,
   GroupedDatum,
@@ -18,25 +14,19 @@ import type {
   MetricValue,
   SeriesInfo,
 } from "metabase/visualizations/shared/types/data";
-import type { Series } from "metabase/visualizations/shared/components/RowChart/types";
-import { formatNullable } from "metabase/lib/formatting/nullable";
+import type { ColumnFormatter } from "metabase/visualizations/shared/types/format";
+import type {
+  RowValue,
+  RowValues,
+  SeriesOrderSetting,
+  DatasetData,
+} from "metabase-types/api";
+
 import { getChartMetrics } from "./series";
 
 const getMetricValue = (value: RowValue): MetricValue => {
   if (typeof value === "number") {
     return value;
-  }
-
-  return null;
-};
-
-export const sumMetric = (left: RowValue, right: RowValue) => {
-  if (typeof left === "number" && typeof right === "number") {
-    return left + right;
-  } else if (typeof left === "number") {
-    return left;
-  } else if (typeof right === "number") {
-    return right;
   }
 
   return null;
@@ -52,7 +42,7 @@ const sumMetrics = (left: MetricDatum, right: MetricDatum): MetricDatum => {
 
 export const getGroupedDataset = (
   rows: RowValues[],
-  chartColumns: ChartColumns,
+  chartColumns: CartesianChartColumns,
   columnFormatter: ColumnFormatter,
 ): GroupedDataset => {
   const { dimension } = chartColumns;
@@ -227,7 +217,7 @@ const getMultipleMetricSeries = (
 
 export const getSeries = (
   data: DatasetData,
-  chartColumns: ChartColumns,
+  chartColumns: CartesianChartColumns,
   columnFormatter: ColumnFormatter,
 ): Series<GroupedDatum, SeriesInfo>[] => {
   if ("breakout" in chartColumns) {

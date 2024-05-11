@@ -1,8 +1,7 @@
 import { colors } from "metabase/lib/colors";
+import { createColorGetter } from "metabase/static-viz/lib/colors";
 import { formatStaticValue } from "metabase/static-viz/lib/format";
 import { measureTextWidth } from "metabase/static-viz/lib/text";
-import { createColorGetter } from "metabase/static-viz/lib/colors";
-
 import type { RowValues, VisualizationSettings } from "metabase-types/api";
 import {
   createMockColumn,
@@ -69,8 +68,24 @@ function createSmartScalarSeries({
         cols: COLS,
         rows,
         insights: [
-          { unit: "month", col: "Count" },
-          { unit: "month", col: "Average" },
+          {
+            unit: "month",
+            col: "Count",
+            offset: 0,
+            slope: 0,
+            "last-change": 0,
+            "previous-value": 0,
+            "last-value": 0,
+          },
+          {
+            unit: "month",
+            col: "Average",
+            offset: 0,
+            slope: 0,
+            "last-change": 0,
+            "previous-value": 0,
+            "last-value": 0,
+          },
         ],
       },
     },
@@ -116,9 +131,11 @@ const createTemplate = ({ rows, vizSettings }: SmartScalarSeriesOpts) =>
         dashcardSettings={{}}
         renderingContext={{
           fontFamily: "Lato",
-          formatValue: formatStaticValue,
+          formatValue: (value, options) =>
+            formatStaticValue(value, options ?? {}),
           getColor: createColorGetter(colors),
-          measureText: measureTextWidth,
+          measureText: (text, style) =>
+            measureTextWidth(text, Number(style.size), Number(style.weight)),
         }}
       />
     );

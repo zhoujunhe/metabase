@@ -1,5 +1,7 @@
 import type { IconName } from "metabase/ui";
+
 import { HomeCard } from "../HomeCard";
+
 import { CardIcon, CardTitle } from "./HomeModelCard.styled";
 
 interface HomeModelCardProps {
@@ -10,6 +12,7 @@ interface HomeModelCardProps {
 
 export interface HomeModelIconProps {
   name: IconName;
+  variant?: "secondary";
 }
 
 export const HomeModelCard = ({

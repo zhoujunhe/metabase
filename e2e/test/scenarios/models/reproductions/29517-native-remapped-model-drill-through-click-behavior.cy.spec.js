@@ -1,12 +1,13 @@
+import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
+import { ORDERS_DASHBOARD_ID } from "e2e/support/cypress_sample_instance_data";
 import {
   restore,
   popover,
   visitQuestion,
   visitDashboard,
   assertQueryBuilderRowCount,
+  cartesianChartCircle,
 } from "e2e/support/helpers";
-import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
-import { ORDERS_DASHBOARD_ID } from "e2e/support/cypress_sample_instance_data";
 
 const questionDetails = {
   name: "29517",
@@ -34,7 +35,7 @@ describe("issue 29517 - nested question based on native model with remapped valu
       selectModelColumn("CREATED_AT");
       mapModelColumnToDatabase({ table: "Orders", field: "Created At" });
 
-      cy.intercept("PUT", `/api/card/*`).as("updateModel");
+      cy.intercept("PUT", "/api/card/*").as("updateModel");
       cy.button("Save changes").click();
       cy.wait("@updateModel");
 
@@ -77,12 +78,10 @@ describe("issue 29517 - nested question based on native model with remapped valu
 
   it("drill-through should work (metabase#29517-1)", () => {
     cy.intercept("POST", "/api/dataset").as("dataset");
-    cy.get("@nestedQuestionId").then(id => {
-      visitQuestion(id);
-    });
+    visitQuestion("@nestedQuestionId");
 
     // We can click on any circle; this index was chosen randomly
-    cy.get("circle").eq(25).click({ force: true });
+    cartesianChartCircle().eq(25).click({ force: true });
     popover()
       .findByText(/^See these/)
       .click();
@@ -96,22 +95,29 @@ describe("issue 29517 - nested question based on native model with remapped valu
   });
 
   it("click behavior to custom destination should work (metabase#29517-2)", () => {
+    cy.intercept("/api/dashboard/*/dashcard/*/card/*/query").as(
+      "dashcardQuery",
+    );
+
     visitDashboard("@dashboardId");
 
-    cy
-      .intercept("GET", `/api/dashboard/${ORDERS_DASHBOARD_ID}`)
-      .as("loadTargetDashboard"),
-      cy.get("circle").eq(25).click({ force: true });
+    cy.intercept("GET", `/api/dashboard/${ORDERS_DASHBOARD_ID}`).as(
+      "loadTargetDashboard",
+    );
+    cartesianChartCircle().eq(25).click({ force: true });
     cy.wait("@loadTargetDashboard");
 
     cy.location("pathname").should("eq", `/dashboard/${ORDERS_DASHBOARD_ID}`);
-    cy.get(".cellData").contains("37.65");
+
+    cy.wait("@dashcardQuery");
+
+    cy.get("[data-testid=cell-data]").contains("37.65");
   });
 });
 
 function mapModelColumnToDatabase({ table, field }) {
   cy.findByText("Database column this maps to")
-    .closest("#formField-id")
+    .parent()
     .findByTestId("select-button")
     .click();
   popover().findByRole("option", { name: table }).click();

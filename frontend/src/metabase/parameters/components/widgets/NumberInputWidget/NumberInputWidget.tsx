@@ -1,9 +1,12 @@
 import { useState } from "react";
-import _ from "underscore";
 import { t } from "ttag";
+import _ from "underscore";
 
-import TokenField, { parseNumberValue } from "metabase/components/TokenField";
+import TokenField from "metabase/components/TokenField";
 import NumericInput from "metabase/core/components/NumericInput";
+import CS from "metabase/css/core/index.css";
+import { parseNumberValue } from "metabase/lib/number";
+import { UpdateFilterButton } from "metabase/parameters/components/UpdateFilterButton";
 import {
   WidgetRoot,
   WidgetLabel,
@@ -11,7 +14,6 @@ import {
   TokenFieldWrapper,
 } from "metabase/parameters/components/widgets/Widget.styled";
 import type { Parameter } from "metabase-types/api";
-import { UpdateFilterButton } from "metabase/parameters/components/UpdateFilterButton";
 
 export type NumberInputWidgetProps = {
   value: number[] | undefined;
@@ -79,7 +81,7 @@ export function NumberInputWidget({
           <div key={i}>
             <NumericInput
               fullWidth
-              className="p1"
+              className={CS.p1}
               autoFocus={autoFocus && i === 0}
               value={unsavedArrayValue[i]}
               onChange={newValue => {
@@ -92,7 +94,7 @@ export function NumberInputWidget({
               placeholder={placeholder}
             />
             {infixText && i !== arity - 1 && (
-              <span className="px1">{infixText}</span>
+              <span className={CS.px1}>{infixText}</span>
             )}
           </div>
         ))

@@ -1,46 +1,43 @@
+import cx from "classnames";
 import type { StyleHTMLAttributes } from "react";
 import { useState, useRef, useEffect } from "react";
-import { useMount, usePrevious, useUnmount } from "react-use";
-
 import { connect } from "react-redux";
+import { useMount, usePrevious, useUnmount } from "react-use";
 import { jt, t } from "ttag";
 import _ from "underscore";
+
 import ErrorBoundary from "metabase/ErrorBoundary";
-
-import TokenField, {
-  parseNumberValue,
-  parseStringValue,
-} from "metabase/components/TokenField";
 import { ListField } from "metabase/components/ListField";
-import ValueComponent from "metabase/components/Value";
-import SingleSelectListField from "metabase/components/SingleSelectListField";
 import LoadingSpinner from "metabase/components/LoadingSpinner";
-
-import { addRemappings } from "metabase/redux/metadata";
-import { defer } from "metabase/lib/promise";
+import SingleSelectListField from "metabase/components/SingleSelectListField";
+import TokenField, { parseStringValue } from "metabase/components/TokenField";
 import type { LayoutRendererArgs } from "metabase/components/TokenField/TokenField";
+import ValueComponent from "metabase/components/Value";
+import CS from "metabase/css/core/index.css";
+import Fields from "metabase/entities/fields";
+import { parseNumberValue } from "metabase/lib/number";
+import { defer } from "metabase/lib/promise";
+import { useDispatch } from "metabase/lib/redux";
+import { isNotNull } from "metabase/lib/types";
 import {
   fetchCardParameterValues,
   fetchDashboardParameterValues,
   fetchParameterValues,
 } from "metabase/parameters/actions";
-
-import Fields from "metabase/entities/fields";
-import type { State } from "metabase-types/store";
-
+import { addRemappings } from "metabase/redux/metadata";
+import type Question from "metabase-lib/v1/Question";
+import type Field from "metabase-lib/v1/metadata/Field";
 import type {
   Dashboard,
   Parameter,
   FieldValue,
   RowValue,
 } from "metabase-types/api";
-
-import { useDispatch } from "metabase/lib/redux";
-import { isNotNull } from "metabase/lib/types";
-import type Field from "metabase-lib/metadata/Field";
-import type Question from "metabase-lib/Question";
+import type { State } from "metabase-types/store";
 
 import ExplicitSize from "../ExplicitSize";
+
+import { OptionsMessage, StyledEllipsified } from "./FieldValuesWidget.styled";
 import type { ValuesMode, LoadingStateType } from "./types";
 import {
   canUseParameterEndpoints,
@@ -58,7 +55,6 @@ import {
   canUseCardEndpoints,
   getTokenFieldPlaceholder,
 } from "./utils";
-import { OptionsMessage, StyledEllipsified } from "./FieldValuesWidget.styled";
 
 const MAX_SEARCH_RESULTS = 100;
 
@@ -72,7 +68,7 @@ function mapStateToProps(state: State, { fields = [] }: { fields: Field[] }) {
 }
 
 export interface IFieldValuesWidgetProps {
-  color?: string;
+  color?: "brand";
   maxResults?: number;
   style?: StyleHTMLAttributes<HTMLDivElement>;
   formatOptions?: Record<string, any>;
@@ -110,7 +106,7 @@ export interface IFieldValuesWidgetProps {
 }
 
 export function FieldValuesWidgetInner({
-  color = "purple",
+  color,
   maxResults = MAX_SEARCH_RESULTS,
   alwaysShowOptions = true,
   style = {},
@@ -514,7 +510,10 @@ export const FieldValuesWidget = ExplicitSize<IFieldValuesWidgetProps>()(
 );
 
 const LoadingState = () => (
-  <div className="flex layout-centered align-center" style={{ minHeight: 82 }}>
+  <div
+    className={cx(CS.flex, CS.layoutCentered, CS.alignCenter)}
+    style={{ minHeight: 82 }}
+  >
     <LoadingSpinner size={32} />
   </div>
 );

@@ -1,13 +1,14 @@
-// eslint-disable-next-line no-restricted-imports -- deprecated usage
-import moment from "moment";
-import _ from "underscore";
+import moment from "moment"; // eslint-disable-line no-restricted-imports -- deprecated usage
 import { t } from "ttag";
-import * as Lib from "metabase-lib";
+import _ from "underscore";
+
 import { formatDateTimeRangeWithUnit } from "metabase/lib/formatting/date";
+import { isEmpty } from "metabase/lib/validate";
+import { computeChange } from "metabase/visualizations/lib/numeric";
 import { COMPARISON_TYPES } from "metabase/visualizations/visualizations/SmartScalar/constants";
 import { formatChange } from "metabase/visualizations/visualizations/SmartScalar/utils";
-import { isEmpty } from "metabase/lib/validate";
-import { isDate } from "metabase-lib/types/utils/isa";
+import * as Lib from "metabase-lib";
+import { isDate } from "metabase-lib/v1/types/utils/isa";
 
 export function computeTrend(
   series,
@@ -21,10 +22,6 @@ export function computeTrend(
     insights,
     settings,
   });
-
-  if (isEmpty(currentMetricData)) {
-    return null;
-  }
 
   const { clicked, date, dateUnitSettings, formatOptions, value } =
     currentMetricData;
@@ -168,8 +165,14 @@ function getCurrentMetricData({ series, insights, settings }) {
     col => col.name === settings["scalar.field"],
   );
 
-  if (dimensionColIndex === -1 || metricColIndex === -1) {
-    return null;
+  if (dimensionColIndex === -1) {
+    throw Error("No date column was found");
+  }
+
+  if (metricColIndex === -1) {
+    throw Error(
+      "There was a problem with the primary number you chose. Check the viz settings and select a valid column for the primary number field",
+    );
   }
 
   // get latest value and date
@@ -177,7 +180,7 @@ function getCurrentMetricData({ series, insights, settings }) {
   const date = rows[latestRowIndex][dimensionColIndex];
   const value = rows[latestRowIndex][metricColIndex];
   if (isEmpty(value) || isEmpty(date)) {
-    return null;
+    throw Error("The latest data point contains a null value");
   }
 
   // get metric column metadata
@@ -262,7 +265,7 @@ function computeTrendAnotherColumn({ comparison, currentMetricData, series }) {
 function computeTrendStaticValue({ comparison }) {
   const { value, label } = comparison;
   return {
-    comparisonDescStr: t`vs. ${label.toLowerCase()}`,
+    comparisonDescStr: t`vs. ${label}`,
     comparisonValue: value,
   };
 }
@@ -532,14 +535,6 @@ function formatDateStr({ date, dateUnitSettings, options, formatValue }) {
     ...options,
     compact: true,
   });
-}
-
-export function computeChange(comparisonVal, currVal) {
-  if (comparisonVal === 0) {
-    return currVal === 0 ? 0 : currVal > 0 ? Infinity : -Infinity;
-  }
-
-  return (currVal - comparisonVal) / Math.abs(comparisonVal);
 }
 
 export const CHANGE_TYPE_OPTIONS = {

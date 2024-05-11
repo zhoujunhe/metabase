@@ -5,6 +5,7 @@ import {
   enterCustomColumnDetails,
   visualize,
   summarize,
+  cartesianChartCircle,
 } from "e2e/support/helpers";
 
 const CC_NAME = "Math";
@@ -43,10 +44,10 @@ describe("issue 13289", () => {
 
     visualize();
 
-    cy.get(".Visualization").within(() => {
-      cy.get("circle")
+    cy.findByTestId("query-visualization-root").within(() => {
+      cartesianChartCircle()
         .eq(5) // random circle in the graph (there is no specific reason for this index)
-        .click({ force: true });
+        .click();
     });
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
@@ -57,6 +58,6 @@ describe("issue 13289", () => {
     cy.findByText("There was a problem with your question").should("not.exist");
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText(`Created At is Sep 1–30, 2022`);
+    cy.findByText("Created At is Sep 1–30, 2022");
   });
 });

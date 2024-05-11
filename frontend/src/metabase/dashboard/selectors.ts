@@ -1,36 +1,35 @@
-import _ from "underscore";
 import { createSelector } from "@reduxjs/toolkit";
 import { createCachedSelector } from "re-reselect";
 import { createSelectorCreator, lruMemoize } from "reselect";
-
-import { getEmbedOptions, getIsEmbedded } from "metabase/selectors/embed";
-import { getMetadata } from "metabase/selectors/metadata";
-import { LOAD_COMPLETE_FAVICON } from "metabase/hoc/Favicon";
+import _ from "underscore";
 
 import {
   DASHBOARD_SLOW_TIMEOUT,
   SIDEBAR_NAME,
 } from "metabase/dashboard/constants";
-
+import { LOAD_COMPLETE_FAVICON } from "metabase/hoc/Favicon";
 import { getDashboardUiParameters } from "metabase/parameters/utils/dashboards";
 import { getParameterMappingOptions as _getParameterMappingOptions } from "metabase/parameters/utils/mapping-options";
-
+import type { EmbeddingParameterVisibility } from "metabase/public/lib/types";
+import { getEmbedOptions, getIsEmbedded } from "metabase/selectors/embed";
+import { getMetadata } from "metabase/selectors/metadata";
+import Question from "metabase-lib/v1/Question";
 import type {
-  Bookmark,
   Card,
   CardId,
   DashboardId,
   DashCardId,
   DashboardCard,
+  DashboardParameterMapping,
+  ParameterId,
 } from "metabase-types/api";
 import type {
   ClickBehaviorSidebarState,
   EditParameterSidebarState,
   State,
 } from "metabase-types/store";
-import type { EmbeddingParameterVisibility } from "metabase/public/lib/types";
-import Question from "metabase-lib/Question";
-import { isQuestionDashCard } from "./utils";
+
+import { isQuestionCard, isQuestionDashCard } from "./utils";
 
 type SidebarState = State["dashboard"]["sidebar"];
 
@@ -49,7 +48,7 @@ function isEditParameterSidebar(
 const createDeepEqualSelector = createSelectorCreator(lruMemoize, _.isEqual);
 
 export const getDashboardBeforeEditing = (state: State) =>
-  state.dashboard.isEditing;
+  state.dashboard.editingDashboard;
 
 export const getIsEditing = (state: State) =>
   Boolean(getDashboardBeforeEditing(state));
@@ -233,20 +232,6 @@ export const getDocumentTitle = (state: State) =>
 export const getIsNavigatingBackToDashboard = (state: State) =>
   state.dashboard.isNavigatingBackToDashboard;
 
-type IsBookmarkedSelectorProps = {
-  bookmarks: Bookmark[];
-  dashboardId: DashboardId;
-};
-
-export const getIsBookmarked = (
-  state: State,
-  { bookmarks, dashboardId }: IsBookmarkedSelectorProps,
-) =>
-  bookmarks.some(
-    bookmark =>
-      bookmark.type === "dashboard" && bookmark.item_id === dashboardId,
-  );
-
 export const getIsDirty = createSelector(
   [getDashboard, getDashcards],
   (dashboard, dashcards) => {
@@ -330,7 +315,10 @@ export const getQuestions = (state: State) => {
         const cards = [dashcard.card, ...(dashcard.series ?? [])];
 
         for (const card of cards) {
-          acc[card.id] = getQuestionByCard(state, { card });
+          const question = getQuestionByCard(state, { card });
+          if (question) {
+            acc[card.id] = question;
+          }
         }
       }
 
@@ -383,7 +371,7 @@ export const getMissingRequiredParameters = createSelector(
 export const getQuestionByCard = createCachedSelector(
   [(_state: State, props: { card: Card }) => props.card, getMetadata],
   (card, metadata) => {
-    return new Question(card, metadata);
+    return isQuestionCard(card) ? new Question(card, metadata) : undefined;
   },
 )((_state, props) => {
   return props.card.id;
@@ -431,6 +419,48 @@ export const getTabs = createSelector([getDashboard], dashboard => {
   return dashboard.tabs?.filter(tab => !tab.isRemoved) ?? [];
 });
 
-export function getSelectedTabId(state: State) {
-  return state.dashboard.selectedTabId;
-}
+export const getSelectedTabId = createSelector(
+  [getDashboard, state => state.dashboard.selectedTabId],
+  (dashboard, selectedTabId) => {
+    if (dashboard && selectedTabId === null) {
+      return dashboard.tabs?.[0]?.id || null;
+    }
+
+    return selectedTabId;
+  },
+);
+
+export const getParameterMappingsBeforeEditing = createSelector(
+  [getDashboardBeforeEditing],
+  editingDashboard => {
+    if (!editingDashboard) {
+      return {};
+    }
+
+    const dashcards = editingDashboard.dashcards;
+    const map: Record<
+      ParameterId,
+      Record<DashCardId, DashboardParameterMapping>
+    > = {};
+
+    // create a map like {[parameterId]: {[dashcardId]: parameterMapping}}
+    for (const dashcard of dashcards) {
+      if (!dashcard.parameter_mappings) {
+        continue;
+      }
+
+      for (const parameterMapping of dashcard.parameter_mappings) {
+        const parameterId = parameterMapping.parameter_id;
+
+        if (!map[parameterId]) {
+          map[parameterId] = {};
+        }
+
+        map[parameterId][dashcard.id] =
+          parameterMapping as DashboardParameterMapping;
+      }
+    }
+
+    return map;
+  },
+);

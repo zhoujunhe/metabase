@@ -1,9 +1,15 @@
 import userEvent from "@testing-library/user-event";
+import type { MockCall } from "fetch-mock";
 import fetchMock from "fetch-mock";
 
-import { screen, waitFor, within } from "__support__/ui";
-import { createMockCard } from "metabase-types/api/mocks";
+import {
+  screen,
+  waitFor,
+  waitForLoaderToBeRemoved,
+  within,
+} from "__support__/ui";
 import registerVisualizations from "metabase/visualizations/register";
+import { createMockCard, createMockDataset } from "metabase-types/api/mocks";
 
 import {
   TEST_CARD,
@@ -102,6 +108,38 @@ describe("QueryBuilder", () => {
         },
       );
     });
+
+    describe("query execution time", () => {
+      it("renders query execution time for mbql questions", async () => {
+        await setup({
+          card: TEST_CARD,
+          dataset: createMockDataset({
+            running_time: 123,
+          }),
+        });
+
+        const [runButton] = screen.getAllByTestId("run-button");
+        userEvent.click(runButton);
+        await waitForLoaderToBeRemoved();
+
+        const executionTime = await screen.findByTestId("execution-time");
+        expect(executionTime).toBeInTheDocument();
+        expect(executionTime).toHaveTextContent("123 ms");
+      });
+
+      it("renders query execution time for native questions", async () => {
+        await setup({
+          card: TEST_NATIVE_CARD,
+          dataset: createMockDataset({
+            running_time: 123,
+          }),
+        });
+
+        const executionTime = await screen.findByTestId("execution-time");
+        expect(executionTime).toBeInTheDocument();
+        expect(executionTime).toHaveTextContent("123 ms");
+      });
+    });
   });
 
   describe("downloading results", () => {
@@ -129,8 +167,10 @@ describe("QueryBuilder", () => {
 
       expect(inputArea).toHaveValue("SELECT 1");
 
-      userEvent.click(screen.getByTestId("download-button"));
-      userEvent.click(await screen.findByRole("button", { name: ".csv" }));
+      await userEvent.click(screen.getByTestId("download-button"));
+      await userEvent.click(
+        await screen.findByRole("button", { name: ".csv" }),
+      );
 
       expect(mockDownloadEndpoint.called()).toBe(true);
     });
@@ -148,30 +188,27 @@ describe("QueryBuilder", () => {
         screen.getByTestId("mock-native-query-editor"),
       ).getByRole("textbox");
 
-      userEvent.click(inputArea);
-      userEvent.type(inputArea, " union SELECT 2");
+      await userEvent.click(inputArea);
+      await userEvent.type(inputArea, " union SELECT 2");
 
-      userEvent.tab();
+      await userEvent.tab();
 
       expect(inputArea).toHaveValue("SELECT 1 union SELECT 2");
 
-      userEvent.click(screen.getByTestId("download-button"));
-      userEvent.click(await screen.findByRole("button", { name: ".csv" }));
+      await userEvent.click(screen.getByTestId("download-button"));
+      await userEvent.click(
+        await screen.findByRole("button", { name: ".csv" }),
+      );
 
-      expect(
-        mockDownloadEndpoint.called((url, options) => {
-          const { body: urlSearchParams } = options;
-          const query =
-            urlSearchParams instanceof URLSearchParams
-              ? JSON.parse(urlSearchParams.get("query") ?? "{}")
-              : {};
-
-          return (
-            url.includes("/api/dataset/csv") &&
-            query?.native.query === "SELECT 1"
-          );
-        }),
-      ).toBe(true);
+      const [url, options] = mockDownloadEndpoint.lastCall() as MockCall;
+      const body = await Promise.resolve(options?.body);
+      const urlSearchParams = new URLSearchParams(body as string);
+      expect(url).toEqual(expect.stringContaining("/api/dataset/csv"));
+      const query =
+        urlSearchParams instanceof URLSearchParams
+          ? JSON.parse(urlSearchParams.get("query") ?? "{}")
+          : {};
+      expect(query?.native.query).toEqual("SELECT 1");
     });
   });
 });

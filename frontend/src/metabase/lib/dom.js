@@ -1,5 +1,6 @@
-import _ from "underscore";
 import querystring from "querystring";
+import _ from "underscore";
+
 import { isCypressActive } from "metabase/env";
 import MetabaseSettings from "metabase/lib/settings";
 
@@ -220,7 +221,7 @@ export function constrainToScreen(element, direction, padding) {
   return false;
 }
 
-function getSitePath() {
+export function getSitePath() {
   return new URL(MetabaseSettings.get("site-url")).pathname.toLowerCase();
 }
 

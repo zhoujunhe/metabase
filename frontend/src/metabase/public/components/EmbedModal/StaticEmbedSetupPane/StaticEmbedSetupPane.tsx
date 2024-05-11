@@ -1,10 +1,23 @@
+import cx from "classnames";
+import { useMemo, useState } from "react";
 import { t } from "ttag";
 import _ from "underscore";
-import { useMemo, useState } from "react";
-import { Stack, Tabs } from "metabase/ui";
+
+import { useSetting } from "metabase/common/hooks";
+import CS from "metabase/css/core/index.css";
 import { useSelector } from "metabase/lib/redux";
-import { getSetting } from "metabase/selectors/settings";
 import { checkNotNull } from "metabase/lib/types";
+import {
+  trackStaticEmbedCodeCopied,
+  trackStaticEmbedDiscarded,
+  trackStaticEmbedPublished,
+  trackStaticEmbedUnpublished,
+} from "metabase/public/lib/analytics";
+import { getEmbedServerCodeExampleOptions } from "metabase/public/lib/code";
+import {
+  getSignedPreviewUrlWithoutHash,
+  optionsToHashParams,
+} from "metabase/public/lib/embed";
 import type {
   EmbeddingDisplayOptions,
   EmbeddingParameters,
@@ -14,30 +27,21 @@ import type {
   EmbedResourceParameter,
   EmbedResourceType,
 } from "metabase/public/lib/types";
-import {
-  getSignedPreviewUrlWithoutHash,
-  optionsToHashParams,
-} from "metabase/public/lib/embed";
-import { getEmbedServerCodeExampleOptions } from "metabase/public/lib/code";
-import {
-  trackStaticEmbedCodeCopied,
-  trackStaticEmbedDiscarded,
-  trackStaticEmbedPublished,
-  trackStaticEmbedUnpublished,
-} from "metabase/public/lib/analytics";
 import { getCanWhitelabel } from "metabase/selectors/whitelabel";
-import { getParameterValue } from "metabase-lib/parameters/utils/parameter-values";
-import { getDefaultDisplayOptions } from "./config";
-import { ServerEmbedCodePane } from "./ServerEmbedCodePane";
-import { EmbedModalContentStatusBar } from "./EmbedModalContentStatusBar";
-import { ParametersSettings } from "./ParametersSettings";
+import { Stack, Tabs } from "metabase/ui";
+import { getParameterValue } from "metabase-lib/v1/parameters/utils/parameter-values";
+
 import { AppearanceSettings } from "./AppearanceSettings";
+import { EmbedModalContentStatusBar } from "./EmbedModalContentStatusBar";
 import { OverviewSettings } from "./OverviewSettings";
-import type { ActivePreviewPane, EmbedCodePaneVariant } from "./types";
-import { EMBED_MODAL_TABS } from "./tabs";
-import { SettingsTabLayout } from "./StaticEmbedSetupPane.styled";
+import { ParametersSettings } from "./ParametersSettings";
 import { PreviewModeSelector } from "./PreviewModeSelector";
 import { PreviewPane } from "./PreviewPane";
+import { ServerEmbedCodePane } from "./ServerEmbedCodePane";
+import { SettingsTabLayout } from "./StaticEmbedSetupPane.styled";
+import { getDefaultDisplayOptions } from "./config";
+import { EMBED_MODAL_TABS } from "./tabs";
+import type { ActivePreviewPane, EmbedCodePaneVariant } from "./types";
 
 const countEmbeddingParameterOptions = (embeddingParams: EmbeddingParameters) =>
   Object.values(embeddingParams).reduce(
@@ -71,10 +75,9 @@ export const StaticEmbedSetupPane = ({
 }: StaticEmbedSetupPaneProps): JSX.Element => {
   const [activePane, setActivePane] = useState<ActivePreviewPane>("code");
 
-  const siteUrl = useSelector(state => getSetting(state, "site-url"));
-  const secretKey = checkNotNull(
-    useSelector(state => getSetting(state, "embedding-secret-key")),
-  );
+  const siteUrl = useSetting("site-url");
+  const secretKey = checkNotNull(useSetting("embedding-secret-key"));
+  const exampleDashboardId = useSetting("example-dashboard-id");
   const initialEmbeddingParams = getDefaultEmbeddingParams(
     resource,
     resourceParameters,
@@ -162,6 +165,7 @@ export const StaticEmbedSetupPane = ({
     trackStaticEmbedPublished({
       artifact: resourceType,
       resource,
+      isExampleDashboard: exampleDashboardId === resource.id,
       params: countEmbeddingParameterOptions({
         ...convertResourceParametersToEmbeddingParams(resourceParameters),
         ...embeddingParams,
@@ -187,7 +191,7 @@ export const StaticEmbedSetupPane = ({
   const getServerEmbedCodePane = (variant: EmbedCodePaneVariant) => {
     return (
       <ServerEmbedCodePane
-        className="flex-full w-full"
+        className={cx(CS.flexFull, CS.wFull)}
         variant={variant}
         initialPreviewParameters={initialPreviewParameters}
         resource={resource}
@@ -316,7 +320,7 @@ export const StaticEmbedSetupPane = ({
                   />
                   <PreviewPane
                     hidden={activePane !== "preview"}
-                    className="flex-full"
+                    className={CS.flexFull}
                     previewUrl={iframeUrl}
                     isTransparent={displayOptions.theme === "transparent"}
                   />
@@ -343,7 +347,7 @@ export const StaticEmbedSetupPane = ({
                   />
                   <PreviewPane
                     hidden={activePane !== "preview"}
-                    className="flex-full"
+                    className={CS.flexFull}
                     previewUrl={iframeUrl}
                     isTransparent={displayOptions.theme === "transparent"}
                   />

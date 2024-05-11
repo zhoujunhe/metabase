@@ -1,11 +1,13 @@
 import { PLUGIN_CONTENT_VERIFICATION } from "metabase/plugins";
 import { hasPremiumFeature } from "metabase-enterprise/settings";
-import { VerifiedFilter } from "./VerifiedFilter";
+
 import { ModelFilterControls } from "./ModelFilterControls";
+import { VerifiedFilter } from "./VerifiedFilter";
 import {
   availableModelFilters,
   sortCollectionsByVerification,
   sortModelsByVerification,
+  useModelFilterSettings,
 } from "./utils";
 
 if (hasPremiumFeature("content_verification")) {
@@ -15,5 +17,6 @@ if (hasPremiumFeature("content_verification")) {
     availableModelFilters,
     sortModelsByVerification,
     sortCollectionsByVerification,
+    useModelFilterSettings,
   });
 }

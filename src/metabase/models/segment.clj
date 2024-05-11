@@ -4,19 +4,21 @@
   (:require
    [clojure.set :as set]
    [medley.core :as m]
+   [metabase.api.common :as api]
+   [metabase.legacy-mbql.util :as mbql.u]
    [metabase.lib.core :as lib]
-   [metabase.lib.metadata :as lib.metadata]
    [metabase.lib.metadata.jvm :as lib.metadata.jvm]
    [metabase.lib.metadata.protocols :as lib.metadata.protocols]
    [metabase.lib.query :as lib.query]
    [metabase.lib.schema.common :as lib.schema.common]
    [metabase.lib.schema.id :as lib.schema.id]
-   [metabase.mbql.util :as mbql.u]
+   [metabase.lib.schema.metadata :as lib.schema.metadata]
    [metabase.models.audit-log :as audit-log]
+   [metabase.models.data-permissions :as data-perms]
+   [metabase.models.database :as database]
    [metabase.models.interface :as mi]
    [metabase.models.revision :as revision]
    [metabase.models.serialization :as serdes]
-   [metabase.models.table :as table]
    [metabase.util :as u]
    [metabase.util.i18n :refer [tru]]
    [metabase.util.log :as log]
@@ -35,15 +37,26 @@
 (methodical/defmethod t2/model-for-automagic-hydration [:default :segment] [_original-model _k] :model/Segment)
 
 (t2/deftransforms :model/Segment
-  {:definition mi/transform-metric-segment-definition})
+  {:definition mi/transform-legacy-metric-segment-definition})
 
 (doto :model/Segment
   (derive :metabase/model)
   (derive :hook/timestamped?)
   (derive :hook/entity-id)
-  (derive ::mi/read-policy.full-perms-for-perms-set)
   (derive ::mi/write-policy.superuser)
   (derive ::mi/create-policy.superuser))
+
+(defmethod mi/can-read? :model/Segment
+  ([instance]
+   (let [table (:table (t2/hydrate instance :table))]
+     (data-perms/user-has-permission-for-table?
+      api/*current-user-id*
+      :perms/manage-table-metadata
+      :yes
+      (:db_id table)
+      (u/the-id table))))
+  ([model pk]
+   (mi/can-read? (t2/select-one model pk))))
 
 (t2/define-before-update :model/Segment  [{:keys [creator_id id], :as segment}]
   (u/prog1 (t2/changes segment)
@@ -60,7 +73,7 @@
 
 (mu/defn ^:private definition-description :- [:maybe ::lib.schema.common/non-blank-string]
   "Calculate a nice description of a Segment's definition."
-  [metadata-provider                                      :- lib.metadata/MetadataProvider
+  [metadata-provider                                      :- ::lib.schema.metadata/metadata-provider
    {table-id :table_id, :keys [definition], :as _segment} :- (ms/InstanceOf :model/Segment)]
   (when (seq definition)
     (try
@@ -70,25 +83,24 @@
             query       (lib.query/query-from-legacy-inner-query metadata-provider database-id definition)]
         (lib/describe-top-level-key query :filters))
       (catch Throwable e
-        (log/error e (tru "Error calculating Segment description: {0}" (ex-message e)))
+        (log/errorf e "Error calculating Segment description: %s" (ex-message e))
         nil))))
 
-(mu/defn ^:private warmed-metadata-provider :- lib.metadata/MetadataProvider
+(mu/defn ^:private warmed-metadata-provider :- ::lib.schema.metadata/metadata-provider
   [database-id :- ::lib.schema.id/database
    segments    :- [:maybe [:sequential (ms/InstanceOf :model/Segment)]]]
   (let [metadata-provider (doto (lib.metadata.jvm/application-database-metadata-provider database-id)
                             (lib.metadata.protocols/store-metadatas!
-                             :metadata/segment
                              (map #(lib.metadata.jvm/instance->metadata % :metadata/segment)
                                   segments)))
         field-ids         (mbql.u/referenced-field-ids (map :definition segments))
-        fields            (lib.metadata.protocols/bulk-metadata metadata-provider :metadata/column field-ids)
+        fields            (lib.metadata.protocols/metadatas metadata-provider :metadata/column field-ids)
         table-ids         (into #{}
                                 cat
                                 [(map :table-id fields)
                                  (map :table_id segments)])]
     ;; this is done for side effects
-    (lib.metadata.protocols/bulk-metadata metadata-provider :metadata/table table-ids)
+    (lib.metadata.protocols/warm-cache metadata-provider :metadata/table table-ids)
     metadata-provider))
 
 (mu/defn ^:private segments->table-id->warmed-metadata-provider :- fn?
@@ -96,14 +108,14 @@
   (let [table-id->db-id             (when-let [table-ids (not-empty (into #{} (map :table_id segments)))]
                                       (t2/select-pk->fn :db_id :model/Table :id [:in table-ids]))
         db-id->metadata-provider    (memoize
-                                     (mu/fn db-id->warmed-metadata-provider :- lib.metadata/MetadataProvider
+                                     (mu/fn db-id->warmed-metadata-provider :- ::lib.schema.metadata/metadata-provider
                                        [database-id :- ::lib.schema.id/database]
                                        (let [segments-for-db (filter (fn [segment]
                                                                        (= (table-id->db-id (:table_id segment))
                                                                           database-id))
                                                                      segments)]
                                          (warmed-metadata-provider database-id segments-for-db))))]
-    (mu/fn table-id->warmed-metadata-provider :- lib.metadata/MetadataProvider
+    (mu/fn table-id->warmed-metadata-provider :- ::lib.schema.metadata/metadata-provider
       [table-id :- ::lib.schema.id/table]
       (-> table-id table-id->db-id db-id->metadata-provider))))
 
@@ -177,7 +189,7 @@
 (defmethod audit-log/model-details :model/Segment
   [metric _event-type]
   (let [table-id (:table_id metric)
-        db-id    (table/table-id->database-id table-id)]
+        db-id    (database/table-id->database-id table-id)]
     (assoc
      (select-keys metric [:name :description :revision_message])
      :table_id    table-id

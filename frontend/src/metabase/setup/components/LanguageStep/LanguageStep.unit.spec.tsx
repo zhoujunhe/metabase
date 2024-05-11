@@ -1,4 +1,7 @@
 import userEvent from "@testing-library/user-event";
+
+import { renderWithProviders, screen } from "__support__/ui";
+import type { SetupStep } from "metabase/setup/types";
 import type { Locale } from "metabase-types/store";
 import {
   createMockLocale,
@@ -6,8 +9,7 @@ import {
   createMockSetupState,
   createMockState,
 } from "metabase-types/store/mocks";
-import type { SetupStep } from "metabase/setup/types";
-import { renderWithProviders, screen } from "__support__/ui";
+
 import { LanguageStep } from "./LanguageStep";
 
 interface SetupOpts {
@@ -41,13 +43,13 @@ describe("LanguageStep", () => {
     expect(screen.getByText(/set to English/)).toBeInTheDocument();
   });
 
-  it("should allow language selection", () => {
+  it("should allow language selection", async () => {
     setup({
       step: "language",
     });
 
     const option = screen.getByRole("radio", { name: "English" });
-    userEvent.click(option);
+    await userEvent.click(option);
 
     expect(option).toBeChecked();
   });

@@ -1,3 +1,9 @@
+import { USER_GROUPS } from "e2e/support/cypress_data";
+import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
+import {
+  FIRST_COLLECTION_ID,
+  ORDERS_COUNT_QUESTION_ID,
+} from "e2e/support/cypress_sample_instance_data";
 import {
   saveDashboard,
   modal,
@@ -10,13 +16,8 @@ import {
   describeWithSnowplow,
   expectGoodSnowplowEvent,
   expectNoBadSnowplowEvents,
+  entityPickerModal,
 } from "e2e/support/helpers";
-import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
-import { USER_GROUPS } from "e2e/support/cypress_data";
-import {
-  FIRST_COLLECTION_ID,
-  ORDERS_COUNT_QUESTION_ID,
-} from "e2e/support/cypress_sample_instance_data";
 import {
   createMockDashboardCard,
   createMockHeadingDashboardCard,
@@ -30,6 +31,7 @@ const PARAMETER = {
     id: "1",
     name: "Created At",
     type: "date/all-options",
+    sectionId: "date",
   }),
   CATEGORY: createMockParameter({
     id: "2",
@@ -40,6 +42,7 @@ const PARAMETER = {
     id: "3",
     name: "Not mapped to anything",
     type: "number/=",
+    sectionId: "number",
   }),
 
   // Used to reproduce:
@@ -48,6 +51,7 @@ const PARAMETER = {
     id: "2",
     name: "Created At (2)",
     type: "date/range",
+    sectionId: "date",
   }),
 };
 
@@ -116,7 +120,7 @@ describeWithSnowplow("scenarios > dashboard cards > replace question", () => {
     cy.signInAsAdmin();
     enableTracking();
 
-    cy.intercept("POST", `/api/card/*/query`).as("cardQuery");
+    cy.intercept("POST", "/api/card/*/query").as("cardQuery");
 
     cy.createQuestion(MAPPED_QUESTION_CREATE_INFO).then(
       ({ body: { id: mappedQuestionId } }) => {
@@ -157,7 +161,10 @@ describeWithSnowplow("scenarios > dashboard cards > replace question", () => {
     });
 
     // Ensure can replace with a model
-    replaceQuestion(findTargetDashcard(), { nextQuestionName: "Orders Model" });
+    replaceQuestion(findTargetDashcard(), {
+      nextQuestionName: "Orders Model",
+      tab: "Models",
+    });
     findTargetDashcard().within(() => {
       assertDashCardTitle("Orders Model");
       cy.findByText("Product ID").should("exist");
@@ -257,10 +264,13 @@ function findTargetDashcard() {
 
 function replaceQuestion(
   dashcardElement,
-  { nextQuestionName, collectionName },
+  { nextQuestionName, collectionName, tab },
 ) {
   dashcardElement.realHover().findByLabelText("Replace").click();
-  modal().within(() => {
+  entityPickerModal().within(() => {
+    if (tab) {
+      cy.findByRole("tablist").findByText(tab).click();
+    }
     if (collectionName) {
       cy.findByText(collectionName).click();
     }

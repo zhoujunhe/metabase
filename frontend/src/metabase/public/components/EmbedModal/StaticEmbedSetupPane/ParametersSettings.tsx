@@ -1,9 +1,10 @@
-import { t } from "ttag";
+import cx from "classnames";
 import type { ChangeEvent } from "react";
 import { useMemo } from "react";
-import type { IconName } from "metabase/ui";
-import { Box, Divider, Icon, Stack, Text } from "metabase/ui";
+import { t } from "ttag";
+
 import Select, { Option } from "metabase/core/components/Select";
+import CS from "metabase/css/core/index.css";
 import { ParameterWidget as StaticParameterWidget } from "metabase/parameters/components/ParameterWidget";
 import type {
   EmbeddingParameters,
@@ -12,10 +13,12 @@ import type {
   EmbedResourceParameter,
   EmbedResourceType,
 } from "metabase/public/lib/types";
-import { getValuePopulatedParameters } from "metabase-lib/parameters/utils/parameter-values";
+import type { IconName } from "metabase/ui";
+import { Box, Divider, Icon, Stack, Text } from "metabase/ui";
+import { getValuePopulatedParameters } from "metabase-lib/v1/parameters/utils/parameter-values";
 
-import type { EmbedResourceParameterWithValue } from "./types";
 import { StaticEmbedSetupPaneSettingsContentSection } from "./StaticEmbedSetupPaneSettingsContentSection";
+import type { EmbedResourceParameterWithValue } from "./types";
 
 export interface ParametersSettingsProps {
   resourceType: EmbedResourceType;
@@ -61,8 +64,8 @@ export const ParametersSettings = ({
           <Text>{t`Parameters are disabled by default, which also makes them hidden from end-users. Make them editable so that end-users can see and modify them. Make them locked so that they are hidden from end-users but you can set their values from your app.`}</Text>
 
           {resourceParameters.map(parameter => (
-            <div key={parameter.id} className="flex align-center">
-              <Icon name={getIconForParameter(parameter)} className="mr2" />
+            <div key={parameter.id} className={cx(CS.flex, CS.alignCenter)}>
+              <Icon name={getIconForParameter(parameter)} className={CS.mr2} />
               <h3>
                 {parameter.name}
                 {parameter.required && (
@@ -75,7 +78,7 @@ export const ParametersSettings = ({
                 buttonProps={{
                   "aria-label": parameter.name,
                 }}
-                className="ml-auto bg-white"
+                className={cx(CS.mlAuto, CS.bgWhite)}
                 value={embeddingParams[parameter.slug] || "disabled"}
                 onChange={(e: ChangeEvent<HTMLSelectElement>) =>
                   onChangeEmbeddingParameters({
@@ -117,7 +120,7 @@ export const ParametersSettings = ({
               {valuePopulatedLockedParameters.map(parameter => (
                 <StaticParameterWidget
                   key={parameter.id}
-                  className="m0"
+                  className={CS.m0}
                   parameter={parameter}
                   parameters={valuePopulatedLockedParameters}
                   setValue={(value: string) =>

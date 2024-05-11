@@ -1,58 +1,106 @@
+import { useMemo } from "react";
 import { t } from "ttag";
 
-import type { SearchResult } from "metabase-types/api";
-
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
-import { useSelector } from "metabase/lib/redux";
-
-import type { useSearchListQuery } from "metabase/common/hooks";
-
 import NoResults from "assets/img/no_results.svg";
-import { Box } from "metabase/ui";
+import { useSearchQuery } from "metabase/api";
+import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { color } from "metabase/lib/colors";
+import { PLUGIN_CONTENT_VERIFICATION } from "metabase/plugins";
+import { Box, Flex, Group, Icon, Stack, Title } from "metabase/ui";
+import type { ModelResult, SearchRequest } from "metabase-types/api";
 
-import { getLocale } from "metabase/setup/selectors";
-import { groupModels } from "../utils";
+import type { ActualModelFilters } from "../utils";
+import { filterModels } from "../utils";
 
-import { CenteredEmptyState } from "./BrowseApp.styled";
-import { ModelGrid } from "./BrowseModels.styled";
+import {
+  BrowseContainer,
+  BrowseHeader,
+  BrowseMain,
+  BrowseSection,
+  CenteredEmptyState,
+} from "./BrowseContainer.styled";
 import { ModelExplanationBanner } from "./ModelExplanationBanner";
-import { ModelGroup } from "./ModelGroup";
+import { ModelsTable } from "./ModelsTable";
 
-export const BrowseModels = ({
-  modelsResult,
+const { availableModelFilters, useModelFilterSettings } =
+  PLUGIN_CONTENT_VERIFICATION;
+
+export const BrowseModels = () => {
+  const [actualModelFilters, setActualModelFilters] = useModelFilterSettings();
+
+  return (
+    <BrowseContainer>
+      <BrowseHeader>
+        <BrowseSection>
+          <Flex
+            w="100%"
+            h="2.25rem"
+            direction="row"
+            justify="space-between"
+            align="center"
+          >
+            <Title order={1} color="text-dark">
+              <Group spacing="sm">
+                <Icon size={24} color={color("brand")} name="model" />
+                {t`Models`}
+              </Group>
+            </Title>
+            <PLUGIN_CONTENT_VERIFICATION.ModelFilterControls
+              actualModelFilters={actualModelFilters}
+              setActualModelFilters={setActualModelFilters}
+            />
+          </Flex>
+        </BrowseSection>
+      </BrowseHeader>
+      <BrowseMain>
+        <BrowseSection>
+          <BrowseModelsBody actualModelFilters={actualModelFilters} />
+        </BrowseSection>
+      </BrowseMain>
+    </BrowseContainer>
+  );
+};
+
+export const BrowseModelsBody = ({
+  actualModelFilters,
 }: {
-  modelsResult: ReturnType<typeof useSearchListQuery<SearchResult>>;
+  /** Mapping of filter names to true if the filter is active
+   * or false if it is inactive */
+  actualModelFilters: ActualModelFilters;
 }) => {
-  const { data: models = [], error, isLoading } = modelsResult;
-  const locale = useSelector(getLocale);
-  const localeCode: string | undefined = locale?.code;
+  const query: SearchRequest = {
+    models: ["dataset"], // 'model' in the sense of 'type of thing'
+    model_ancestors: true,
+    filter_items_in_personal_collection: "exclude",
+  };
+  const { data, error, isLoading } = useSearchQuery(query);
+
+  const models = useMemo(() => {
+    const unfilteredModels = (data?.data as ModelResult[]) ?? [];
+    const filteredModels = filterModels(
+      unfilteredModels || [],
+      actualModelFilters,
+      availableModelFilters,
+    );
+    return filteredModels;
+  }, [data, actualModelFilters]);
 
   if (error || isLoading) {
     return (
       <LoadingAndErrorWrapper
         error={error}
         loading={isLoading}
-        style={{ display: "flex", flex: 1 }}
+        style={{ flex: 1 }}
       />
     );
   }
 
-  const groupsOfModels = groupModels(models, localeCode);
-
   if (models.length) {
     return (
-      <>
+      <Stack spacing="md" mb="lg">
         <ModelExplanationBanner />
-        <ModelGrid role="grid">
-          {groupsOfModels.map(groupOfModels => (
-            <ModelGroup
-              models={groupOfModels}
-              key={`modelgroup-${groupOfModels[0].collection.id}`}
-              localeCode={localeCode}
-            />
-          ))}
-        </ModelGrid>
-      </>
+        <ModelsTable models={models} />
+      </Stack>
     );
   }
 

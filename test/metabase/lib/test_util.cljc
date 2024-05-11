@@ -12,6 +12,7 @@
    [metabase.lib.query :as lib.query]
    [metabase.lib.schema :as lib.schema]
    [metabase.lib.schema.common :as lib.schema.common]
+   [metabase.lib.schema.metadata :as lib.schema.metadata]
    [metabase.lib.schema.ref :as lib.schema.ref]
    [metabase.lib.test-metadata :as meta]
    [metabase.lib.test-util.metadata-providers.merged-mock :as providers.merged-mock]
@@ -76,7 +77,7 @@
   (lib/composed-metadata-provider
    meta/metadata-provider
    (providers.mock/mock-metadata-provider
-    (assoc-in cards [:cards 0 :dataset] true))))
+    (assoc-in cards [:cards 0 :type] :model))))
 
 (def query-with-source-card
   "A query against `:source-card 1`, with a metadata provider that has that Card. Card's name is `My Card`. Card
@@ -240,7 +241,7 @@
       :id            1000
       :database-id   (:id (lib.metadata/database metadata-provider))
       :name          "Mock model - Products and Reviews"
-      :dataset       true
+      :type          :model
       :dataset-query
       {:database (:id (lib.metadata/database metadata-provider))
        :type     :query
@@ -302,7 +303,7 @@
 
   This is mostly around for historic reasons; consider using [[metabase.lib.core/query]] instead, which is closer to
   real-life usage."
-  [metadata-providerable :- lib.metadata/MetadataProviderable
+  [metadata-providerable :- ::lib.schema.metadata/metadata-providerable
    {mbql-query :dataset-query, metadata :result-metadata} :- [:map
                                                               [:dataset-query :map]
                                                               [:result-metadata [:sequential {:min 1} :map]]]]

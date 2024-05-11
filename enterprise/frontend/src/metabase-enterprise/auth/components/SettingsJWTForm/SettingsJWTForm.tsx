@@ -2,8 +2,15 @@ import { useCallback, useMemo } from "react";
 import { connect } from "react-redux";
 import { t } from "ttag";
 import _ from "underscore";
+
+import SettingHeader from "metabase/admin/settings/components/SettingHeader";
+import GroupMappingsWidget from "metabase/admin/settings/containers/GroupMappingsWidget";
 import { updateSettings } from "metabase/admin/settings/settings";
+import type { SettingElement } from "metabase/admin/settings/types";
+import Breadcrumbs from "metabase/components/Breadcrumbs";
+import CS from "metabase/css/core/index.css";
 import {
+  FormSection,
   Form,
   FormErrorMessage,
   FormProvider,
@@ -12,13 +19,8 @@ import {
   FormSwitch,
   FormTextInput,
 } from "metabase/forms";
-import Breadcrumbs from "metabase/components/Breadcrumbs";
-import { Flex, Stack } from "metabase/ui";
-import { FormSection } from "metabase/containers/FormikForm";
-import GroupMappingsWidget from "metabase/admin/settings/containers/GroupMappingsWidget";
+import { rem, Flex, Stack } from "metabase/ui";
 import type { SettingValue } from "metabase-types/api";
-import type { SettingElement } from "metabase/admin/settings/types";
-import SettingHeader from "metabase/admin/settings/components/SettingHeader";
 
 type SettingValues = { [key: string]: SettingValue };
 
@@ -66,7 +68,7 @@ export const SettingsJWTForm = ({
   }, [settings, settingValues]);
 
   const handleSubmit = useCallback(
-    values => {
+    (values: SettingValues) => {
       return onSubmit({ ...values, "jwt-enabled": true });
     },
     [onSubmit],
@@ -79,15 +81,15 @@ export const SettingsJWTForm = ({
       enableReinitialize
     >
       {({ dirty }) => (
-        <Form m={"0 1rem"} maw={"32.5rem"}>
+        <Form m={"0 1rem"} maw={rem(520)}>
           <Breadcrumbs
-            className="mb3"
+            className={CS.mb3}
             crumbs={[
               [t`Authentication`, "/admin/settings/authentication"],
               [t`JWT`],
             ]}
           />
-          <Stack spacing="0.75rem" m="2.5rem 0">
+          <Stack spacing={rem(12)} m={`${rem(40)} 0`}>
             <SettingHeader
               id="jwt-user-provisioning-enabled?"
               setting={settings["jwt-user-provisioning-enabled?"]}

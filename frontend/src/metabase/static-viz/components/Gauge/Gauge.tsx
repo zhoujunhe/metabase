@@ -1,9 +1,11 @@
-import { Pie } from "@visx/shape";
 import { Group } from "@visx/group";
+import { Pie } from "@visx/shape";
 import type { PieArcDatum } from "@visx/shape/lib/shapes/Pie";
 
-import type { ColorGetter } from "metabase/static-viz/lib/colors";
+import type { ColorGetter } from "metabase/visualizations/types";
 
+import GaugeLabel from "./GaugeLabel";
+import GaugeNeedle from "./GaugeNeedle";
 import {
   START_ANGLE,
   END_ANGLE,
@@ -13,6 +15,7 @@ import {
   SEGMENT_LABEL_FONT_SIZE,
   CHART_HEIGHT,
 } from "./constants";
+import type { GaugeLabelData, GaugeSegment, Position } from "./types";
 import {
   limit,
   calculateChartScale,
@@ -23,11 +26,6 @@ import {
   gaugeSorter,
   colorGetter,
 } from "./utils";
-
-import GaugeNeedle from "./GaugeNeedle";
-import GaugeLabel from "./GaugeLabel";
-
-import type { GaugeLabelData, GaugeSegment, Position } from "./types";
 
 interface GaugeProps {
   value: number;
@@ -68,7 +66,12 @@ export default function Gauge({
   const outlineColor = getColor("white");
 
   return (
-    <svg width={CHART_WIDTH} height={CHART_HEIGHT} fontFamily="Lato">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={CHART_WIDTH}
+      height={CHART_HEIGHT}
+      fontFamily="Lato"
+    >
       <g transform={`translate(${CHART_WIDTH / 2}, ${CHART_HEIGHT / 2})`}>
         {/* `transform-origin: center` doesn't work when rendered with Batik.
             This <g /> translates the center of the chart to coordinate (0,0),
