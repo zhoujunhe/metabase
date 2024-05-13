@@ -1,10 +1,9 @@
 name: Docker Image CI
 
 on:
-  push:
-    tags:
-      - AnalyticDB_*
   workflow_dispatch:
+    branches:
+      - 'AnalyticDB_*'
     inputs:
       commit:
         description: 'Optional full-length commit SHA-1 hash'
