@@ -4,7 +4,10 @@ on:
   push:
     tags:
       - AnalyticDB_*
-
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Optional full-length commit SHA-1 hash'
 jobs:
 
   build:
