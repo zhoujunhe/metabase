@@ -2,9 +2,8 @@ name: Docker Image CI
 
 on:
   push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+    tags:
+      - AnalyticDB_*
 
 jobs:
 
@@ -15,4 +14,4 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag metabase:$(date +%s)
+      run: docker build --build-arg VERSION=AnalyticDB_v0.48.13 . --file Dockerfile --tag metabase:$(date +%s)
