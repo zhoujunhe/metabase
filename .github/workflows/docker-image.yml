@@ -1,14 +1,21 @@
 name: Docker Image CI
 
 on:
-  workflow_dispatch:
-    tags:
-      - 'AnalyticDB_*'
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      -  uses: actions/checkout@v4
-      -  name: Build the Docker image
-      -  run: docker build --build-arg VERSION=${{ github.ref }} --file Dockerfile --tag zhoujunhe/metabase:${{ github.ref }} .
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
 
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build the Docker image
+      run: |
+        docker build . --file Dockerfile --tag zhoujunhe/metabase:${{ github.ref }} --build-arg VERSION=${{ github.ref }}
+        docker login --username=${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }} 
+        docker push zhoujunhe/metabase:${{ github.ref }}
