@@ -11,7 +11,7 @@ on:
       - '.github/workflows/snyk.yml'
       - '.github/scripts/write-poms.xml'
   schedule:
-    - cron: '0 5 * * *'
+    #- cron: '0 5 * * *'
 
 
 jobs:
