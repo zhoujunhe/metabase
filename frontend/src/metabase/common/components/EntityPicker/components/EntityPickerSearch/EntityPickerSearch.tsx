@@ -6,6 +6,7 @@ import { useSearchQuery } from "metabase/api";
 import EmptyState from "metabase/components/EmptyState";
 import { VirtualizedList } from "metabase/components/VirtualizedList";
 import { NoObjectError } from "metabase/components/errors/NoObjectError";
+import { trackSearchClick } from "metabase/search/analytics";
 import { Box, Flex, Icon, Stack, Tabs, TextInput } from "metabase/ui";
 import type {
   SearchModel,
@@ -16,7 +17,7 @@ import type {
 
 import type { TypeWithModel } from "../../types";
 import { DelayedLoadingSpinner } from "../LoadingSpinner";
-import { ResultItem, ChunkyList } from "../ResultItem";
+import { ChunkyList, ResultItem } from "../ResultItem";
 
 import { getSearchTabText } from "./utils";
 
@@ -44,6 +45,7 @@ export function EntityPickerSearchInput({
     {
       q: debouncedSearchQuery,
       models,
+      context: "entity-picker",
       ...searchParams,
     },
     {
@@ -92,7 +94,7 @@ export const EntityPickerSearchResults = <
   return (
     <Box h="100%" bg="bg-light">
       {searchResults.length > 0 ? (
-        <Stack h="100%">
+        <Stack h="100%" bg="bg-light">
           <VirtualizedList
             Wrapper={({ children, ...props }) => (
               <Box p="xl" {...props}>
@@ -105,6 +107,7 @@ export const EntityPickerSearchResults = <
                 key={item.model + item.id}
                 item={item}
                 onClick={() => {
+                  trackSearchClick("item", index, "entity-picker");
                   onItemSelect(item as unknown as Item);
                 }}
                 isSelected={

@@ -14,6 +14,8 @@ const collection = {
   name: "Collection Foo",
   description: null,
   archived: false,
+  can_restore: false,
+  can_delete: false,
   location: "/",
 };
 
@@ -40,6 +42,7 @@ Question.args = {
     setPinned: action("setPinned"),
     copy: true,
     setCollection: action("setCollection"),
+    archived: false,
   },
   onCopy,
   onMove,
@@ -61,6 +64,7 @@ Dashboard.args = {
     getUrl: () => "/dashboard/1",
     setArchived: action("setArchived"),
     setPinned: action("setPinned"),
+    archived: false,
   },
   onCopy,
   onMove,
@@ -80,6 +84,7 @@ Model.args = {
     getUrl: () => "/question/1",
     setArchived: action("setArchived"),
     setPinned: action("setPinned"),
+    archived: false,
   },
   onCopy,
   onMove,

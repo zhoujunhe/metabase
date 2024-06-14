@@ -49,6 +49,7 @@
     :model/LoginHistory
     :model/FieldUsage
     :model/FieldValues
+    :model/LegacyMetric
     :model/LegacyMetricImportantField
     :model/ModelIndex
     :model/ModelIndexValue
@@ -77,7 +78,8 @@
     :model/UserParameterValue
     :model/ViewLog
     :model/GroupTableAccessPolicy
-    :model/ConnectionImpersonation})
+    :model/ConnectionImpersonation
+    :model/CloudMigration})
 
 (deftest ^:parallel comprehensive-entity-id-test
   (doseq [model (->> (v2.entity-ids/toucan-models)

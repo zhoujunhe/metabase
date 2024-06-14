@@ -656,3 +656,20 @@
   (if (sequential? xs)
     (map parse-fn xs)
     [(parse-fn xs)]))
+
+
+;;; ---------------------------------------- SET `archived_directly` ---------------------------------
+
+(defn updates-with-archived-directly
+  "Sets `archived_directly` to `true` iff `:archived` is being set to `true`."
+  [current-obj obj-updates]
+  (cond-> obj-updates
+    (column-will-change? :archived current-obj obj-updates)
+    (assoc :archived_directly (boolean (:archived obj-updates)))))
+
+(defn present-in-trash-if-archived-directly
+  "If `:archived_directly` is `true`, set `:collection_id` to the trash collection ID."
+  [item trash-collection-id]
+  (cond-> item
+    (:archived_directly item)
+    (assoc :collection_id trash-collection-id)))

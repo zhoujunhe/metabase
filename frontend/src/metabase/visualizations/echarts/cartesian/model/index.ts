@@ -3,22 +3,23 @@ import {
   getYAxesModels,
 } from "metabase/visualizations/echarts/cartesian/model/axis";
 import {
-  getBubbleSizeDomain,
   getCardsColumnByDataKeyMap,
   getJoinedCardsDataset,
   getSortedSeriesModels,
   applyVisualizationSettingsDataTransformations,
   sortDataset,
+  scaleDataset,
 } from "metabase/visualizations/echarts/cartesian/model/dataset";
 import {
   getCardsSeriesModels,
+  getComboChartDataDensity,
   getDimensionModel,
+  getFormatters,
 } from "metabase/visualizations/echarts/cartesian/model/series";
 import type {
   CartesianChartModel,
   ShowWarning,
 } from "metabase/visualizations/echarts/cartesian/model/types";
-import { getScatterPlotDataset } from "metabase/visualizations/echarts/cartesian/scatter/model";
 import { getCartesianChartColumns } from "metabase/visualizations/lib/graph/columns";
 import { getSingleSeriesDimensionsAndMetrics } from "metabase/visualizations/lib/utils";
 import type {
@@ -27,10 +28,9 @@ import type {
 } from "metabase/visualizations/types";
 import type { RawSeries, SingleSeries } from "metabase-types/api";
 
+import { getStackModels } from "./stack";
 import { getAxisTransforms } from "./transforms";
 import { getTrendLines } from "./trend-line";
-
-const SUPPORTED_AUTO_SPLIT_TYPES = ["line", "area", "bar", "combo"];
 
 // HACK: when multiple cards (datasets) are combined on a single dashboard card
 // the settings prop of the visualization contains only one set of metrics and dimensions
@@ -100,31 +100,35 @@ export const getCartesianChartModel = (
     ? unsortedSeriesModels
     : getSortedSeriesModels(unsortedSeriesModels, settings);
 
-  let dataset;
-  switch (rawSeries[0].card.display) {
-    case "scatter":
-      dataset = getScatterPlotDataset(rawSeries, cardsColumns);
-      break;
-    default:
-      dataset = getJoinedCardsDataset(rawSeries, cardsColumns, showWarning);
-  }
-  dataset = sortDataset(dataset, settings["graph.x_axis.scale"], showWarning);
+  const unsortedDataset = getJoinedCardsDataset(
+    rawSeries,
+    cardsColumns,
+    showWarning,
+  );
+  const dataset = sortDataset(
+    unsortedDataset,
+    settings["graph.x_axis.scale"],
+    showWarning,
+  );
+  const scaledDataset = scaleDataset(dataset, seriesModels, settings);
 
   const xAxisModel = getXAxisModel(
     dimensionModel,
     rawSeries,
-    dataset,
+    scaledDataset,
     settings,
     renderingContext,
     showWarning,
   );
   const yAxisScaleTransforms = getAxisTransforms(
     settings["graph.y_axis.scale"],
-    settings["stackable.stack_type"],
   );
 
+  const stackModels = getStackModels(seriesModels, settings);
+
   const transformedDataset = applyVisualizationSettingsDataTransformations(
-    dataset,
+    scaledDataset,
+    stackModels,
     xAxisModel,
     seriesModels,
     yAxisScaleTransforms,
@@ -132,16 +136,37 @@ export const getCartesianChartModel = (
     showWarning,
   );
 
-  const isAutoSplitSupported = SUPPORTED_AUTO_SPLIT_TYPES.includes(
-    rawSeries[0].card.display,
+  const {
+    seriesLabelsFormatters,
+    stackedLabelsFormatters,
+    isCompactFormatting,
+  } = getFormatters(
+    seriesModels,
+    stackModels,
+    scaledDataset,
+    settings,
+    renderingContext,
+  );
+
+  const dataDensity = getComboChartDataDensity(
+    seriesModels,
+    stackModels,
+    dataset,
+    seriesLabelsFormatters,
+    stackedLabelsFormatters,
+    settings,
+    renderingContext,
   );
 
   const { leftAxisModel, rightAxisModel } = getYAxesModels(
     seriesModels,
+    dataset,
     transformedDataset,
     settings,
     columnByDataKey,
-    isAutoSplitSupported,
+    true,
+    stackModels,
+    isCompactFormatting,
     renderingContext,
   );
 
@@ -152,11 +177,13 @@ export const getCartesianChartModel = (
     seriesModels,
     transformedDataset,
     settings,
+    stackModels,
     renderingContext,
   );
 
   return {
-    dataset,
+    stackModels,
+    dataset: scaledDataset,
     transformedDataset,
     seriesModels,
     yAxisScaleTransforms,
@@ -166,6 +193,8 @@ export const getCartesianChartModel = (
     leftAxisModel,
     rightAxisModel,
     trendLinesModel,
-    bubbleSizeDomain: getBubbleSizeDomain(seriesModels, transformedDataset),
+    seriesLabelsFormatters,
+    stackedLabelsFormatters,
+    dataDensity,
   };
 };

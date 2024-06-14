@@ -171,6 +171,25 @@ export function visitModel(id, { hasDataAccess = true } = {}) {
 }
 
 /**
+ * Visit a metric and wait for its query to load.
+ *
+ * @param {number} id
+ */
+export function visitMetric(id, { hasDataAccess = true } = {}) {
+  const alias = "metricQuery" + id;
+
+  if (hasDataAccess) {
+    cy.intercept("POST", "/api/dataset").as(alias);
+  } else {
+    cy.intercept("POST", `/api/card/**/${id}/query`).as(alias);
+  }
+
+  cy.visit(`/metric/${id}`);
+
+  cy.wait("@" + alias);
+}
+
+/**
  * Visit a dashboard and wait for the related queries to load.
  *
  * @param {number|string} dashboardIdOrAlias
@@ -287,7 +306,7 @@ export function saveQuestion(
   { wrapId = false, idAlias = "questionId" } = {},
 ) {
   cy.intercept("POST", "/api/card").as("saveQuestion");
-  cy.findByText("Save").click();
+  cy.findByTestId("qb-header").button("Save").click();
 
   cy.findByTestId("save-question-modal").within(modal => {
     if (name) {
@@ -303,7 +322,8 @@ export function saveQuestion(
   });
 
   cy.get("#QuestionSavedModal").within(() => {
-    cy.button("Not now").click();
+    cy.findByText(/add this to a dashboard/i);
+    cy.findByText("Not now").click();
   });
 }
 

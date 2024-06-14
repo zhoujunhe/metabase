@@ -6,6 +6,9 @@ import {
   getDashboardCard,
   chartPathWithFillColor,
   echartsContainer,
+  testPairedTooltipValues,
+  multiAutocompleteInput,
+  removeMultiAutocompleteValue,
 } from "e2e/support/helpers";
 
 import {
@@ -96,6 +99,12 @@ describe("scenarios > embedding > dashboard > linked filters (metabase#13639, me
           cy.findByText("Kiana");
           cy.findByText("Anacoco").should("not.exist");
           cy.findByText("Anchorage").click();
+        });
+
+      popover()
+        .filter(":contains('Add filter')")
+        .within(() => {
+          multiAutocompleteInput().blur();
           cy.button("Add filter").click();
         });
 
@@ -169,6 +178,12 @@ describe("scenarios > embedding > dashboard > linked filters (metabase#13639, me
           cy.findByText("Kiana");
           cy.findByText("Anacoco").should("not.exist");
           cy.findByText("Anchorage").click();
+        });
+
+      popover()
+        .filter(":contains('Add filter')")
+        .within(() => {
+          multiAutocompleteInput().blur();
           cy.button("Add filter").click();
         });
 
@@ -211,10 +226,16 @@ describe("scenarios > embedding > dashboard > linked filters (metabase#13639, me
       popover()
         .last()
         .within(() => {
-          cy.findByPlaceholderText("Search by City").type("An");
+          multiAutocompleteInput().type("An");
           cy.findByText("Kiana");
           cy.findByText("Anacoco").should("not.exist");
           cy.findByText("Anchorage").click();
+        });
+
+      popover()
+        .filter(":contains('Add filter')")
+        .within(() => {
+          multiAutocompleteInput().blur();
           cy.button("Add filter").click();
         });
 
@@ -257,6 +278,12 @@ describe("scenarios > embedding > dashboard > linked filters (metabase#13639, me
           cy.findByText("Kiana");
           cy.findByText("Anacoco").should("not.exist");
           cy.findByText("Anchorage").click();
+        });
+
+      popover()
+        .filter(":contains('Add filter')")
+        .within(() => {
+          multiAutocompleteInput().blur();
           cy.button("Add filter").click();
         });
 
@@ -296,6 +323,12 @@ describe("scenarios > embedding > dashboard > linked filters (metabase#13639, me
           cy.findByText("Kiana");
           cy.findByText("Anacoco").should("not.exist");
           cy.findByText("Anchorage").click();
+        });
+
+      popover()
+        .filter(":contains('Add filter')")
+        .within(() => {
+          multiAutocompleteInput().blur();
           cy.button("Add filter").click();
         });
 
@@ -344,7 +377,6 @@ describe("scenarios > embedding > dashboard > linked filters (metabase#13639, me
         cy.findByText("Doohickey").should("not.exist");
         cy.findByText("Gadget").should("not.exist");
         cy.findByText("Widget").should("not.exist");
-
         cy.button("Add filter").click();
       });
 
@@ -411,7 +443,8 @@ describe("scenarios > embedding > dashboard > linked filters (metabase#13639, me
         cy.findByText("2 selections").click();
 
         // Remove one of the previously set filter values
-        popover().findByText("29").closest("li").find(".Icon-close").click();
+        popover().within(() => removeMultiAutocompleteValue(1));
+
         cy.button("Update filter").click();
 
         cy.findByTestId("table-row")
@@ -496,10 +529,6 @@ describe("scenarios > embedding > dashboard > linked filters (metabase#13639, me
 
 function openFilterOptions(name) {
   filterWidget().contains(name).click();
-}
-
-function testPairedTooltipValues(val1, val2) {
-  cy.contains(val1).closest("td").siblings("td").findByText(val2);
 }
 
 function assertOnXYAxisLabels({ xLabel, yLabel } = {}) {

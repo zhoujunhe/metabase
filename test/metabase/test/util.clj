@@ -12,6 +12,7 @@
    [environ.core :as env]
    [java-time.api :as t]
    [mb.hawk.parallel]
+   [metabase.audit :as audit]
    [metabase.config :as config]
    [metabase.db.query :as mdb.query]
    [metabase.models
@@ -259,6 +260,7 @@
        {:db_id      (data/id)
         :task       (u.random/random-name)
         :started_at started
+        :status     :success
         :ended_at   ended
         :duration   (.toMillis (t/duration started ended))}))
 
@@ -605,17 +607,17 @@
         already-bound? (identical? @task/*quartz-scheduler* temp-scheduler)]
     (if already-bound?
       (thunk)
-      (binding [task/*quartz-scheduler* (atom temp-scheduler)]
-        (try
-          (assert (not (qs/started? temp-scheduler))
-                  "temp in-memory scheduler already started: did you use it elsewhere without shutting it down?")
-          (with-redefs [qs/initialize (constantly temp-scheduler)
-                        ;; prevent shutting down scheduler during thunk because some custom migration shutdown scheduler
-                        ;; after it's done, but we need the scheduler for testing
-                        qs/shutdown   (constantly nil)]
-            (thunk))
-          (finally
-            (qs/shutdown temp-scheduler)))))))
+      (try
+        (assert (not (qs/started? temp-scheduler))
+                "temp in-memory scheduler already started: did you use it elsewhere without shutting it down?")
+        (with-redefs [task/*quartz-scheduler* (atom temp-scheduler)
+                      qs/initialize (constantly temp-scheduler)
+                      ;; prevent shutting down scheduler during thunk because some custom migration shutdown scheduler
+                      ;; after it's done, but we need the scheduler for testing
+                      qs/shutdown   (constantly nil)]
+          (thunk))
+        (finally
+          (qs/shutdown temp-scheduler))))))
 
 (defn do-with-temp-scheduler [thunk]
   ;; not 100% sure we need to initialize the DB anymore since the temp scheduler is in-memory-only now.
@@ -687,7 +689,7 @@
 (defmethod with-model-cleanup-additional-conditions :model/Database
   [_]
   ;; Don't delete the audit database
-  [:not= :id perms/audit-db-id])
+  [:not= :id audit/audit-db-id])
 
 (defmulti with-max-model-id-additional-conditions
   "Additional conditions applied to the query to find the max ID for a model prior to a test run. This can be used to
@@ -705,7 +707,7 @@
 
 (defmethod with-max-model-id-additional-conditions :model/Database
   [_]
-  [:not= :id perms/audit-db-id])
+  [:not= :id audit/audit-db-id])
 
 (defn- model->model&pk [model]
   (if (vector? model)
@@ -774,8 +776,8 @@
           (testing "Shouldn't delete other Cards"
             (is (pos? (t2/count Card)))))))))
 
-(defn do-with-verified-cards
-  "Impl for [[with-verified-cards]]."
+(defn do-with-verified-cards!
+  "Impl for [[with-verified-cards!]]."
   [card-or-ids thunk]
   (with-model-cleanup [:model/ModerationReview]
     (doseq [card-or-id card-or-ids]
@@ -788,15 +790,15 @@
           :status              status})))
     (thunk)))
 
-(defmacro with-verified-cards
+(defmacro with-verified-cards!
   "Execute the body with all `card-or-ids` verified."
   [card-or-ids & body]
-  `(do-with-verified-cards ~card-or-ids (fn [] ~@body)))
+  `(do-with-verified-cards! ~card-or-ids (fn [] ~@body)))
 
 (deftest with-verified-cards-test
   (t2.with-temp/with-temp
     [:model/Card {card-id :id} {}]
-    (with-verified-cards [card-id]
+    (with-verified-cards! [card-id]
       (is (=? #{{:moderated_item_id   card-id
                  :moderated_item_type :card
                  :most_recent         true

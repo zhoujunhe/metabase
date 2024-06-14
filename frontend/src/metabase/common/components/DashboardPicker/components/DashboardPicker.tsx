@@ -32,6 +32,7 @@ export const defaultOptions: DashboardPickerOptions = {
   showRootCollection: true,
   allowCreateNew: true,
 };
+
 interface DashboardPickerProps {
   onItemSelect: (item: DashboardPickerItem) => void;
   initialValue?: Pick<DashboardPickerItem, "model" | "id">;
@@ -66,7 +67,9 @@ const useGetInitialCollection = (
 
   const { data: currentCollection, error: collectionError } =
     useGetCollectionQuery(
-      !isDashboard || !!currentDashboard ? requestCollectionId : skipToken,
+      !isDashboard || !!currentDashboard
+        ? { id: requestCollectionId }
+        : skipToken,
     );
 
   return {

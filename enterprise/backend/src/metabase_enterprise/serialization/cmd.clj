@@ -2,6 +2,7 @@
   (:refer-clojure :exclude [load])
   (:require
    [clojure.java.io :as io]
+   [clojure.set :as set]
    [clojure.string :as str]
    [metabase-enterprise.serialization.dump :as dump]
    [metabase-enterprise.serialization.load :as load]
@@ -14,11 +15,10 @@
    [metabase.analytics.snowplow :as snowplow]
    [metabase.db :as mdb]
    [metabase.models.card :refer [Card]]
-   [metabase.models.collection :refer [Collection]]
+   [metabase.models.collection :as collection :refer [Collection]]
    [metabase.models.dashboard :refer [Dashboard]]
    [metabase.models.database :refer [Database]]
    [metabase.models.field :as field :refer [Field]]
-   [metabase.models.legacy-metric :refer [LegacyMetric]]
    [metabase.models.native-query-snippet :refer [NativeQuerySnippet]]
    [metabase.models.pulse :refer [Pulse]]
    [metabase.models.segment :refer [Segment]]
@@ -115,8 +115,9 @@
                    (catch Exception e
                      (reset! err e)))
         imported (into (sorted-set) (map (comp :model last)) (:seen report))]
-    (snowplow/track-event! ::snowplow/serialization-import nil
-                           {:source        "cli"
+    (snowplow/track-event! ::snowplow/serialization nil
+                           {:direction     "import"
+                            :source        "cli"
                             :duration_ms   (int (/ (- (System/nanoTime) start) 1e6))
                             :models        (str/join "," imported)
                             :count         (if (contains? imported "Setting")
@@ -203,16 +204,12 @@
         fields      (if (contains? opts :only-db-ids)
                       (t2/select Field :table_id [:in (map :id tables)] {:order-by [[:id :asc]]})
                       (t2/select Field))
-        metrics     (if (contains? opts :only-db-ids)
-                      (t2/select LegacyMetric :table_id [:in (map :id tables)] {:order-by [[:id :asc]]})
-                      (t2/select LegacyMetric))
         collections (select-collections users state)]
     (binding [serialize/*include-entity-id* (boolean include-entity-id)]
       (dump/dump! path
                   databases
                   tables
                   (mapcat field/with-values (u/batches-of 32000 fields))
-                  metrics
                   (select-segments-in-tables tables state)
                   collections
                   (select-entities-in-collections NativeQuerySnippet collections state)
@@ -235,19 +232,28 @@
     (.mkdirs f)
     (when-not (.canWrite f)
       (throw (ex-info (format "Destination path is not writeable: %s" path) {:filename path}))))
-  (let [start  (System/nanoTime)
-        err    (atom nil)
-        report (try
-                 (serdes/with-cache
-                   (-> (cond-> opts
-                         (seq collection-ids)
-                         (assoc :targets (v2.extract/make-targets-of-type "Collection" collection-ids)))
-                       v2.extract/extract
-                       (v2.storage/store! path)))
-                 (catch Exception e
-                   (reset! err e)))]
-    (snowplow/track-event! ::snowplow/serialization-export nil
-                           {:source          "cli"
+  (let [start                (System/nanoTime)
+        ;; we _ALWAYS_ export the Trash. Its descendants are empty, so we won't export anything extra as a result, but
+        ;; we will export items that are currently in the Trash, assuming they were trashed *from* a place we're
+        ;; exporting.
+        collection-ids+trash (set/union collection-ids
+                                        #{(collection/trash-collection-id)})
+        err                  (atom nil)
+        report               (try
+                               (serdes/with-cache
+                                 (-> (cond-> opts
+                                       (seq collection-ids)
+                                       (assoc :targets
+                                              (v2.extract/make-targets-of-type
+                                               "Collection"
+                                               collection-ids+trash)))
+                                     v2.extract/extract
+                                     (v2.storage/store! path)))
+                               (catch Exception e
+                                 (reset! err e)))]
+    (snowplow/track-event! ::snowplow/serialization nil
+                           {:direction       "export"
+                            :source          "cli"
                             :duration_ms     (int (/ (- (System/nanoTime) start) 1e6))
                             :count           (count (:seen report))
                             :collection      (str/join "," collection-ids)

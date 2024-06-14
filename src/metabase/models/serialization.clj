@@ -350,10 +350,10 @@
   [model {:keys [collection-set]}]
   (if collection-set
     ;; If collection-set is defined, select everything in those collections, or with nil :collection_id.
-    (let [in-colls  (t2/reducible-select model :collection_id [:in collection-set])]
-      (if (contains? collection-set nil)
-        (eduction cat [in-colls (t2/reducible-select model :collection_id nil)])
-        in-colls))
+    (t2/reducible-select model {:where [:or
+                                        [:in :collection_id collection-set]
+                                        (when (contains? collection-set nil)
+                                          [:= :collection_id nil])]})
     ;; If collection-set is nil, just select everything.
     (t2/reducible-select model)))
 

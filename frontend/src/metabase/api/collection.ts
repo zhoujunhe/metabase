@@ -6,7 +6,8 @@ import type {
   CreateCollectionRequest,
   ListCollectionsRequest,
   ListCollectionsTreeRequest,
-  CollectionId,
+  DeleteCollectionRequest,
+  getCollectionRequest,
 } from "metabase-types/api";
 
 import { Api } from "./api";
@@ -54,11 +55,14 @@ export const collectionApi = Api.injectEndpoints({
       providesTags: (response, error, { models }) =>
         provideCollectionItemListTags(response?.data ?? [], models),
     }),
-    getCollection: builder.query<Collection, CollectionId>({
-      query: id => ({
-        method: "GET",
-        url: `/api/collection/${id}`,
-      }),
+    getCollection: builder.query<Collection, getCollectionRequest>({
+      query: ({ id, ...body }) => {
+        return {
+          method: "GET",
+          url: `/api/collection/${id}`,
+          body,
+        };
+      },
       providesTags: collection =>
         collection ? provideCollectionTags(collection) : [],
     }),
@@ -87,6 +91,15 @@ export const collectionApi = Api.injectEndpoints({
       invalidatesTags: (_, error, { id }) =>
         invalidateTags(error, [listTag("collection"), idTag("collection", id)]),
     }),
+    deleteCollection: builder.mutation<void, DeleteCollectionRequest>({
+      query: ({ id, ...body }) => ({
+        method: "DELETE",
+        url: `/api/collection/${id}`,
+        body,
+      }),
+      invalidatesTags: (_, error, { id }) =>
+        invalidateTags(error, [listTag("collection"), idTag("collection", id)]),
+    }),
   }),
 });
 
@@ -97,4 +110,5 @@ export const {
   useGetCollectionQuery,
   useCreateCollectionMutation,
   useUpdateCollectionMutation,
+  useDeleteCollectionMutation,
 } = collectionApi;

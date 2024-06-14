@@ -4,7 +4,6 @@
   "Schema model types"
   ["Database"
    "Field"
-   "LegacyMetric"
    "Segment"
    "Table"])
 
@@ -43,6 +42,7 @@
    "BookmarkOrdering"
    "CacheConfig"
    "CardBookmark"
+   "CloudMigration"
    "CollectionBookmark"
    "CollectionPermissionGraphRevision"
    "ConnectionImpersonation"
@@ -53,6 +53,7 @@
    "HTTPAction"
    "ImplicitAction"
    "LoginHistory"
+   "LegacyMetric"
    "LegacyMetricImportantField"
    "ModelIndex"
    "ModelIndexValue"

@@ -1,3 +1,4 @@
+import { Global } from "@emotion/react";
 import type { MantineThemeOverride } from "@mantine/core";
 import type { Store, Reducer } from "@reduxjs/toolkit";
 import type { MatcherFunction } from "@testing-library/dom";
@@ -15,14 +16,16 @@ import { routerReducer, routerMiddleware } from "react-router-redux";
 import _ from "underscore";
 
 import { AppInitializeController } from "embedding-sdk/components/private/AppInitializeController";
+import { SdkThemeProvider } from "embedding-sdk/components/private/SdkThemeProvider";
 import { sdkReducers } from "embedding-sdk/store";
 import type { SdkStoreState } from "embedding-sdk/store/types";
 import { createMockSdkState } from "embedding-sdk/test/mocks/state";
 import type { SDKConfig } from "embedding-sdk/types";
 import { Api } from "metabase/api";
 import { UndoListing } from "metabase/containers/UndoListing";
-import mainReducers from "metabase/reducers-main";
-import publicReducers from "metabase/reducers-public";
+import { baseStyle } from "metabase/css/core/base.styled";
+import { mainReducers } from "metabase/reducers-main";
+import { publicReducers } from "metabase/reducers-public";
 import { EmotionCacheProvider } from "metabase/styled-components/components/EmotionCacheProvider";
 import { ThemeProvider } from "metabase/ui";
 import type { State } from "metabase-types/store";
@@ -132,7 +135,7 @@ export function renderWithProviders(
     }
 
     return (
-      <Wrapper
+      <TestWrapper
         {...props}
         store={store}
         history={history}
@@ -157,7 +160,13 @@ export function renderWithProviders(
   };
 }
 
-function Wrapper({
+/**
+ * A minimal version of the GlobalStyles component, for use in Storybook stories.
+ * Contains strictly only the base styles to act as CSS resets, without font files.
+ **/
+const GlobalStylesForTest = () => <Global styles={baseStyle} />;
+
+export function TestWrapper({
   children,
   store,
   history,
@@ -180,6 +189,8 @@ function Wrapper({
     <Provider store={store}>
       <MaybeDNDProvider hasDND={withDND}>
         <ThemeProvider theme={theme}>
+          <GlobalStylesForTest />
+
           <MaybeKBar hasKBar={withKBar}>
             <MaybeRouter hasRouter={withRouter} history={history}>
               {children}
@@ -207,11 +218,11 @@ function SdkWrapper({
   return (
     <Provider store={store}>
       <EmotionCacheProvider>
-        <ThemeProvider>
+        <SdkThemeProvider>
           <AppInitializeController config={config}>
             {children}
           </AppInitializeController>
-        </ThemeProvider>
+        </SdkThemeProvider>
       </EmotionCacheProvider>
     </Provider>
   );

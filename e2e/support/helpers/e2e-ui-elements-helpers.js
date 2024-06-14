@@ -32,6 +32,37 @@ export function entityPickerModal() {
   return cy.findByTestId("entity-picker-modal");
 }
 
+export function entityPickerModalLevel(level) {
+  return cy.findByTestId(`item-picker-level-${level}`);
+}
+
+export function entityPickerModalItem(level, name) {
+  return entityPickerModalLevel(level).findByText(name).parents("button");
+}
+
+export function entityPickerModalTab(name) {
+  return cy.findAllByRole("tab").filter(`:contains(${name})`);
+}
+
+// displays at least these tabs:
+export function shouldDisplayTabs(tabs) {
+  tabs.forEach(tab => {
+    entityPickerModalTab(tab).should("exist");
+  });
+}
+
+export function tabsShouldBe(selected, tabs) {
+  cy.log(tabs);
+  cy.findAllByRole("tab").should("have.length", tabs.length);
+  tabs.forEach(tab => {
+    if (tab === selected) {
+      entityPickerModalTab(tab).and("have.attr", "aria-selected", "true");
+    } else {
+      entityPickerModalTab(tab).should("exist");
+    }
+  });
+}
+
 export function collectionOnTheGoModal() {
   return cy.findByTestId("create-collection-on-the-go");
 }
@@ -66,8 +97,8 @@ export function closeNavigationSidebar() {
   navigationSidebar().should("not.be.visible");
 }
 
-export function browseData() {
-  return navigationSidebar().findByLabelText("Browse data");
+export function browseDatabases() {
+  return navigationSidebar().findByLabelText("Browse databases");
 }
 
 /**
@@ -108,7 +139,7 @@ export function setFilterWidgetValue(
 ) {
   filterWidget().eq(0).click();
   popover().within(() => {
-    cy.icon("close").click();
+    removeMultiAutocompleteValue(0);
     if (value) {
       cy.findByPlaceholderText(targetPlaceholder).type(value).blur();
     }
@@ -215,4 +246,49 @@ export const undoToastList = () => {
 
 export function dashboardCards() {
   return cy.get("[data-element-id=dashboard-cards-container]");
+}
+
+export function tableHeaderClick(headerString) {
+  cy.findByTestId("TableInteractive-root").within(() => {
+    cy.findByTextEnsureVisible(headerString).trigger("mousedown");
+  });
+
+  cy.findByTestId("TableInteractive-root").within(() => {
+    cy.findByTextEnsureVisible(headerString).trigger("mouseup");
+  });
+}
+
+/**
+ * selects the global new button
+ * @param {*} menuItem optional, if provided, will click the New button and return the menu item with the text provided
+ * @returns
+ */
+export function newButton(menuItem) {
+  if (menuItem) {
+    cy.findByTestId("app-bar").button("New").click();
+    return popover().findByText(menuItem);
+  }
+
+  return cy.findByTestId("app-bar").button("New");
+}
+
+export function multiSelectInput(filter = ":eq(0)") {
+  return cy.findByRole("combobox").filter(filter).get("input").last();
+}
+
+export function multiAutocompleteInput(filter = ":eq(0)") {
+  return cy.findAllByRole("combobox").filter(filter).get("input").last();
+}
+
+export function multiAutocompleteValue(index, filter = ":eq(0)") {
+  return cy
+    .findAllByRole("combobox")
+    .filter(filter)
+    .get(`[value][index=${index}]`);
+}
+
+export function removeMultiAutocompleteValue(index, filter) {
+  return multiAutocompleteValue(index, filter)
+    .findByRole("button", { hidden: true })
+    .click();
 }

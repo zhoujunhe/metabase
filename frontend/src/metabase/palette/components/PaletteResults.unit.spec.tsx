@@ -1,3 +1,4 @@
+import fetchMock from "fetch-mock";
 import { useKBar } from "kbar";
 import { useEffect } from "react";
 import { Route, withRouter, type WithRouterProps } from "react-router";
@@ -17,15 +18,18 @@ import {
   mockScrollIntoView,
 } from "__support__/ui";
 import { getAdminPaths } from "metabase/admin/app/reducers";
+import type { RecentItem, Settings } from "metabase-types/api";
 import {
   createMockCollection,
   createMockCollectionItem,
   createMockDatabase,
   createMockRecentCollectionItem,
+  createMockRecentTableItem,
 } from "metabase-types/api/mocks";
 import {
   createMockAdminAppState,
   createMockAdminState,
+  createMockSettingsState,
 } from "metabase-types/store/mocks";
 
 import { useCommandPaletteBasicActions } from "../hooks/useCommandPaletteBasicActions";
@@ -98,10 +102,18 @@ const recents_2 = createMockRecentCollectionItem({
 mockScrollTo();
 mockScrollIntoView();
 
-const setup = ({ query }: { query?: string } = {}) => {
+const setup = ({
+  query,
+  settings = {},
+  recents = [recents_1, recents_2],
+}: {
+  query?: string;
+  settings?: Partial<Settings>;
+  recents?: RecentItem[];
+} = {}) => {
   setupDatabasesEndpoints([DATABASE]);
   setupSearchEndpoints([model_1, model_2, dashboard]);
-  setupRecentViewsEndpoints([recents_1, recents_2]);
+  setupRecentViewsEndpoints(recents);
 
   renderWithProviders(
     <Route path="/" component={() => <TestComponent q={query} isLoggedIn />} />,
@@ -114,16 +126,13 @@ const setup = ({ query }: { query?: string } = {}) => {
             paths: getAdminPaths(),
           }),
         }),
+        settings: createMockSettingsState(settings),
       },
     },
   );
 };
 
 describe("PaletteResults", () => {
-  afterAll(() => {
-    jest.resetAllMocks();
-  });
-
   it("should show default actions", async () => {
     setup();
     expect(await screen.findByText("New dashboard")).toBeInTheDocument();
@@ -160,6 +169,27 @@ describe("PaletteResults", () => {
         await screen.findByRole("option", { name: "Foo Question" }),
       ).findByRole("img", { name: /verified_filled/ }),
     ).toBeInTheDocument();
+  });
+
+  it("should show recent items with the same name", async () => {
+    setup({
+      recents: [
+        createMockRecentCollectionItem({
+          model: "dataset",
+          name: "My Awesome Data",
+        }),
+        createMockRecentTableItem({
+          model: "table",
+          display_name: "My Awesome Data",
+        }),
+      ],
+    });
+
+    expect(await screen.findByText("Recent items")).toBeInTheDocument();
+
+    expect(
+      await screen.findAllByRole("option", { name: "My Awesome Data" }),
+    ).toHaveLength(2);
   });
 
   it("should allow you to search entities, and provide a docs link", async () => {
@@ -205,6 +235,9 @@ describe("PaletteResults", () => {
     expect(
       await screen.findByRole("option", { name: "Bar Question" }),
     ).toHaveTextContent("lame collection");
+
+    // One call is always made to determine if the instance has models inside useCommandPaletteBasicActions
+    expect(fetchMock.calls("path:/api/search").length).toBe(2);
   });
 
   it("should provide links to settings pages", async () => {
@@ -217,5 +250,25 @@ describe("PaletteResults", () => {
     setup({ query: "permi" });
     expect(await screen.findByText("Admin")).toBeInTheDocument();
     expect(await screen.findByText("Permissions")).toBeInTheDocument();
+  });
+
+  it("should not compute search results if 'search-typeahead-enabled' is diabled", async () => {
+    setup({ query: "ques", settings: { "search-typeahead-enabled": false } });
+    expect(
+      await screen.findByRole("option", { name: /View search results/ }),
+    ).toBeInTheDocument();
+
+    // One call is always made to determine if the instance has models inside useCommandPaletteBasicActions
+    expect(fetchMock.calls("path:/api/search").length).toBe(1);
+  });
+
+  it("should provide a link to docs with the proper url param", async () => {
+    setup({ query: "model" });
+    expect(
+      await screen.findByRole("link", { name: /Search documentation/ }),
+    ).toHaveAttribute("href", expect.stringContaining("?query=model"));
+
+    // One call is always made to determine if the instance has models inside useCommandPaletteBasicActions
+    expect(fetchMock.calls("path:/api/search").length).toBe(2);
   });
 });

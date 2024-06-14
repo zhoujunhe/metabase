@@ -1,6 +1,6 @@
 import { createSelector } from "@reduxjs/toolkit";
 import { createCachedSelector } from "re-reselect";
-import { createSelectorCreator, lruMemoize } from "reselect";
+import { createSelectorCreator, lruMemoize, weakMapMemoize } from "reselect";
 import _ from "underscore";
 
 import {
@@ -13,13 +13,16 @@ import { getParameterMappingOptions as _getParameterMappingOptions } from "metab
 import type { EmbeddingParameterVisibility } from "metabase/public/lib/types";
 import { getEmbedOptions, getIsEmbedded } from "metabase/selectors/embed";
 import { getMetadata } from "metabase/selectors/metadata";
+import { mergeSettings } from "metabase/visualizations/lib/settings";
 import Question from "metabase-lib/v1/Question";
+import { getParameterValuesBySlug } from "metabase-lib/v1/parameters/utils/parameter-values";
 import type {
   Card,
   CardId,
-  DashboardId,
   DashCardId,
+  Dashboard,
   DashboardCard,
+  DashboardId,
   DashboardParameterMapping,
   ParameterId,
 } from "metabase-types/api";
@@ -27,9 +30,15 @@ import type {
   ClickBehaviorSidebarState,
   EditParameterSidebarState,
   State,
+  StoreDashboard,
 } from "metabase-types/store";
 
-import { isQuestionCard, isQuestionDashCard } from "./utils";
+import { getNewCardUrl } from "./actions/getNewCardUrl";
+import {
+  hasDatabaseActionsEnabled,
+  isQuestionCard,
+  isQuestionDashCard,
+} from "./utils";
 
 type SidebarState = State["dashboard"]["sidebar"];
 
@@ -46,6 +55,7 @@ function isEditParameterSidebar(
 }
 
 const createDeepEqualSelector = createSelectorCreator(lruMemoize, _.isEqual);
+const createWeakSelector = createSelectorCreator(weakMapMemoize);
 
 export const getDashboardBeforeEditing = (state: State) =>
   state.dashboard.editingDashboard;
@@ -60,7 +70,16 @@ export const getClickBehaviorSidebarDashcard = (state: State) => {
     : null;
 };
 export const getDashboards = (state: State) => state.dashboard.dashboards;
-export const getCardData = (state: State) => state.dashboard.dashcardData;
+export const getDashcardDataMap = (state: State) =>
+  state.dashboard.dashcardData;
+
+export const getDashcardData = createSelector(
+  [getDashcardDataMap, (_state: State, dashcardId: DashCardId) => dashcardId],
+  (dashcardDataMap, dashcardId) => {
+    return dashcardDataMap[dashcardId];
+  },
+);
+
 export const getSlowCards = (state: State) => state.dashboard.slowCards;
 export const getParameterValues = (state: State) =>
   state.dashboard.parameterValues;
@@ -172,6 +191,37 @@ export const getDashboardComplete = createSelector(
   },
 );
 
+export const getDashcardHref = createWeakSelector(
+  [getMetadata, getDashboardComplete, getParameterValues, getDashCardById],
+  (metadata, dashboard, parameterValues, dashcard) => {
+    if (
+      !dashboard ||
+      !dashcard ||
+      !isQuestionDashCard(dashcard) ||
+      !dashcard.card.dataset_query // cards without queries will cause MLv2 to throw in getNewCardUrl
+    ) {
+      return undefined;
+    }
+
+    const card = {
+      ...dashcard.card,
+      visualization_settings: mergeSettings(
+        dashcard.card.visualization_settings,
+        dashcard.visualization_settings,
+      ),
+    };
+
+    return getNewCardUrl({
+      metadata,
+      dashboard,
+      parameterValues,
+      dashcard,
+      nextCard: card,
+      previousCard: card,
+    });
+  },
+);
+
 export const getAutoApplyFiltersToastId = (state: State) =>
   state.dashboard.autoApplyFilters.toastId;
 export const getAutoApplyFiltersToastDashboardId = (state: State) =>
@@ -198,6 +248,16 @@ const getIsParameterValuesEmpty = createSelector(
         ? parameterValue.length === 0
         : parameterValue == null,
     );
+  },
+);
+
+export const getParameterValuesBySlugMap = createSelector(
+  [getDashboardComplete, getParameterValues],
+  (dashboard, parameterValues) => {
+    if (!dashboard) {
+      return {};
+    }
+    return getParameterValuesBySlug(dashboard.parameters, parameterValues);
   },
 );
 
@@ -423,10 +483,49 @@ export const getSelectedTabId = createSelector(
   [getDashboard, state => state.dashboard.selectedTabId],
   (dashboard, selectedTabId) => {
     if (dashboard && selectedTabId === null) {
-      return dashboard.tabs?.[0]?.id || null;
+      return getInitialSelectedTabId(dashboard);
     }
 
     return selectedTabId;
+  },
+);
+
+export function getInitialSelectedTabId(dashboard: Dashboard | StoreDashboard) {
+  return dashboard.tabs?.[0]?.id || null;
+}
+
+export const getCurrentTabDashcards = createSelector(
+  [getDashboardComplete, getSelectedTabId],
+  (dashboard, selectedTabId) => {
+    if (!dashboard || !Array.isArray(dashboard?.dashcards)) {
+      return [];
+    }
+    if (!selectedTabId) {
+      return dashboard.dashcards;
+    }
+    return dashboard.dashcards.filter(
+      (dc: DashboardCard) => dc.dashboard_tab_id === selectedTabId,
+    );
+  },
+);
+
+export const getHiddenParameterSlugs = createSelector(
+  [getParameters, getCurrentTabDashcards, getIsEditing],
+  (parameters, currentTabDashcards, isEditing) => {
+    if (isEditing) {
+      // All filters should be visible in edit mode
+      return undefined;
+    }
+
+    const currentTabParameterIds = currentTabDashcards.flatMap(
+      (dc: DashboardCard) =>
+        dc.parameter_mappings?.map(pm => pm.parameter_id) ?? [],
+    );
+    const hiddenParameters = parameters.filter(
+      parameter => !currentTabParameterIds.includes(parameter.id),
+    );
+
+    return hiddenParameters.map(p => p.slug).join(",");
   },
 );
 
@@ -470,4 +569,21 @@ export const getDisplayTheme = (state: State) => state.dashboard.theme;
 export const getIsNightMode = createSelector(
   [getDisplayTheme],
   theme => theme === "night",
+);
+
+export const getHasModelActionsEnabled = createSelector(
+  [getMetadata],
+  metadata => {
+    if (!metadata) {
+      return false;
+    }
+
+    const databases = metadata.databasesList();
+    const hasModelActionsEnabled = Object.values(databases).some(database =>
+      // @ts-expect-error Schema types do not match
+      hasDatabaseActionsEnabled(database),
+    );
+
+    return hasModelActionsEnabled;
+  },
 );

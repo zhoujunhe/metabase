@@ -12,18 +12,15 @@ const ENABLED_SEARCH_MODELS = [
   "collection",
   "dashboard",
   "card",
+  "dataset",
+  "metric",
   "database",
   "table",
-  "dataset",
   "action",
   "indexed-entity",
 ] as const;
 
-export const SEARCH_MODELS = [
-  ...ENABLED_SEARCH_MODELS,
-  "segment",
-  "metric",
-] as const;
+export const SEARCH_MODELS = [...ENABLED_SEARCH_MODELS, "segment"] as const;
 
 export type EnabledSearchModel = typeof ENABLED_SEARCH_MODELS[number];
 
@@ -120,13 +117,19 @@ export interface SearchResult<
   can_write: boolean | null;
 }
 
+export type SearchContext =
+  | "search-bar"
+  | "search-app"
+  | "command-palette"
+  | "entity-picker";
+
 export type SearchRequest = {
   q?: string;
   archived?: boolean;
   table_db_id?: DatabaseId;
   models?: SearchModel[];
   filter_items_in_personal_collection?: "only" | "exclude";
-  context?: "search-bar" | "search-app";
+  context?: SearchContext;
   created_at?: string | null;
   created_by?: UserId[] | null;
   last_edited_at?: string | null;
@@ -139,6 +142,3 @@ export type SearchRequest = {
   collection?: CollectionId;
   namespace?: "snippets";
 } & PaginationRequest;
-
-/** Model retrieved through the search endpoint */
-export type ModelResult = SearchResult<number, "dataset">;

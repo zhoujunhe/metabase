@@ -26,6 +26,7 @@ import {
   selectFilterOperator,
   entityPickerModal,
   chartPathWithFillColor,
+  entityPickerModalTab,
 } from "e2e/support/helpers";
 
 const {
@@ -482,67 +483,63 @@ describeEE("formatting > sandboxes", () => {
          * There isn't an exact issue that this test reproduces, but it is basically a version of (metabase-enterprise#520)
          * that uses a query builder instead of SQL based questions.
          */
-        it(
-          "should be able to sandbox using query builder saved questions",
-          { tags: "@flaky" },
-          () => {
-            cy.log("Create 'Orders'-based question using QB");
-            cy.createQuestion({
-              name: "520_Orders",
-              query: {
-                "source-table": ORDERS_ID,
-                filter: [">", ["field", ORDERS.TOTAL, null], 10],
+        it("should be able to sandbox using query builder saved questions", () => {
+          cy.log("Create 'Orders'-based question using QB");
+          cy.createQuestion({
+            name: "520_Orders",
+            query: {
+              "source-table": ORDERS_ID,
+              filter: [">", ["field", ORDERS.TOTAL, null], 10],
+            },
+          }).then(({ body: { id: CARD_ID } }) => {
+            cy.sandboxTable({
+              table_id: ORDERS_ID,
+              card_id: CARD_ID,
+              attribute_remappings: {
+                attr_uid: ["dimension", ["field", ORDERS.USER_ID, null]],
               },
-            }).then(({ body: { id: CARD_ID } }) => {
-              cy.sandboxTable({
-                table_id: ORDERS_ID,
-                card_id: CARD_ID,
-                attribute_remappings: {
-                  attr_uid: ["dimension", ["field", ORDERS.USER_ID, null]],
-                },
-              });
             });
+          });
 
-            cy.log("Create 'Products'-based question using QB");
-            cy.createQuestion({
-              name: "520_Products",
-              query: {
-                "source-table": PRODUCTS_ID,
-                filter: [">", ["field", PRODUCTS.PRICE, null], 10],
+          cy.log("Create 'Products'-based question using QB");
+          cy.createQuestion({
+            name: "520_Products",
+            query: {
+              "source-table": PRODUCTS_ID,
+              filter: [">", ["field", PRODUCTS.PRICE, null], 10],
+            },
+          }).then(({ body: { id: CARD_ID } }) => {
+            cy.sandboxTable({
+              table_id: PRODUCTS_ID,
+              card_id: CARD_ID,
+              attribute_remappings: {
+                attr_cat: ["dimension", ["field", PRODUCTS.CATEGORY, null]],
               },
-            }).then(({ body: { id: CARD_ID } }) => {
-              cy.sandboxTable({
-                table_id: PRODUCTS_ID,
-                card_id: CARD_ID,
-                attribute_remappings: {
-                  attr_cat: ["dimension", ["field", PRODUCTS.CATEGORY, null]],
-                },
-              });
             });
+          });
 
-            cy.signOut();
-            cy.signInAsSandboxedUser();
+          cy.signOut();
+          cy.signInAsSandboxedUser();
 
-            openOrdersTable({
-              callback: xhr => expect(xhr.response.body.error).not.to.exist,
-            });
+          openOrdersTable({
+            callback: xhr => expect(xhr.response.body.error).not.to.exist,
+          });
 
-            cy.wait("@datasetQuery");
+          cy.wait("@datasetQuery");
 
-            cy.findByTestId("TableInteractive-root")
-              .findByText("Awesome Concrete Shoes")
-              .click();
-            popover()
-              .findByText(/View details/i)
-              .click();
+          cy.findByTestId("TableInteractive-root")
+            .findByText("Awesome Concrete Shoes")
+            .click();
+          popover()
+            .findByText(/View details/i)
+            .click();
 
-            cy.log(
-              "It should show object details instead of filtering by this Product ID",
-            );
-            cy.findByTestId("object-detail");
-            cy.findAllByText("McClure-Lockman");
-          },
-        );
+          cy.log(
+            "It should show object details instead of filtering by this Product ID",
+          );
+          cy.findByTestId("object-detail");
+          cy.findAllByText("McClure-Lockman");
+        });
 
         /**
          * This issue (metabase-enterprise#520) has a peculiar quirk:
@@ -826,10 +823,10 @@ describeEE("formatting > sandboxes", () => {
       createJoinedQuestion("14766_joined");
 
       startNewQuestion();
-      // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-      cy.findByText("Saved Questions").click();
-      // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-      cy.findByText("14766_joined").click();
+      entityPickerModal().within(() => {
+        entityPickerModalTab("Saved questions").click();
+        cy.findByText("14766_joined").click();
+      });
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Pick the metric you want to see").click();
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage

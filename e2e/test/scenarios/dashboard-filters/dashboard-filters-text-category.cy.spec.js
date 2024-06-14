@@ -4,6 +4,7 @@ import {
   popover,
   clearFilterWidget,
   filterWidget,
+  getDashboardCard,
   editDashboard,
   saveDashboard,
   setFilter,
@@ -46,6 +47,31 @@ describe("scenarios > dashboard > filters > text/category", () => {
     });
   });
 
+  it.skip("should drill to a question with multi-value 'contains' filter applied (metabase#42999)", () => {
+    setFilter("Text or Category", "Contains");
+    cy.findAllByRole("radio", { name: "Multiple values" }).should("be.checked");
+    cy.findByTestId("visualization-root").findByText("Select…").click();
+    popover().contains("Source").click();
+    saveDashboard();
+    waitDashboardCardQuery();
+
+    filterWidget().eq(0).click();
+    applyFilterByType("Contains", "oo,aa");
+    waitDashboardCardQuery();
+
+    getDashboardCard().findByText("test question").click();
+
+    cy.location("href").should("contain", "/question#");
+    cy.findByTestId("filter-pill").should(
+      "contain.text",
+      "User → Source contains 2 selections",
+    );
+    cy.findByTestId("app-bar").should(
+      "contain.text",
+      "Started from test question",
+    );
+  });
+
   it("should work when set through the filter widget", () => {
     DASHBOARD_TEXT_FILTERS.forEach(({ operator, single }) => {
       cy.log(`Make sure we can connect ${operator} filter`);
@@ -76,7 +102,7 @@ describe("scenarios > dashboard > filters > text/category", () => {
         waitDashboardCardQuery();
         filterWidget()
           .eq(index)
-          .contains(single ? value : /\d selections/);
+          .contains(single ? value.replace(/"/g, "") : /\d selections/);
 
         cy.log(`Make sure ${operator} filter returns correct result`);
         cy.findByTestId("dashcard")

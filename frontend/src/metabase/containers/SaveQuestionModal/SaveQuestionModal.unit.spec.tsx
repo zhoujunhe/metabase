@@ -8,6 +8,7 @@ import {
   setupCollectionByIdEndpoint,
   setupCollectionsEndpoints,
   setupCollectionItemsEndpoint,
+  setupRecentViewsAndSelectionsEndpoints,
 } from "__support__/server-mocks";
 import { mockSettings } from "__support__/settings";
 import {
@@ -87,6 +88,8 @@ const setup = async (
       collectionItems: [],
     });
   }
+
+  setupRecentViewsAndSelectionsEndpoints([]);
 
   const settings = mockSettings({ "enable-query-caching": isCachingEnabled });
 

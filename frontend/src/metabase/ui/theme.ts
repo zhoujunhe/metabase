@@ -1,6 +1,8 @@
 import type { MantineThemeOverride } from "@mantine/core";
 import { rem } from "@mantine/core";
 
+import { DEFAULT_METABASE_COMPONENT_THEME } from "embedding-sdk/lib/theme";
+
 import {
   getAccordionOverrides,
   getActionIconOverrides,
@@ -23,10 +25,12 @@ import {
   getMultiSelectOverrides,
   getRadioOverrides,
   getPaperOverrides,
+  getProgressOverrides,
   getPopoverOverrides,
+  getScrollAreaOverrides,
   getSegmentedControlOverrides,
   getSelectOverrides,
-  getScrollAreaOverrides,
+  getSkeletonOverrides,
   getSwitchOverrides,
   getTabsOverrides,
   getTextareaOverrides,
@@ -128,6 +132,8 @@ export const getThemeOverrides = (): MantineThemeOverride => ({
     ...getRadioOverrides(),
     ...getPaperOverrides(),
     ...getPopoverOverrides(),
+    ...getProgressOverrides(),
+    ...getSkeletonOverrides(),
     ...getScrollAreaOverrides(),
     ...getSegmentedControlOverrides(),
     ...getSelectOverrides(),
@@ -142,4 +148,5 @@ export const getThemeOverrides = (): MantineThemeOverride => ({
     ...getHoverCardOverrides(),
     ...getListOverrides(),
   },
+  other: DEFAULT_METABASE_COMPONENT_THEME,
 });

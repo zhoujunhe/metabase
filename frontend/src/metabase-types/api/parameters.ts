@@ -1,5 +1,5 @@
 import type { CardId } from "./card";
-import type { RowValue } from "./dataset";
+import type { RowValue, TemporalUnit } from "./dataset";
 import type { ConcreteFieldReference, ExpressionReference } from "./query";
 
 export type StringParameterType =
@@ -25,10 +25,13 @@ export type DateParameterType =
   | "date/quarter-year"
   | "date/all-options";
 
+export type TemporalUnitParameterType = "temporal-unit";
+
 export type ParameterType =
   | StringParameterType
   | NumberParameterType
-  | DateParameterType;
+  | DateParameterType
+  | TemporalUnitParameterType;
 
 export type ParameterId = string;
 
@@ -48,6 +51,7 @@ export interface Parameter extends ParameterValuesConfig {
   isMultiSelect?: boolean;
   value?: any;
   target?: ParameterTarget;
+  temporal_units?: TemporalUnit[];
 }
 
 export interface ParameterValuesConfig {
@@ -88,6 +92,11 @@ export type StructuredParameterDimensionTarget = [
 
 export type ParameterValueOrArray = string | number | Array<any>;
 export type ParameterValue = [RowValue];
+
+export type ParameterValuesMap = Record<
+  ParameterId,
+  ParameterValueOrArray | null
+>;
 
 export interface ParameterValues {
   values: ParameterValue[];

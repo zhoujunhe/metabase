@@ -277,11 +277,6 @@
   {:in  encrypted-json-in
    :out cached-encrypted-json-out})
 
-(def transform-encrypted-text
-  "Transform for encrypted text."
-  {:in  encryption/maybe-encrypt
-   :out encryption/maybe-decrypt})
-
 (defn normalize-visualization-settings
   "The frontend uses JSON-serialized versions of MBQL clauses as keys in `:column_settings`. This normalizes them
    to modern MBQL clauses so things work correctly."
@@ -299,8 +294,14 @@
           (normalize-mbql-clauses [form]
             (walk/postwalk
              (fn [form]
-               (cond-> form
-                 (mbql-field-clause? form) mbql.normalize/normalize))
+               (try
+                 (cond-> form
+                   (mbql-field-clause? form) mbql.normalize/normalize)
+                 (catch Exception e
+                   (log/warnf "Unable to normalize visualization-settings part %s: %s"
+                              (u/pprint-to-str 'red form)
+                              (ex-message e))
+                   form)))
              form))]
     (cond-> (walk/keywordize-keys (dissoc viz-settings "column_settings" "graph.metrics"))
       (get viz-settings "column_settings") (assoc :column_settings (normalize-column-settings (get viz-settings "column_settings")))
@@ -491,14 +492,14 @@
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                             New Permissions Stuff                                              |
 ;;; +----------------------------------------------------------------------------------------------------------------+
-
 (def ^{:arglists '([x & _args])} dispatch-on-model
   "Helper dispatch function for multimethods. Dispatches on the first arg, using [[models.dispatch/model]]."
-  t2.u/dispatch-on-first-arg)
+  ;; make sure model namespace gets loaded e.g. `:model/Database` should load `metabase.model.database` if needed.
+  (comp t2/resolve-model t2.u/dispatch-on-first-arg))
 
 (defmulti perms-objects-set
-  "Return a set of permissions object paths that a user must have access to in order to access this object. This should be
-  something like
+  "Return a set of permissions object paths that a user must have access to in order to access this object. This should
+  be something like
 
     #{\"/db/1/schema/public/table/20/\"}
 
@@ -720,7 +721,8 @@
   (when (seq instances)
     (let [key->hydrated-items (instance-key->hydrated-data-fn)]
       (for [item instances]
-        (assoc item hydration-key (get key->hydrated-items (get item instance-key) default))))))
+        (when item
+          (assoc item hydration-key (get key->hydrated-items (get item instance-key) default)))))))
 
 (defmulti exclude-internal-content-hsql
   "Returns a HoneySQL expression to exclude instances of the model that were created automatically as part of internally

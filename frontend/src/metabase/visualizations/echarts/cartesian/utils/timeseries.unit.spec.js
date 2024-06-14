@@ -75,8 +75,6 @@ describe("visualization.lib.timeseries", () => {
         [["2015-01-01T00:00:00.000Z"], ["2015-04-01T00:00:00.000Z"]],
       ],
       ["year", 1, [["2015-01-01T00:00:00.000Z"], ["2016-01-01T00:00:00.000Z"]]],
-      // FIXME: investigate and uncomment
-      // ["year", 5, [["2015-01-01T00:00:00.000Z"], ["2020-01-01T00:00:00.000Z"]]],
       [
         "year",
         10,
@@ -184,7 +182,7 @@ describe("visualization.lib.timeseries", () => {
         {
           xDomain: [new Date("2020-01-01"), new Date("2021-01-01")],
           xInterval: { interval: "month", count: 1 },
-          chartWidth: 800,
+          chartWidth: 700,
           tickFormat: fakeTickFormat,
         },
         { expectedUnit: "month", expectedCount: 3 },

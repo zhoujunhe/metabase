@@ -1,13 +1,12 @@
-/* eslint-disable react/prop-types */
-import cx from "classnames";
 import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { usePrevious } from "react-use";
 import { t } from "ttag";
 
 import ErrorBoundary from "metabase/ErrorBoundary";
-import CollectionBulkActions from "metabase/collections/components/CollectionBulkActions";
-import CollectionEmptyState from "metabase/collections/components/CollectionEmptyState";
+import { deletePermanently } from "metabase/archive/actions";
+import { ArchivedEntityBanner } from "metabase/archive/components/ArchivedEntityBanner";
+import { CollectionBulkActions } from "metabase/collections/components/CollectionBulkActions";
 import PinnedItemOverview from "metabase/collections/components/PinnedItemOverview";
 import Header from "metabase/collections/containers/CollectionHeader";
 import type {
@@ -16,16 +15,15 @@ import type {
   OnFileUpload,
   UploadFile,
 } from "metabase/collections/types";
-import { isPersonalCollectionChild } from "metabase/collections/utils";
-import { ItemsTable } from "metabase/components/ItemsTable";
-import type { SortingOptions } from "metabase/components/ItemsTable/BaseItemsTable";
-import { SortDirection } from "metabase/components/ItemsTable/Columns";
-import PaginationControls from "metabase/components/PaginationControls";
+import {
+  isRootTrashCollection,
+  isPersonalCollectionChild,
+  isTrashedCollection,
+} from "metabase/collections/utils";
 import ItemsDragLayer from "metabase/containers/dnd/ItemsDragLayer";
-import CS from "metabase/css/core/index.css";
+import Collections from "metabase/entities/collections";
 import Search from "metabase/entities/search";
 import { useListSelect } from "metabase/hooks/use-list-select";
-import { usePagination } from "metabase/hooks/use-pagination";
 import { useToggle } from "metabase/hooks/use-toggle";
 import { useDispatch } from "metabase/lib/redux";
 import { addUndo } from "metabase/redux/undo";
@@ -41,24 +39,9 @@ import type { CollectionOrTableIdProps } from "../ModelUploadModal";
 import { ModelUploadModal } from "../ModelUploadModal";
 import UploadOverlay from "../UploadOverlay";
 
-import {
-  CollectionEmptyContent,
-  CollectionMain,
-  CollectionRoot,
-  CollectionTable,
-} from "./CollectionContent.styled";
+import { CollectionMain, CollectionRoot } from "./CollectionContent.styled";
+import { CollectionItemsTable } from "./CollectionItemsTable";
 import { getComposedDragProps } from "./utils";
-
-const PAGE_SIZE = 25;
-
-const ALL_MODELS = [
-  "dashboard",
-  "dataset",
-  "card",
-  "snippet",
-  "pulse",
-  "collection",
-];
 
 const itemKeyFn = (item: CollectionItem) => `${item.id}:${item.model}`;
 
@@ -73,7 +56,7 @@ export const CollectionContentView = ({
   isAdmin,
   uploadFile,
   uploadsEnabled,
-  canUploadToDb,
+  canCreateUploadInDb,
 }: {
   databases?: Database[];
   bookmarks?: Bookmark[];
@@ -85,18 +68,13 @@ export const CollectionContentView = ({
   isAdmin: boolean;
   uploadFile: UploadFile;
   uploadsEnabled: boolean;
-  canUploadToDb: boolean;
+  canCreateUploadInDb: boolean;
 }) => {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [selectedItems, setSelectedItems] = useState<CollectionItem[] | null>(
     null,
   );
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
-  const [unpinnedItemsSorting, setUnpinnedItemsSorting] =
-    useState<SortingOptions>({
-      sort_column: "name",
-      sort_direction: SortDirection.Asc,
-    });
 
   const [
     isModelUploadModalOpen,
@@ -110,21 +88,19 @@ export const CollectionContentView = ({
   };
 
   const handleUploadFile = useCallback<OnFileUpload>(
-    (props: CollectionOrTableIdProps) => {
-      const { collectionId, tableId } = props;
+    (uploadFileArgs: CollectionOrTableIdProps) => {
+      const { collectionId, tableId } = uploadFileArgs;
       if (uploadedFile && (collectionId || tableId)) {
         closeModelUploadModal();
         uploadFile({
           file: uploadedFile,
-          ...props,
+          ...uploadFileArgs,
         });
       }
     },
     [uploadFile, uploadedFile, closeModelUploadModal],
   );
 
-  const { handleNextPage, handlePreviousPage, setPage, page, resetPage } =
-    usePagination();
   const { clear, getIsSelected, selected, selectOnlyTheseItems, toggleItem } =
     useListSelect(itemKeyFn);
   const previousCollection = usePrevious(collection);
@@ -132,9 +108,8 @@ export const CollectionContentView = ({
   useEffect(() => {
     if (previousCollection && previousCollection.id !== collection.id) {
       clear();
-      resetPage();
     }
-  }, [previousCollection, collection, clear, resetPage]);
+  }, [previousCollection, collection, clear]);
 
   useEffect(() => {
     const shouldBeBookmarked = !!bookmarks?.some(
@@ -168,48 +143,6 @@ export const CollectionContentView = ({
     accept: { "text/csv": [".csv"], "text/tab-separated-values": [".tsv"] },
   });
 
-  const handleBulkArchive = useCallback(async () => {
-    try {
-      await Promise.all(selected.map(item => item.setArchived?.(true)));
-    } finally {
-      clear();
-    }
-  }, [selected, clear]);
-
-  const handleBulkMoveStart = () => {
-    setSelectedItems(selected);
-    setSelectedAction("move");
-  };
-
-  const handleBulkMove = useCallback(
-    async (collection: Pick<Collection, "id"> & Partial<Collection>) => {
-      try {
-        if (selectedItems) {
-          await Promise.all(
-            selectedItems.map(item => item.setCollection?.(collection)),
-          );
-        }
-        handleCloseModal();
-      } finally {
-        clear();
-      }
-    },
-    [selectedItems, clear],
-  );
-
-  const handleUnpinnedItemsSortingChange = useCallback(
-    (sortingOpts: SortingOptions) => {
-      setUnpinnedItemsSorting(sortingOpts);
-      setPage(0);
-    },
-    [setPage],
-  );
-
-  const handleCloseModal = () => {
-    setSelectedItems(null);
-    setSelectedAction(null);
-  };
-
   const handleMove = (selectedItems: CollectionItem[]) => {
     setSelectedItems(selectedItems);
     setSelectedAction("move");
@@ -228,18 +161,14 @@ export const CollectionContentView = ({
     deleteBookmark(collectionId.toString(), "collection");
   };
 
-  const canUpload = uploadsEnabled && canUploadToDb && collection.can_write;
+  const canCreateUpload =
+    canCreateUploadInDb &&
+    collection.can_write &&
+    !isTrashedCollection(collection);
 
-  const dropzoneProps = canUpload ? getComposedDragProps(getRootProps()) : {};
-
-  const unpinnedQuery = {
-    collection: collectionId,
-    models: ALL_MODELS,
-    limit: PAGE_SIZE,
-    offset: PAGE_SIZE * page,
-    pinned_state: "is_not_pinned",
-    ...unpinnedItemsSorting,
-  };
+  const dropzoneProps = canCreateUpload
+    ? getComposedDragProps(getRootProps())
+    : {};
 
   const pinnedQuery = {
     collection: collectionId,
@@ -256,17 +185,20 @@ export const CollectionContentView = ({
       wrapped
     >
       {({
-        list: pinnedItems = [],
+        list,
         loading: loadingPinnedItems,
       }: {
         list: CollectionItem[];
         loading: boolean;
       }) => {
+        const pinnedItems =
+          list && !isRootTrashCollection(collection) ? list : [];
         const hasPinnedItems = pinnedItems.length > 0;
+        const actionId = { id: collectionId };
 
         return (
           <CollectionRoot {...dropzoneProps}>
-            {canUpload && (
+            {canCreateUpload && (
               <>
                 <ModelUploadModal
                   collectionId={collectionId}
@@ -280,6 +212,29 @@ export const CollectionContentView = ({
                 />
               </>
             )}
+
+            {collection.archived && (
+              <ArchivedEntityBanner
+                name={collection.name}
+                entityType="collection"
+                canWrite={collection.can_write}
+                canRestore={collection.can_restore}
+                canDelete={collection.can_delete}
+                onUnarchive={() => {
+                  const input = { ...actionId, name: collection.name };
+                  dispatch(Collections.actions.setArchived(input, false));
+                }}
+                onMove={({ id }) =>
+                  dispatch(Collections.actions.setCollection(actionId, { id }))
+                }
+                onDeletePermanently={() =>
+                  dispatch(
+                    deletePermanently(Collections.actions.delete(actionId)),
+                  )
+                }
+              />
+            )}
+
             <CollectionMain>
               <ErrorBoundary>
                 <Header
@@ -292,7 +247,7 @@ export const CollectionContentView = ({
                   )}
                   onCreateBookmark={handleCreateBookmark}
                   onDeleteBookmark={handleDeleteBookmark}
-                  canUpload={canUpload}
+                  canUpload={canCreateUpload}
                   uploadsEnabled={uploadsEnabled}
                   saveFile={saveFile}
                 />
@@ -310,98 +265,32 @@ export const CollectionContentView = ({
                 />
               </ErrorBoundary>
               <ErrorBoundary>
-                <Search.ListLoader
-                  query={unpinnedQuery}
-                  loadingAndErrorWrapper={false}
-                  keepListWhileLoading
-                  wrapped
-                >
-                  {({
-                    list: unpinnedItems = [],
-                    metadata = {},
-                    loading: loadingUnpinnedItems,
-                  }: {
-                    list: CollectionItem[];
-                    metadata: { total?: number };
-                    loading: boolean;
-                  }) => {
-                    const hasPagination: boolean =
-                      !!metadata.total && metadata.total > PAGE_SIZE;
-
-                    const unselected = unpinnedItems.filter(
-                      item => !getIsSelected(item),
-                    );
-                    const hasUnselected = unselected.length > 0;
-
-                    const handleSelectAll = () => {
-                      selectOnlyTheseItems(unpinnedItems);
-                    };
-
-                    const loading = loadingPinnedItems || loadingUnpinnedItems;
-                    const isEmpty =
-                      !loading && !hasPinnedItems && unpinnedItems.length === 0;
-
-                    if (isEmpty && !loadingUnpinnedItems) {
-                      return (
-                        <CollectionEmptyContent>
-                          <CollectionEmptyState collection={collection} />
-                        </CollectionEmptyContent>
-                      );
-                    }
-
-                    return (
-                      <>
-                        <CollectionTable data-testid="collection-table">
-                          <ItemsTable
-                            databases={databases}
-                            bookmarks={bookmarks}
-                            createBookmark={createBookmark}
-                            deleteBookmark={deleteBookmark}
-                            items={unpinnedItems}
-                            collection={collection}
-                            sortingOptions={unpinnedItemsSorting}
-                            onSortingOptionsChange={
-                              handleUnpinnedItemsSortingChange
-                            }
-                            selectedItems={selected}
-                            hasUnselected={hasUnselected}
-                            getIsSelected={getIsSelected}
-                            onToggleSelected={toggleItem}
-                            onDrop={clear}
-                            onMove={handleMove}
-                            onCopy={handleCopy}
-                            onSelectAll={handleSelectAll}
-                            onSelectNone={clear}
-                          />
-                          <div className={cx(CS.flex, CS.justifyEnd, CS.my3)}>
-                            {hasPagination && (
-                              <PaginationControls
-                                showTotal
-                                page={page}
-                                pageSize={PAGE_SIZE}
-                                total={metadata.total}
-                                itemsLength={unpinnedItems.length}
-                                onNextPage={handleNextPage}
-                                onPreviousPage={handlePreviousPage}
-                              />
-                            )}
-                          </div>
-                        </CollectionTable>
-                        <CollectionBulkActions
-                          selected={selected}
-                          collection={collection}
-                          onArchive={handleBulkArchive}
-                          onMoveStart={handleBulkMoveStart}
-                          onMove={handleBulkMove}
-                          onCloseModal={handleCloseModal}
-                          onCopy={clear}
-                          selectedItems={selectedItems}
-                          selectedAction={selectedAction}
-                        />
-                      </>
-                    );
-                  }}
-                </Search.ListLoader>
+                <CollectionItemsTable
+                  collectionId={collectionId}
+                  collection={collection}
+                  getIsSelected={getIsSelected}
+                  selectOnlyTheseItems={selectOnlyTheseItems}
+                  databases={databases}
+                  bookmarks={bookmarks}
+                  createBookmark={createBookmark}
+                  deleteBookmark={deleteBookmark}
+                  loadingPinnedItems={loadingPinnedItems}
+                  hasPinnedItems={hasPinnedItems}
+                  selected={selected}
+                  toggleItem={toggleItem}
+                  clear={clear}
+                  handleMove={handleMove}
+                  handleCopy={handleCopy}
+                />
+                <CollectionBulkActions
+                  collection={collection}
+                  selected={selected}
+                  clearSelected={clear}
+                  selectedItems={selectedItems}
+                  setSelectedItems={setSelectedItems}
+                  selectedAction={selectedAction}
+                  setSelectedAction={setSelectedAction}
+                />
               </ErrorBoundary>
             </CollectionMain>
             <ItemsDragLayer

@@ -62,19 +62,33 @@
                                     "question"  :model/Card)
                                   :id [:in ids]))))
 
+(defn- check-cache-access [model id]
+  (if (or (nil? id)
+          ;; sometimes its a sequence and we're going to check for settings access anyway
+          (not (number? id))
+          (zero? id))
+    ;; if you're not accessing a concrete entity, you should be able to access settings
+    (validation/check-has-application-permission :setting)
+    (api/write-check (case model
+                       "database" :model/Database
+                       "dashboard" :model/Dashboard
+                       "question" :model/Card)
+        id)))
+
 (api/defendpoint GET "/"
   "Return cache configuration."
-  [:as {{:strs [model collection]
+  [:as {{:strs [model collection id]
          :or   {model "root"}}
         :query-params}]
   {model      (ms/QueryVectorOf cache-config/CachingModel)
    ;; note that `nil` in `collection` means all configurations not scoped to any particular collection
-   collection [:maybe ms/PositiveInt]}
-  (validation/check-has-application-permission :setting)
+   collection [:maybe ms/PositiveInt]
+   id         [:maybe ms/PositiveInt]}
   (when (and (not (premium-features/enable-cache-granular-controls?))
              (not= model ["root"]))
     (throw (premium-features/ee-feature-error (tru "Granular Caching"))))
-  {:data (cache-config/get-list model collection)})
+  (check-cache-access (first model) id)
+  {:data (cache-config/get-list model collection id)})
 
 (api/defendpoint PUT "/"
   "Store cache configuration."
@@ -84,6 +98,7 @@
    strategy (CacheStrategyAPI)}
   (validation/check-has-application-permission :setting)
   (assert-valid-models model [model_id] (premium-features/enable-cache-granular-controls?))
+  (check-cache-access model model_id)
   {:id (cache-config/store! api/*current-user-id* config)})
 
 (api/defendpoint DELETE "/"
@@ -93,6 +108,7 @@
    model_id (ms/QueryVectorOf ms/IntGreaterThanOrEqualToZero)}
   (validation/check-has-application-permission :setting)
   (assert-valid-models model model_id (premium-features/enable-cache-granular-controls?))
+  (check-cache-access model model_id)
   (cache-config/delete! api/*current-user-id* model model_id)
   nil)
 
@@ -121,9 +137,9 @@
     {:status (if (= cnt -1) 404 200)
      :body   {:count   cnt
               :message (case [(= include :overrides) (if (pos? cnt) 1 cnt)]
-                         [true -1]  (tru "Could not find a question for the criteria you've specified.")
-                         [true 0]   (tru "No cached results to invalidate.")
-                         [true 1]   (trun "Invalidated a cached result." "Invalidated {0} cached results." cnt)
+                         [true -1]  (tru "Could not find any questions for the criteria you specified.")
+                         [true 0]   (tru "No cached results to clear.")
+                         [true 1]   (trun "Cleared a cached result." "Cleared {0} cached results." cnt)
                          [false -1] (tru "Nothing to invalidate.")
                          [false 0]  (tru "No cache configuration to invalidate.")
                          [false 1]  (trun "Invalidated cache configuration." "Invalidated {0} cache configurations." cnt))}}))

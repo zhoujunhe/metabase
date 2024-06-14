@@ -1,3 +1,5 @@
+import { t } from "ttag";
+
 import {
   doesOperatorExist,
   getOperatorByTypeAndName,
@@ -86,10 +88,22 @@ export function buildTypedOperatorOptions(
   });
 }
 
+export function buildTemporalUnitOption(): ParameterMappingOptions {
+  return {
+    name: t`Unit of Time`,
+    type: "temporal-unit",
+    sectionId: "temporal-unit",
+  };
+}
+
 export function getNumberParameterArity(parameter: Parameter) {
   switch (parameter.type) {
     case "number/=":
     case "number/!=":
+      if (!getIsMultiSelect(parameter)) {
+        return 1;
+      }
+
       return "n";
     case "number/between":
       return 2;

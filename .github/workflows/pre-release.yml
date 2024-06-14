@@ -110,7 +110,7 @@ jobs:
   run-sanity-check:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    needs: [release-artifact, check-uberjar-health]
+    needs: [release-artifact]
     strategy:
       matrix:
         edition: [oss, ee]
@@ -119,26 +119,24 @@ jobs:
       DISPLAY: ""
       CYPRESS_ALL_FEATURES_TOKEN: ${{ secrets.ENTERPRISE_TOKEN }}
       CYPRESS_NO_FEATURES_TOKEN: ${{ secrets.E2E_STARTER_TOKEN }}
+      CYPRESS_REPLAYIO_ENABLED: 1
       # disabled because of out of memory issues
       # probably related to https://github.com/cypress-io/cypress/issues/27415
       CYPRESS_NO_COMMAND_LOG: 1
       MB_SNOWPLOW_AVAILABLE: true
       MB_SNOWPLOW_URL: "http://localhost:9090" # Snowplow micro
       TERM: xterm
-    services:
-      maildev:
-        image: maildev/maildev:2.0.5
-        ports:
-          - "1080:1080"
-          - "1025:1025"
-        credentials:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.release-artifact.outputs.commit }}
+      - name: Prepare Docker containers
+        uses: ./.github/actions/e2e-prepare-containers
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          maildev: true
       - name: Prepare front-end environment
         uses: ./.github/actions/prepare-frontend
       - name: Prepare JDK 11
@@ -161,7 +159,10 @@ jobs:
       - name: Run a few important Cypress tests as sanity check
         run: |
           mkdir -p ./target/uberjar && cp metabase.jar ./target/uberjar/metabase.jar
-          yarn test-cypress-run --folder onboarding
+          yarn test-cypress-run \
+            --env grepTags="@smoke",grepOmitFiltered=true \
+            --spec './e2e/test/scenarios/**/*.cy.spec.(js|ts)' \
+            --browser 'replay-chromium'
 
       - name: Upload Cypress Artifacts upon failure
         uses: actions/upload-artifact@v4
@@ -174,7 +175,7 @@ jobs:
           if-no-files-found: ignore
 
   containerize:
-    needs: [release-artifact, run-sanity-check]
+    needs: [release-artifact]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     strategy:

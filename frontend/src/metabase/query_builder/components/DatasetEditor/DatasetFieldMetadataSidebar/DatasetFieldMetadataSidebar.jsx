@@ -43,7 +43,7 @@ const propTypes = {
   handleFirstFieldFocus: PropTypes.func.isRequired,
   onFieldMetadataChange: PropTypes.func.isRequired,
   onMappedDatabaseColumnChange: PropTypes.func.isRequired,
-  modelIndexes: PropTypes.array.isRequired,
+  modelIndexes: PropTypes.array,
 };
 
 function getVisibilityTypeName(visibilityType) {
@@ -251,6 +251,10 @@ function DatasetFieldMetadataSidebar({
                         top: "0.5rem",
                         fontSize: "0.625rem",
                         color: color("text-light"),
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        maxWidth: "90%",
                       },
                     },
                     input: {
