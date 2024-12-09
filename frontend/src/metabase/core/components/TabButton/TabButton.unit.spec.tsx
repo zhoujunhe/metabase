@@ -1,19 +1,19 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { getIcon } from "__support__/ui";
+import { getIcon, renderWithProviders } from "__support__/ui";
 
 import { TabRow } from "../TabRow";
 
 import type { RenameableTabButtonProps } from "./TabButton";
-import { TabButton, INPUT_WRAPPER_TEST_ID } from "./TabButton";
+import { INPUT_WRAPPER_TEST_ID, TabButton } from "./TabButton";
 
 function setup(props?: Partial<RenameableTabButtonProps>) {
   const action = jest.fn();
   const onRename = jest.fn();
   const value = "some_value";
 
-  render(
+  renderWithProviders(
     <TabRow>
       <TabButton.Renameable
         label="Tab 1"
@@ -66,7 +66,7 @@ describe("TabButton", () => {
     (await renameOption()).click();
 
     const newLabel = "A new label";
-    const inputEl = screen.getByRole("textbox");
+    const inputEl = await screen.findByRole("textbox");
     await userEvent.clear(inputEl);
     await userEvent.type(inputEl, `${newLabel}{enter}`);
 
@@ -97,7 +97,7 @@ describe("TabButton", () => {
     const newLabel = "a".repeat(100);
     const expectedLabel = newLabel.slice(0, 75);
 
-    const inputEl = screen.getByRole("textbox");
+    const inputEl = await screen.findByRole("textbox");
     await userEvent.clear(inputEl);
     await userEvent.type(inputEl, `${newLabel}{enter}`);
 

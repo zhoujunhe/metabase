@@ -1,7 +1,8 @@
 import { t } from "ttag";
 
 import { formatNullable } from "metabase/lib/formatting/nullable";
-import { sumMetric } from "metabase/visualizations/echarts/cartesian/model/dataset";
+import { getColumnScaling } from "metabase/visualizations/echarts/cartesian/model/util";
+import { sumMetric } from "metabase/visualizations/lib/dataset";
 import type {
   CartesianChartColumns,
   ColumnDescriptor,
@@ -16,17 +17,27 @@ import type {
 } from "metabase/visualizations/shared/types/data";
 import type { ColumnFormatter } from "metabase/visualizations/shared/types/format";
 import type {
+  ComputedVisualizationSettings,
+  RemappingHydratedDatasetColumn,
+} from "metabase/visualizations/types";
+import type {
+  DatasetData,
   RowValue,
   RowValues,
   SeriesOrderSetting,
-  DatasetData,
 } from "metabase-types/api";
 
 import { getChartMetrics } from "./series";
 
-const getMetricValue = (value: RowValue): MetricValue => {
+const getMetricValue = (
+  value: RowValue,
+  metric: RemappingHydratedDatasetColumn,
+  settings: ComputedVisualizationSettings,
+): MetricValue => {
+  const scale = getColumnScaling(metric, settings);
+
   if (typeof value === "number") {
-    return value;
+    return scale * value;
   }
 
   return null;
@@ -43,6 +54,7 @@ const sumMetrics = (left: MetricDatum, right: MetricDatum): MetricDatum => {
 export const getGroupedDataset = (
   rows: RowValues[],
   chartColumns: CartesianChartColumns,
+  settings: ComputedVisualizationSettings,
   columnFormatter: ColumnFormatter,
 ): GroupedDataset => {
   const { dimension } = chartColumns;
@@ -61,7 +73,11 @@ export const getGroupedDataset = (
 
     const rowMetrics = getChartMetrics(chartColumns).reduce<MetricDatum>(
       (datum, metric) => {
-        datum[metric.column.name] = getMetricValue(row[metric.index]);
+        datum[metric.column.name] = getMetricValue(
+          row[metric.index],
+          metric.column,
+          settings,
+        );
         return datum;
       },
       {},

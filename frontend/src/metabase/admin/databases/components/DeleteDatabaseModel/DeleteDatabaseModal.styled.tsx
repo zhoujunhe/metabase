@@ -1,7 +1,5 @@
 import styled from "@emotion/styled";
 
-import { color } from "metabase/lib/colors";
-
 export const DeleteDatabaseModalRoot = styled.form`
   display: flex;
   flex-direction: column;
@@ -26,7 +24,9 @@ export const DeleteDatabaseModalSection = styled.div<DeleteDatabaseModalSectionP
   height: ${props => (props.isHidden ? 0 : "unset")};
   opacity: ${props => (props.isHidden ? 0 : 1)};
   padding: 0.125rem;
-  transition: all 350ms, opacity 200ms;
+  transition:
+    all 350ms,
+    opacity 200ms;
   overflow: hidden;
 
   & + & {
@@ -35,7 +35,7 @@ export const DeleteDatabaseModalSection = styled.div<DeleteDatabaseModalSectionP
 `;
 
 export const ErrorMessage = styled.div`
-  color: ${color("error")};
+  color: var(--mb-color-error);
   padding: 0 1rem;
 `;
 

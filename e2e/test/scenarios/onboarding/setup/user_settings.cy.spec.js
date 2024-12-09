@@ -1,15 +1,16 @@
+import { H } from "e2e/support";
 import { USERS } from "e2e/support/cypress_data";
-import { restore, popover, getFullName } from "e2e/support/helpers";
+import { NORMAL_USER_ID } from "e2e/support/cypress_sample_instance_data";
 
 const { normal } = USERS;
 
 const { first_name, last_name, email, password } = normal;
 
 describe("user > settings", () => {
-  const fullName = getFullName(normal);
+  const fullName = H.getFullName(normal);
 
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsNormalUser();
   });
 
@@ -122,7 +123,7 @@ describe("user > settings", () => {
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Use site default").click();
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    popover().within(() => cy.findByText("Indonesian").click());
+    H.popover().within(() => cy.findByText("Indonesian").click());
 
     cy.button("Update").click();
     cy.wait("@updateUserSettings");
@@ -150,6 +151,25 @@ describe("user > settings", () => {
         },
       );
     });
+  });
+
+  it("Should show correct translations when a user logs in with a locale that is different from the site locale", () => {
+    cy.intercept("GET", "/api/user/current").as("getUser");
+    cy.request("PUT", `/api/user/${NORMAL_USER_ID}`, { locale: "fr" });
+    cy.signOut();
+    cy.visit("/question/notebook");
+    cy.wait("@getUser");
+    cy.findByLabelText("Email address").type(email);
+    cy.findByLabelText("Password").type(password);
+    cy.button("Sign in").click();
+
+    // should be redirected to new question page
+    cy.wait("@getUser");
+    H.entityPickerModal().findByText("Orders Model").click();
+    cy.findByTestId("step-summarize-0-0")
+      .findByText("Summarize")
+      .should("not.exist");
+    cy.findByTestId("step-summarize-0-0").findByText("Résumer").should("exist");
   });
 
   describe("when user is authenticated via ldap", () => {

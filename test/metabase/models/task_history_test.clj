@@ -71,3 +71,77 @@
         (task-history/cleanup-task-history! 100)
         (is (= #{task-1 task-2}
                (set (map :task (t2/select TaskHistory)))))))))
+
+(deftest with-task-history-test
+  (mt/with-model-cleanup [:model/TaskHistory]
+    (testing "success path:"
+      (let [task-name (mt/random-name)]
+        (testing "task history is created before executing the body"
+          (task-history/with-task-history {:task task-name}
+            (is (=? {:status     :started
+                     :started_at (mt/malli=? some?)
+                     :ended_at   (mt/malli=? nil?)
+                     :duration   (mt/malli=? nil?)}
+                    (t2/select-one :model/TaskHistory :task task-name)))))
+        (testing "when the task is done, updates status and duration correctly"
+          (is (=? {:status     :success
+                   :started_at (mt/malli=? some?)
+                   :ended_at   (mt/malli=? some?)
+                   :duration   (mt/malli=? nat-int?)}
+                  (t2/select-one :model/TaskHistory :task task-name))))))
+    (testing "failed path:"
+      (let [task-name (mt/random-name)]
+        (try
+          (task-history/with-task-history {:task task-name}
+            (throw (Exception. "test")))
+          (catch Exception _e
+            (testing "if a task throws an exception, updates its status and duration correctly"
+              (is (=? {:status     :failed
+                       :started_at (mt/malli=? some?)
+                       :ended_at   (mt/malli=? some?)
+                       :duration   (mt/malli=? nat-int?)}
+                      (t2/select-one :model/TaskHistory :task task-name))))))))))
+
+(deftest with-task-history-using-callback-test
+  (mt/with-model-cleanup [:model/TaskHistory]
+    (testing "on-success-info"
+      (let [task-name (mt/random-name)]
+        (task-history/with-task-history {:task            task-name
+                                         :task_details    {:id 1}
+                                         :on-success-info (fn [info result]
+                                                            (testing "info should have task_details and updated status"
+                                                              (is (= {:task_details {:id 1}
+                                                                      :status       :success}
+                                                                     info)))
+                                                            (update info :task_details assoc :result result))}
+          42)
+        (is (= {:status       :success
+                :task_details {:id     1
+                               :result 42}}
+               (t2/select-one [:model/TaskHistory :status :task_details] :task task-name)))))
+
+    (testing "on-fail-info"
+      (let [task-name (mt/random-name)]
+        (u/ignore-exceptions
+          (task-history/with-task-history {:task         task-name
+                                           :task_details {:id 1}
+                                           :on-fail-info (fn [info e]
+                                                           (testing "info should have task_details and updated status"
+                                                             (is (=? {:status       :failed
+                                                                      :task_details {:status        :failed
+                                                                                     :message       "test"
+                                                                                     :stacktrace    (mt/malli=? :any)
+                                                                                     :ex-data       {:reason :test}
+                                                                                     :original-info {:id 1}}}
+                                                                     info)))
+                                                           (update info :task_details assoc :reason (ex-message e)))}
+            (throw (ex-info "test" {:reason :test}))))
+        (is (=? {:status       :failed
+                 :task_details {:status        "failed"
+                                :exception     "class clojure.lang.ExceptionInfo"
+                                :message       "test"
+                                :stacktrace    (mt/malli=? :any)
+                                :ex-data       {:reason "test"}
+                                :original-info {:id 1}
+                                :reason         "test"}}
+                (t2/select-one [:model/TaskHistory :status :task_details] :task task-name)))))))

@@ -1,4 +1,5 @@
-import { render, screen } from "__support__/ui";
+import { renderWithProviders, screen } from "__support__/ui";
+import { ThemeProvider } from "metabase/ui";
 import registerVisualizations from "metabase/visualizations/register";
 import {
   createMockCard,
@@ -26,7 +27,12 @@ const setup = (funnelProps, visualizationSettings = {}) => {
       data: createMockDatasetData({
         cols: [
           createMockColumn({ id: 1, name: "foo", display_name: "foo" }),
-          createMockColumn({ id: 2, name: "bar", display_name: "bar" }),
+          createMockColumn({
+            id: 2,
+            name: "bar",
+            display_name: "bar",
+            semantic_type: "type/Number",
+          }),
         ],
         rows: [
           [10, 20],
@@ -44,15 +50,18 @@ const setup = (funnelProps, visualizationSettings = {}) => {
     ...visualizationSettings,
   });
 
-  render(
-    <Funnel
-      series={[series]}
-      rawSeries={[series]}
-      settings={settings}
-      visualizationIsClickable={jest.fn()}
-      card={card}
-      {...funnelProps}
-    />,
+  renderWithProviders(
+    <ThemeProvider>
+      <Funnel
+        series={[series]}
+        rawSeries={[series]}
+        settings={settings}
+        visualizationIsClickable={jest.fn()}
+        card={card}
+        {...funnelProps}
+      />
+      ,
+    </ThemeProvider>,
   );
 };
 

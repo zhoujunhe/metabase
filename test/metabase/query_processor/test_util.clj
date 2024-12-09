@@ -14,6 +14,7 @@
    [metabase.db :as mdb]
    [metabase.driver :as driver]
    [metabase.driver.test-util :as driver.tu]
+   [metabase.driver.util :as driver.u]
    [metabase.lib.metadata :as lib.metadata]
    [metabase.lib.metadata.jvm :as lib.metadata.jvm]
    [metabase.lib.schema.metadata :as lib.schema.metadata]
@@ -30,7 +31,7 @@
    [metabase.util :as u]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
-   #_{:clj-kondo/ignore [:discouraged-namespace]}
+   ^{:clj-kondo/ignore [:discouraged-namespace]}
    [toucan2.core :as t2]))
 
 (set! *warn-on-reflection* true)
@@ -40,7 +41,7 @@
 ;; Non-"normal" drivers are tested in [[metabase.timeseries-query-processor-test]] and elsewhere
 (def abnormal-drivers
   "Drivers that are so weird that we can't run the normal driver tests against them."
-  #{:druid :druid-jdbc :googleanalytics})
+  #{:druid :druid-jdbc})
 
 (defn normal-drivers
   "Drivers that are reasonably normal in the sense that they can participate in the shared driver tests."
@@ -60,23 +61,17 @@
                :let   [driver (tx/the-driver-with-test-extensions driver)]
                :when  (driver/with-driver driver
                         (let [db (data/db)]
-                          (every? #(driver/database-supports? driver % db) features)))]
+                          (every? #(driver.u/supports? driver % db) features)))]
            driver))))
 
 (alter-meta! #'normal-drivers-with-feature assoc :arglists (list (into ['&] (sort driver/features))))
 
 (defn normal-drivers-without-feature
-  "Return a set of all non-timeseries engines (e.g., everything except Druid and Google Analytics) that DO NOT support
-  `feature`."
+  "Return a set of all non-timeseries engines (e.g., everything except Druid) that DO NOT support `feature`."
   [feature]
   (set/difference (normal-drivers) (normal-drivers-with-feature feature)))
 
 (alter-meta! #'normal-drivers-without-feature assoc :arglists (list (into ['&] (sort driver/features))))
-
-(defn normal-drivers-except
-  "Return the set of all drivers except Druid, Google Analytics, and those in `excluded-drivers`."
-  [excluded-drivers]
-  (set/difference (normal-drivers) (set excluded-drivers)))
 
 ;; Predefinied Column Fns: These are meant for inclusion in the expected output of the QP tests, to save us from
 ;; writing the same results several times
@@ -105,10 +100,7 @@
      (t2/select-one [:model/Field :id :table_id :semantic_type :base_type :effective_type
                      :coercion_strategy :name :display_name :fingerprint]
                     :id (data/id table-kw field-kw)))
-   {:field_ref [:field (data/id table-kw field-kw) nil]}
-   (when (#{:last_login :date} field-kw)
-     {:unit      :default
-      :field_ref [:field (data/id table-kw field-kw) {:temporal-unit :default}]})))
+   {:field_ref [:field (data/id table-kw field-kw) nil]}))
 
 (defn- expected-column-names
   "Get a sequence of keyword names of Fields belonging to a Table in the order they'd normally appear in QP results."
@@ -206,14 +198,14 @@
      (first
       (cols
        (qp/process-query
-         {:database db-id
-          :type     :native
-          :native   (qp.compile/compile
-                      {:database db-id
-                       :type     :query
-                       :query    {:source-table table-id
-                                  :fields       [[:field field-id nil]]
-                                  :limit        1}})}))))))
+        {:database db-id
+         :type     :native
+         :native   (qp.compile/compile
+                    {:database db-id
+                     :type     :query
+                     :query    {:source-table table-id
+                                :fields       [[:field field-id nil]]
+                                :limit        1}})}))))))
 
 (defn native-query-col
   "Return expected `:cols` info for a Field from a native query or native source query."
@@ -284,7 +276,7 @@
 
   By default, does't call fns on `nil` values; pass a truthy value as optional param `format-nil-values`? to override
   this behavior."
-  {:style/indent 1}
+  {:style/indent [:form]}
   ([format-fns response]
    (format-rows-by format-fns false response))
 
@@ -317,8 +309,8 @@
                                                   (.getName (class v))
                                                   (pr-str v)
                                                   (.getMessage e))
-                                   {:f f, :v v, :format-nil-values? format-nil-values?}
-                                   e)))))))))
+                                          {:f f, :v v, :format-nil-values? format-nil-values?}
+                                          e)))))))))
 
               :else
               (throw (ex-info "Unexpected response: rows are not sequential!" {:response response})))))))))
@@ -354,7 +346,7 @@
 (defn supports-report-timezone?
   "Returns truthy if `driver` supports setting a timezone"
   [driver]
-  (driver/database-supports? driver :set-timezone (data/db)))
+  (driver.u/supports? driver :set-timezone (data/db)))
 
 (defn cols
   "Return the result `:cols` from query `results`, or throw an Exception if they're missing."
@@ -432,15 +424,9 @@
    [:reviews :product_id] [:products :id]
    [:venues :category_id] [:categories :id]})
 
-(def ^:dynamic *enable-fk-support-for-disabled-drivers-in-tests*
-  "Whether to enable `:foreign-keys` in drivers like `:bigquery-cloud-sdk` that don't have formal FKs
-  when [[metabase.config/is-test?]] is true."
-  false)
-
 (defn mock-fks-application-database-metadata-provider
-  "Impl for [[with-mock-fks-for-drivers-without-fk-constraints]]. A mock metadata provider composed with the application
-  database metadata provider that adds FK relationships for Tables that would normally have them in drivers that have
-  formal FK constraints."
+  "A mock metadata provider composed with the application database metadata provider that adds FK relationships
+  for Tables that would normally have them in drivers that have formal FK constraints."
   ([]
    (mock-fks-application-database-metadata-provider (lib.metadata.jvm/application-database-metadata-provider (data/id))))
 
@@ -453,25 +439,6 @@
                            :fk-target-field-id (data/id target-table-name target-field-name)
                            :semantic-type      :type/FK}))
                    (fk-mappings))})))
-
-(defn do-with-mock-fks-for-drivers-without-fk-constraints
-  "Impl for [[with-mock-fks-for-drivers-without-fk-constraints]]."
-  [thunk]
-  (binding [qp.store/*TESTS-ONLY-allow-replacing-metadata-provider* true
-            *enable-fk-support-for-disabled-drivers-in-tests*       true]
-    (qp.store/with-metadata-provider (if (qp.store/initialized?)
-                                       (mock-fks-application-database-metadata-provider (qp.store/metadata-provider))
-                                       (mock-fks-application-database-metadata-provider))
-      (thunk))))
-
-(defmacro with-mock-fks-for-drivers-without-fk-constraints
-  "Execute `body` with test-data `checkins.user_id`, `checkins.venue_id`, and `venues.category_id` (for `test-data`) or
-  other relevant columns (for `test-data`) marked as foreign keys and with `:foreign-keys` a supported feature
-  when testing against BigQuery or similar drivers that do not support Foreign Key constraints. (We still let people
-  mark FKs manually.) The macro helps replicate the situation where somebody has manually marked FK relationships."
-  {:style/indent 0}
-  [& body]
-  `(do-with-mock-fks-for-drivers-without-fk-constraints (^:once fn* [] ~@body)))
 
 (defn- actual-query-results [query]
   (let [results (qp/process-query query)]
@@ -582,7 +549,6 @@
     (for [row (:rows table-def)]
       (nth row i))))
 
-
 ;;; ------------------------------------------------- Timezone Stuff -------------------------------------------------
 
 (defn do-with-report-timezone-id!
@@ -590,9 +556,9 @@
   [timezone-id thunk]
   {:pre [((some-fn nil? string?) timezone-id)]}
   (driver.tu/wrap-notify-all-databases-updated!
-    (binding [qp.timezone/*report-timezone-id-override* (or timezone-id ::nil)]
-      (testing (format "\nreport timezone id = %s" (pr-str timezone-id))
-        (thunk)))))
+   (binding [qp.timezone/*report-timezone-id-override* (or timezone-id ::nil)]
+     (testing (format "\nreport timezone id = %s" (pr-str timezone-id))
+       (thunk)))))
 
 (defmacro with-report-timezone-id!
   "Override the `report-timezone` Setting and execute `body`. Intended primarily for REPL and test usage."

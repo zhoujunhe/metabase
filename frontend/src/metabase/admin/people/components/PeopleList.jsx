@@ -3,10 +3,10 @@ import PropTypes from "prop-types";
 import { Fragment, useEffect } from "react";
 import { connect } from "react-redux";
 import { usePrevious } from "react-use";
-import { t, ngettext, msgid } from "ttag";
+import { msgid, ngettext, t } from "ttag";
 import _ from "underscore";
 
-import PaginationControls from "metabase/components/PaginationControls";
+import { PaginationControls } from "metabase/components/PaginationControls";
 import AdminS from "metabase/css/admin.module.css";
 import CS from "metabase/css/core/index.css";
 import Group from "metabase/entities/groups";
@@ -18,9 +18,9 @@ import { Icon } from "metabase/ui";
 
 import { USER_STATUS } from "../constants";
 import {
-  loadMemberships,
   createMembership,
   deleteMembership,
+  loadMemberships,
   updateMembership,
 } from "../people";
 import { getMembershipsByUser } from "../selectors";

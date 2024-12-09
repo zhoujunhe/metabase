@@ -2,20 +2,26 @@ import { useCallback, useMemo } from "react";
 import { connect } from "react-redux";
 import { t } from "ttag";
 
-import { useQuestionQuery } from "metabase/common/hooks";
+import { skipToken, useGetCardQuery } from "metabase/api";
 import Tooltip from "metabase/core/components/Tooltip";
 import {
   executeRowAction,
   reloadDashboardCards,
 } from "metabase/dashboard/actions";
-import { getEditingDashcardId } from "metabase/dashboard/selectors";
+import {
+  getEditingDashcardId,
+  getParameterValues,
+} from "metabase/dashboard/selectors";
 import { getActionIsEnabledInDatabase } from "metabase/dashboard/utils";
+import { useSelector } from "metabase/lib/redux";
+import { getMetadata } from "metabase/selectors/metadata";
 import type { VisualizationProps } from "metabase/visualizations/types";
+import Question from "metabase-lib/v1/Question";
 import type {
   ActionDashboardCard,
   Dashboard,
-  ParametersForActionExecution,
   ParameterValueOrArray,
+  ParametersForActionExecution,
   WritebackAction,
 } from "metabase-types/api";
 import type { Dispatch, State } from "metabase-types/store";
@@ -55,9 +61,14 @@ const ActionComponent = ({
   parameterValues,
   isEditingDashcard,
 }: ActionProps) => {
-  const { data: model } = useQuestionQuery({
-    id: dashcard.action?.model_id,
-  });
+  const { data: card } = useGetCardQuery(
+    dashcard.action?.model_id ? { id: dashcard.action.model_id } : skipToken,
+  );
+  const metadata = useSelector(getMetadata);
+  const model = useMemo(
+    () => (card ? new Question(card, metadata) : undefined),
+    [card, metadata],
+  );
 
   const actionSettings = dashcard.action?.visualization_settings;
   const actionDisplayType =
@@ -96,7 +107,7 @@ const ActionComponent = ({
     shouldConfirm
   );
 
-  const canWrite = model?.canWriteActions();
+  const canWrite = Boolean(model?.canWriteActions());
 
   const onSubmit = useCallback(
     async (parameters: ParametersForActionExecution) => {
@@ -139,6 +150,7 @@ const ConnectedActionComponent = connect()(ActionComponent);
 
 function mapStateToProps(state: State, props: ActionProps) {
   return {
+    parameterValues: getParameterValues(state),
     isEditingDashcard: getEditingDashcardId(state) === props.dashcard.id,
   };
 }
@@ -188,7 +200,7 @@ function getErrorTooltip({
     return t`Actions are not enabled for this database`;
   }
 
-  return t`Something's gone wrong`;
+  return t`Something’s gone wrong`;
 }
 
 // eslint-disable-next-line import/no-default-export -- deprecated usage

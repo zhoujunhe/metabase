@@ -15,14 +15,16 @@ type Card = Partial<SavedCard> & {
 };
 
 export type QuestionUrlBuilderParams = {
-  mode?: "view" | "notebook";
+  mode?: "view" | "notebook" | "query";
   hash?: Card | string;
   query?: Record<string, unknown> | string;
   objectId?: number | string;
 };
 
 export function question(
-  card: Card | null,
+  card: Partial<
+    Pick<Card, "id" | "name" | "type" | "card_id" | "model">
+  > | null,
   {
     mode = "view",
     hash = "",
@@ -76,6 +78,12 @@ export function question(
 
   if (mode === "notebook") {
     path = `${path}/notebook`;
+  } else if (mode === "query") {
+    if (card.type === "model" || card.type === "metric") {
+      path = `${path}/query`;
+    } else {
+      path = `${path}/notebook`;
+    }
   } else if (objectId) {
     path = `${path}/${objectId}`;
   }
@@ -104,11 +112,10 @@ export function newQuestion({
     creationType,
     query: objectId ? { objectId } : undefined,
   });
-
   const type = question.type();
 
   if (mode) {
-    return url.replace(/^\/(question|model)/, `/${type}\/${mode}`);
+    return url.replace(/^\/(question|model|metric)/, `/${type}\/${mode}`);
   }
 
   return url;

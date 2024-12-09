@@ -14,7 +14,7 @@
    [metabase.models.user :as user]
    [metabase.models.user-test :as user-test]
    [metabase.public-settings.premium-features :as premium-features]
-   [metabase.server.request.util :as req.util]
+   [metabase.request.core :as request]
    [metabase.test :as mt]
    [metabase.test.fixtures :as fixtures]
    [metabase.util :as u]
@@ -47,17 +47,16 @@
 ;;; |        Fetching Users -- GET /api/user, GET /api/user/current, GET /api/user/:id, GET /api/user/recipients     |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-
 ;; ## /api/user/* AUTHENTICATION Tests
 ;; We assume that all endpoints for a given context are enforced by the same middleware, so we don't run the same
 ;; authentication test on every single individual endpoint
 (deftest user-list-authentication-test
   (testing "authentication"
     (testing "GET /api/user"
-      (is (= (get req.util/response-unauthentic :body)
+      (is (= (get request/response-unauthentic :body)
              (client/client :get 401 "user"))))
     (testing "GET /api/user/current"
-      (is (= (get req.util/response-unauthentic :body)
+      (is (= (get request/response-unauthentic :body)
              (client/client :get 401 "user/current"))))))
 
 (deftest user-list-test
@@ -93,15 +92,15 @@
   (testing "Group Managers"
     (mt/with-premium-features #{:advanced-permissions}
       (t2.with-temp/with-temp
-          [:model/PermissionsGroup           {group-id1 :id} {:name "Cool Friends"}
-           :model/PermissionsGroup           {group-id2 :id} {:name "Rad Pals"}
-           :model/PermissionsGroup           {group-id3 :id} {:name "Good Folks"}
-           :model/PermissionsGroupMembership _ {:user_id (mt/user->id :rasta) :group_id group-id1 :is_group_manager true}
-           :model/PermissionsGroupMembership _ {:user_id (mt/user->id :lucky) :group_id group-id1 :is_group_manager false}
-           :model/PermissionsGroupMembership _ {:user_id (mt/user->id :crowberto) :group_id group-id2 :is_group_manager true}
-           :model/PermissionsGroupMembership _ {:user_id (mt/user->id :lucky) :group_id group-id2 :is_group_manager true}
-           :model/PermissionsGroupMembership _ {:user_id (mt/user->id :rasta) :group_id group-id3 :is_group_manager false}
-           :model/PermissionsGroupMembership _ {:user_id (mt/user->id :lucky) :group_id group-id3 :is_group_manager true}]
+        [:model/PermissionsGroup           {group-id1 :id} {:name "Cool Friends"}
+         :model/PermissionsGroup           {group-id2 :id} {:name "Rad Pals"}
+         :model/PermissionsGroup           {group-id3 :id} {:name "Good Folks"}
+         :model/PermissionsGroupMembership _ {:user_id (mt/user->id :rasta) :group_id group-id1 :is_group_manager true}
+         :model/PermissionsGroupMembership _ {:user_id (mt/user->id :lucky) :group_id group-id1 :is_group_manager false}
+         :model/PermissionsGroupMembership _ {:user_id (mt/user->id :crowberto) :group_id group-id2 :is_group_manager true}
+         :model/PermissionsGroupMembership _ {:user_id (mt/user->id :lucky) :group_id group-id2 :is_group_manager true}
+         :model/PermissionsGroupMembership _ {:user_id (mt/user->id :rasta) :group_id group-id3 :is_group_manager false}
+         :model/PermissionsGroupMembership _ {:user_id (mt/user->id :lucky) :group_id group-id3 :is_group_manager true}]
         (testing "admin can get users from any group, even when they are also marked as a group manager"
           (is (= #{"lucky@metabase.com"
                    "rasta@metabase.com"}
@@ -230,11 +229,11 @@
                        (->> (:data (mt/user-http-request :rasta :get 200 "user/recipients"))
                             (map :email))))
 
-               (testing "But returns self if the user is sandboxed"
-                 (with-redefs [premium-features/sandboxed-or-impersonated-user? (constantly true)]
-                   (is (= [rasta]
-                          (->> ((mt/user-http-request :rasta :get 200 "user/recipients") :data)
-                               (map :email)))))))))
+                (testing "But returns self if the user is sandboxed"
+                  (with-redefs [premium-features/sandboxed-or-impersonated-user? (constantly true)]
+                    (is (= [rasta]
+                           (->> ((mt/user-http-request :rasta :get 200 "user/recipients") :data)
+                                (map :email)))))))))
 
           (testing "Returns only self when user-visibility is none"
             (mt/with-temporary-setting-values [user-visibility :none]
@@ -419,10 +418,11 @@
                    (dissoc :is_qbnewb :last_login))
                (-> (mt/user-http-request :rasta :get 200 "user/current")
                    mt/boolean-ids-and-timestamps
-                   (dissoc :is_qbnewb :has_question_and_dashboard :last_login))))))
+                   (dissoc :is_qbnewb :has_question_and_dashboard :last_login :has_model))))))
     (testing "check that `has_question_and_dashboard` is `true`."
       (mt/with-temp [Dashboard _ {:name "dash1" :creator_id (mt/user->id :rasta)}
-                     Card      _ {:name "card1" :display "table" :creator_id (mt/user->id :rasta)}]
+                     Card      _ {:name "card1" :display "table" :creator_id (mt/user->id :rasta)}
+                     Card      _ {:name "model" :creator_id (mt/user->id :rasta) :type "model"}]
         (is (= (-> (merge
                     @user-defaults
                     {:email                      "rasta@metabase.com"
@@ -432,6 +432,7 @@
                      :group_ids                  [(u/the-id (perms-group/all-users))]
                      :personal_collection_id     true
                      :has_question_and_dashboard true
+                     :has_model                  true
                      :custom_homepage            nil
                      :is_installer               (= 1 (mt/user->id :rasta))
                      :has_invited_second_user    (= 1 (mt/user->id :rasta))})
@@ -439,6 +440,14 @@
                (-> (mt/user-http-request :rasta :get 200 "user/current")
                    mt/boolean-ids-and-timestamps
                    (dissoc :is_qbnewb :first_login :last_login))))))
+    (testing "on a fresh instance, `has_question_and_dashboard` is `false`"
+      (mt/with-empty-h2-app-db
+        (is (false? (-> (mt/user-http-request :rasta :get 200 "user/current")
+                        :has_question_and_dashboard)))))
+    (testing "on a fresh instance, `has_model` is `false`"
+      (mt/with-empty-h2-app-db
+        (is (false? (-> (mt/user-http-request :rasta :get 200 "user/current")
+                        :has_model)))))
     (testing "Custom homepage"
       (testing "If id is set but not enabled it is not included"
         (mt/with-temporary-setting-values [custom-homepage false
@@ -515,12 +524,7 @@
                      (dissoc :is_qbnewb :last_login))
                  (-> resp
                      mt/boolean-ids-and-timestamps
-                     (dissoc :is_qbnewb :last_login :user_group_memberships))))))
-
-      (testing "We should get a 404 when trying to access a disabled account"
-        (is (= "Not found."
-               (mt/user-http-request :crowberto :get 404 (str "user/" (mt/user->id :trashbird)))))))))
-
+                     (dissoc :is_qbnewb :last_login :user_group_memberships)))))))))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                     Creating a new User -- POST /api/user                                      |
@@ -540,13 +544,11 @@
                                                 :email            email
                                                 :login_attributes {:test "value"}})]
                 (is (= (merge @user-defaults
-                              (merge
-                               @user-defaults
-                               {:email                  email
-                                :first_name             user-name
-                                :last_name              user-name
-                                :common_name            (str user-name " " user-name)
-                                :login_attributes       {:test "value"}}))
+                              {:email                  email
+                               :first_name             user-name
+                               :last_name              user-name
+                               :common_name            (str user-name " " user-name)
+                               :login_attributes       {:test "value"}})
                        (-> resp
                            mt/boolean-ids-and-timestamps
                            (dissoc :user_group_memberships))))
@@ -622,8 +624,8 @@
 (defn- superuser-and-admin-pgm-info [email]
   {:is-superuser? (t2/select-one-fn :is_superuser User :%lower.email (u/lower-case-en email))
    :pgm-exists?   (t2/exists? PermissionsGroupMembership
-                    :user_id  (t2/select-one-pk User :%lower.email (u/lower-case-en email))
-                    :group_id (u/the-id (perms-group/admin)))})
+                              :user_id  (t2/select-one-pk User :%lower.email (u/lower-case-en email))
+                              :group_id (u/the-id (perms-group/admin)))})
 
 (deftest create-user-add-to-admin-group-test
   (testing "POST /api/user"
@@ -674,7 +676,6 @@
                                     {:first_name "Something"
                                      :last_name  "Random"
                                      :email      (u/upper-case-en (:email (mt/fetch-user :rasta)))}))))))
-
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                      Updating a User -- PUT /api/user/:id                                      |
@@ -918,16 +919,16 @@
                  (client/client creds :put 403 (format "user/%d" (u/the-id user))
                                 {:email "adifferentemail@metabase.com"}))))))))
 
-(defn- do-with-preserved-rasta-personal-collection-name [thunk]
+(defn- do-with-preserved-rasta-personal-collection-name! [thunk]
   (let [{collection-name :name, :keys [slug id]} (collection/user->personal-collection (mt/user->id :rasta))]
     (mt/with-temp-vals-in-db Collection id {:name collection-name, :slug slug}
       (thunk))))
 
-(defmacro ^:private with-preserved-rasta-personal-collection-name
+(defmacro ^:private with-preserved-rasta-personal-collection-name!
   "Preserve the name of Rasta's personal collection inside a body that might cause it to change (e.g. changing user name
   via the API.)"
   [& body]
-  `(do-with-preserved-rasta-personal-collection-name (fn [] ~@body)))
+  `(do-with-preserved-rasta-personal-collection-name! (fn [] ~@body)))
 
 (deftest update-groups-test
   (testing "PUT /api/user/:id"
@@ -943,7 +944,7 @@
       ;; By wrapping the test in this macro even if the test fails it will restore the original values
       (mt/with-temp-vals-in-db User (mt/user->id :rasta) {:first_name "Rasta"}
         (mt/test-helpers-set-global-values!
-          (with-preserved-rasta-personal-collection-name
+          (with-preserved-rasta-personal-collection-name!
             (t2.with-temp/with-temp [PermissionsGroup group {:name "Blue Man Group"}]
               (mt/user-http-request :rasta :put 403 (str "user/" (mt/user->id :rasta))
                                     {:user_group_memberships (group-or-ids->user-group-memberships [(perms-group/all-users) group])
@@ -957,7 +958,7 @@
 
     (testing "if we pass user_group_memberships as a non-superuser the call should succeed, so long as the value doesn't change"
       (mt/with-temp-vals-in-db User (mt/user->id :rasta) {:first_name "Rasta"}
-        (with-preserved-rasta-personal-collection-name
+        (with-preserved-rasta-personal-collection-name!
           (mt/user-http-request :rasta :put 200 (str "user/" (mt/user->id :rasta))
                                 {:user_group_memberships (group-or-ids->user-group-memberships [(perms-group/all-users)])
                                  :first_name             "Reggae"}))
@@ -1073,7 +1074,6 @@
                     (is (= "en_US"
                            (locale-from-db)))))))))))))
 
-
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                              Reactivating a User -- PUT /api/user/:id/reactivate                               |
 ;;; +----------------------------------------------------------------------------------------------------------------+
@@ -1111,7 +1111,6 @@
             (mt/user-http-request :crowberto :put 200 (format "user/%s/reactivate" (u/the-id user)))
             (is (= {:is_active true, :sso_source nil}
                    (mt/derecordize (t2/select-one [User :is_active :sso_source] :id (u/the-id user)))))))))))
-
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                               Updating a Password -- PUT /api/user/:id/password                                |
@@ -1202,9 +1201,8 @@
       (is (= "You don't have permissions to do that."
              (mt/user-http-request :rasta :delete 403 (format "user/%d" (mt/user->id :rasta)) {}))))))
 
-
 ;;; +----------------------------------------------------------------------------------------------------------------+
-;;; |                  Other Endpoints -- PUT /api/user/:id/qpnewb, POST /api/user/:id/send_invite                   |
+;;; |                                             Other Endpoints                                                    |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
 (deftest update-user-modal-test
@@ -1232,12 +1230,6 @@
                                      (format "user/%d/modal/%s"
                                              (mt/user->id :trashbird)
                                              endpoint))))))))
-
-(deftest send-invite-test
-  (testing "POST /api/user/:id/send_invite"
-    (testing "Check that non-superusers are denied access to resending invites"
-      (is (= "You don't have permissions to do that."
-             (mt/user-http-request :rasta :post 403 (format "user/%d/send_invite" (mt/user->id :crowberto))))))))
 
 (deftest user-activate-deactivate-event-test
   (testing "User Deactivate/Reactivate events via the API are recorded in the audit log"

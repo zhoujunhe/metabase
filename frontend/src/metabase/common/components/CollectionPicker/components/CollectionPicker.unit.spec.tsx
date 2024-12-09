@@ -1,5 +1,6 @@
 import userEvent from "@testing-library/user-event";
 import fetchMock from "fetch-mock";
+import { useState } from "react";
 
 import { setupCollectionItemsEndpoint } from "__support__/server-mocks";
 import {
@@ -8,16 +9,16 @@ import {
   mockScrollBy,
   renderWithProviders,
   screen,
-  within,
   waitFor,
+  within,
 } from "__support__/ui";
-import type { CollectionId } from "metabase-types/api";
+import type { Collection, CollectionId } from "metabase-types/api";
 import {
   createMockCollection,
   createMockCollectionItem,
 } from "metabase-types/api/mocks";
 
-import type { CollectionPickerItem } from "../types";
+import type { CollectionPickerItem, CollectionPickerStatePath } from "../types";
 
 import { CollectionPicker } from "./CollectionPicker";
 
@@ -25,6 +26,7 @@ type MockCollection = {
   id: CollectionId;
   name: string;
   location: string | null;
+  effective_location: string | null;
   is_personal: boolean;
   collections: MockCollection[];
 };
@@ -34,12 +36,14 @@ const collectionTree: MockCollection[] = [
     id: "root",
     name: "Our Analytics",
     location: null,
+    effective_location: null,
     is_personal: false,
     collections: [
       {
         id: 4,
         name: "Collection 4",
         location: "/",
+        effective_location: "/",
         is_personal: false,
         collections: [
           {
@@ -47,6 +51,7 @@ const collectionTree: MockCollection[] = [
             name: "Collection 3",
             collections: [],
             location: "/4/",
+            effective_location: "/4/",
             is_personal: false,
           },
         ],
@@ -56,6 +61,7 @@ const collectionTree: MockCollection[] = [
         is_personal: false,
         name: "Collection 2",
         location: "/",
+        effective_location: "/",
         collections: [],
       },
     ],
@@ -64,11 +70,13 @@ const collectionTree: MockCollection[] = [
     name: "My personal collection",
     id: 1,
     location: "/",
+    effective_location: "/",
     is_personal: true,
     collections: [
       {
         id: 5,
         location: "/1/",
+        effective_location: "/1/",
         name: "personal sub_collection",
         is_personal: true,
         collections: [],
@@ -86,6 +94,7 @@ const flattenCollectionTree = (
       id: n.id,
       is_personal: !!n.is_personal,
       location: n.location,
+      effective_location: n.effective_location,
     })),
   ].concat(...node.map(n => flattenCollectionTree(n.collections)));
 };
@@ -98,6 +107,7 @@ const setupCollectionTreeMocks = (node: MockCollection[]) => {
         name: c.name,
         model: "collection",
         location: c.location || "/",
+        effective_location: c.effective_location || "/",
       }),
     );
 
@@ -128,8 +138,9 @@ const setup = ({
   mockGetBoundingClientRect();
   mockScrollBy();
 
-  const allCollections =
-    flattenCollectionTree(collectionTree).map(createMockCollection);
+  const allCollections = flattenCollectionTree(collectionTree).map(c =>
+    createMockCollection(c as Collection),
+  );
 
   //Setup individual collection mocks
   allCollections.forEach(collection => {
@@ -138,16 +149,25 @@ const setup = ({
 
   setupCollectionTreeMocks(collectionTree);
 
-  return renderWithProviders(
-    <CollectionPicker
-      onItemSelect={onItemSelect}
-      initialValue={initialValue}
-    />,
-  );
+  function TestComponent() {
+    const [path, setPath] = useState<CollectionPickerStatePath>();
+
+    return (
+      <CollectionPicker
+        initialValue={initialValue}
+        path={path}
+        onInit={jest.fn()}
+        onItemSelect={onItemSelect}
+        onPathChange={setPath}
+      />
+    );
+  }
+
+  return renderWithProviders(<TestComponent />);
 };
 
 describe("CollectionPicker", () => {
-  afterAll(() => {
+  afterEach(() => {
     jest.restoreAllMocks();
   });
 
@@ -155,6 +175,7 @@ describe("CollectionPicker", () => {
     act(() => {
       setup();
     });
+
     expect(
       await screen.findByRole("button", { name: /Our Analytics/ }),
     ).toHaveAttribute("data-active", "true");
@@ -172,6 +193,7 @@ describe("CollectionPicker", () => {
     act(() => {
       setup({ initialValue: { id: 3, model: "collection" } });
     });
+    await screen.findByRole("button", { name: /Our Analytics/ });
     expect(
       await screen.findByRole("button", { name: /Our Analytics/ }),
     ).toHaveAttribute("data-active", "true");

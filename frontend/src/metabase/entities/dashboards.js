@@ -1,11 +1,14 @@
 import { t } from "ttag";
 
-import { dashboardApi } from "metabase/api";
-import { canonicalCollectionId } from "metabase/collections/utils";
+import { automagicDashboardsApi, dashboardApi } from "metabase/api";
+import {
+  canonicalCollectionId,
+  isRootTrashCollection,
+} from "metabase/collections/utils";
 import {
   getCollectionType,
   normalizedCollection,
-} from "metabase/entities/collections";
+} from "metabase/entities/collections/utils";
 import { color } from "metabase/lib/colors";
 import {
   createEntity,
@@ -15,13 +18,21 @@ import {
 import {
   compose,
   withAction,
-  withAnalytics,
+  withNormalize,
   withRequestState,
 } from "metabase/lib/redux";
 import * as Urls from "metabase/lib/urls/dashboards";
 import { addUndo } from "metabase/redux/undo";
+import {
+  DashboardSchema,
+  DatabaseSchema,
+  FieldSchema,
+  QuestionSchema,
+  TableSchema,
+} from "metabase/schema";
 
 const COPY_ACTION = `metabase/entities/dashboards/COPY`;
+const FETCH_METADATA = "metabase/entities/dashboards/FETCH_METADATA";
 
 /**
  * @deprecated use "metabase/api" instead
@@ -84,13 +95,16 @@ const Dashboards = createEntity({
       Dashboards.actions.update(
         { id },
         { archived },
-        undo(opts, "dashboard", archived ? "archived" : "unarchived"),
+        undo(opts, t`dashboard`, archived ? t`trashed` : t`restored`),
       ),
 
     setCollection: ({ id }, collection, opts) =>
       Dashboards.actions.update(
         { id },
-        { collection_id: canonicalCollectionId(collection && collection.id) },
+        {
+          collection_id: canonicalCollectionId(collection && collection.id),
+          archived: isRootTrashCollection(collection),
+        },
         undo(opts, "dashboard", "moved"),
       ),
 
@@ -114,7 +128,6 @@ const Dashboards = createEntity({
         dashboard.id,
         "copy",
       ]),
-      withAnalytics("entities", "dashboard", "copy"),
     )(
       (entityObject, overrides, { notify } = {}) =>
         async (dispatch, getState) => {
@@ -151,6 +164,45 @@ const Dashboards = createEntity({
         payload: savedDashboard,
       };
     },
+
+    fetchMetadata: compose(
+      withAction(FETCH_METADATA),
+      withNormalize({
+        databases: [DatabaseSchema],
+        tables: [TableSchema],
+        fields: [FieldSchema],
+        cards: [QuestionSchema],
+        dashboards: [DashboardSchema],
+      }),
+    )(
+      ({ id, ...params }) =>
+        dispatch =>
+          entityCompatibleQuery(
+            { id, ...params },
+            dispatch,
+            dashboardApi.endpoints.getDashboardQueryMetadata,
+            { forceRefetch: false },
+          ),
+    ),
+
+    fetchXrayMetadata: compose(
+      withAction(FETCH_METADATA),
+      withNormalize({
+        databases: [DatabaseSchema],
+        tables: [TableSchema],
+        fields: [FieldSchema],
+        cards: [QuestionSchema],
+        dashboards: [DashboardSchema],
+      }),
+    )(
+      ({ entity, entityId, dashboard_load_id }) =>
+        dispatch =>
+          entityCompatibleQuery(
+            { entity, entityId, dashboard_load_id },
+            dispatch,
+            automagicDashboardsApi.endpoints.getXrayDashboardQueryMetadata,
+          ),
+    ),
   },
 
   reducer: (state = {}, { type, payload, error }) => {

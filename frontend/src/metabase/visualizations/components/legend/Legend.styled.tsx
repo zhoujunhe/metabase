@@ -1,20 +1,21 @@
 import styled from "@emotion/styled";
 
-import { color, darken } from "metabase/lib/colors";
+import { darken } from "metabase/lib/colors";
 
 export const LegendRoot = styled.div<{ isVertical: boolean }>`
   display: flex;
   flex-direction: ${({ isVertical }) => (isVertical ? "column" : "row")};
   overflow: ${({ isVertical }) => (isVertical ? "" : "hidden")};
+  padding: 2px;
 `;
 
 export const LegendLink = styled.div`
   cursor: pointer;
-  color: ${color("brand")};
+  color: var(--mb-color-brand);
   font-weight: bold;
 
   &:hover {
-    color: ${darken("brand")};
+    color: ${() => darken("brand")};
   }
 `;
 
@@ -24,4 +25,5 @@ export const LegendLinkContainer = styled.div<{ isVertical: boolean }>`
 
 export const LegendPopoverContainer = styled.div`
   padding: 0.5rem;
+  overflow-x: hidden;
 `;

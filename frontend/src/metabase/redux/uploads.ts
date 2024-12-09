@@ -14,6 +14,8 @@ import type { Dispatch, State } from "metabase-types/store";
 import type { FileUploadState } from "metabase-types/store/upload";
 import { UploadMode } from "metabase-types/store/upload";
 
+export const UPLOAD_DATA_FILE_TYPES = [".csv", ".tsv"];
+
 export const UPLOAD_FILE_TO_COLLECTION = "metabase/collection/UPLOAD_FILE";
 export const UPLOAD_FILE_START = "metabase/collection/UPLOAD_FILE_START";
 export const UPLOAD_FILE_END = "metabase/collection/UPLOAD_FILE_END";
@@ -33,10 +35,12 @@ const uploadError = createAction(UPLOAD_FILE_ERROR);
 const clearUpload = createAction(UPLOAD_FILE_CLEAR);
 export const clearAllUploads = createAction(UPLOAD_FILE_CLEAR_ALL);
 
-export const getAllUploads = (state: State) => Object.values(state.upload);
+export const getAllUploads = (state: State) => state.upload;
 
 export const hasActiveUploads = (state: State) =>
-  getAllUploads(state).some(upload => upload.status === "in-progress");
+  Object.values(getAllUploads(state)).some(
+    upload => upload.status === "in-progress",
+  );
 
 export interface UploadFileProps {
   file: File;
@@ -50,13 +54,13 @@ export interface UploadFileProps {
 export const uploadFile = createThunkAction(
   UPLOAD_FILE_TO_COLLECTION,
   ({
-      file,
-      collectionId,
-      tableId,
-      modelId,
-      uploadMode,
-      reloadQuestionData,
-    }: UploadFileProps) =>
+    file,
+    collectionId,
+    tableId,
+    modelId,
+    uploadMode,
+    reloadQuestionData,
+  }: UploadFileProps) =>
     async (dispatch: Dispatch) => {
       const id = Date.now();
 

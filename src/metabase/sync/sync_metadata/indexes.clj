@@ -20,14 +20,14 @@
     (let [normal-indexes           (->> indexes (filter #(= (:type %) :normal-column-index)) (map :value))
           nested-indexes           (->> indexes (filter #(= (:type %) :nested-column-index)) (map :value))
           normal-indexes-field-ids (when (seq normal-indexes)
-                                     (t2/select-pks-vec :model/Field :name [:in normal-indexes] :table_id table-id))
+                                     (t2/select-pks-vec :model/Field :name [:in normal-indexes] :table_id table-id :parent_id nil))
           nested-indexes-field-ids (remove nil? (map #(field/nested-field-names->field-id table-id %) nested-indexes))]
       (set (filter some? (concat normal-indexes-field-ids nested-indexes-field-ids))))))
 
 (defn maybe-sync-indexes-for-table!
   "Sync the indexes for `table` if the driver supports storing index info."
   [database table]
-  (if (driver/database-supports? (driver.u/database->driver database) :index-info database)
+  (if (driver.u/supports? (driver.u/database->driver database) :index-info database)
     (sync-util/with-error-handling (format "Error syncing Indexes for %s" (sync-util/name-for-logging table))
       (let [indexes                    (fetch-metadata/index-metadata database table)
             indexed-field-ids          (indexes->field-ids (:id table) indexes)
@@ -48,10 +48,60 @@
           empty-stats)))
     empty-stats))
 
+(defn- all-indexes->field-ids
+  [database-id indexes]
+  (when (seq indexes)
+    (let [normal-indexes (map (juxt #(:table-schema % "__null__") :table-name :field-name) indexes)
+          query (t2/reducible-query {:select [[:f.id]]
+                                     :from [[(t2/table-name :model/Field) :f]]
+                                     :inner-join [[(t2/table-name :model/Table) :t] [:= :f.table_id :t.id]]
+                                     :where [:and [:in [:composite [:coalesce :t.schema "__null__"] :t.name :f.name] normal-indexes]
+                                             [:= :t.db_id database-id]
+                                             [:= :parent_id nil]]})]
+      (into #{} (keep :id) query))))
+
+(defn- sync-all-indexes!
+  [database]
+  (sync-util/with-error-handling "Error syncing Indexes"
+    (let [indexes (fetch-metadata/log-if-error
+                   "index-metadata"
+                    (into [] (driver/describe-indexes (driver.u/database->driver database) database)))
+          database-id (:id database)
+          indexed-field-ids (all-indexes->field-ids database-id indexes)
+          existing-indexed-field-ids (t2/select-pks-set :model/Field
+                                                        :table_id [:in {:select [[:t.id]]
+                                                                        :from [[(t2/table-name :model/Table) :t]]
+                                                                        :where [:= :t.db_id database-id]}]
+                                                        :parent_id nil
+                                                        :database_indexed true)
+          [removing adding]          (data/diff existing-indexed-field-ids indexed-field-ids)]
+      (doseq [field-id removing]
+        (log/infof "Unmarking Field %d as indexed" field-id))
+      (doseq [field-id adding]
+        (log/infof "Marking Field %d as indexed" field-id))
+      (if (or (seq adding) (seq removing))
+        (do
+          (t2/update! :model/Field
+                      :table_id [:in {:select [[:t.id]]
+                                      :from [[(t2/table-name :model/Table) :t]]
+                                      :where [:= :t.db_id database-id]}]
+                      :parent_id nil
+                      {:database_indexed (if (seq indexed-field-ids)
+                                           [:case [:in :id indexed-field-ids] true :else false]
+                                           false)})
+          {:total-indexes   (count indexed-field-ids)
+           :added-indexes   (count adding)
+           :removed-indexes (count removing)})
+        empty-stats))))
+
 (defn maybe-sync-indexes!
   "Sync the indexes for all tables in `database` if the driver supports storing index info."
   [database]
-  (if (driver/database-supports? (driver.u/database->driver database) :index-info database)
-    (apply merge-with + empty-stats
-           (map #(maybe-sync-indexes-for-table! database %) (sync-util/db->sync-tables database)))
+  (if (driver.u/supports? (driver.u/database->driver database) :index-info database)
+    (if (driver.u/supports? (driver.u/database->driver database) :describe-indexes database)
+      (sync-all-indexes! database)
+      (transduce (map #(maybe-sync-indexes-for-table! database %))
+                 (partial merge-with +)
+                 empty-stats
+                 (sync-util/reducible-sync-tables database)))
     empty-stats))

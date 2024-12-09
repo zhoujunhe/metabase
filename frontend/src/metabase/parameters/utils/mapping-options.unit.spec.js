@@ -1,17 +1,24 @@
 import { createMockMetadata } from "__support__/metadata";
 import Question from "metabase-lib/v1/Question";
 import {
-  createSampleDatabase,
-  createAdHocCard,
-  createAdHocNativeCard,
-  SAMPLE_DB_ID,
-  ORDERS_ID,
+  createMockCard,
+  createMockNativeDatasetQuery,
+  createMockParameter,
+  createMockTable,
+} from "metabase-types/api/mocks";
+import {
   ORDERS,
-  REVIEWS_ID,
-  REVIEWS,
+  ORDERS_ID,
+  PEOPLE,
   PRODUCTS,
   PRODUCTS_ID,
-  PEOPLE,
+  REVIEWS,
+  REVIEWS_ID,
+  SAMPLE_DB_ID,
+  createAdHocCard,
+  createAdHocNativeCard,
+  createOrdersTable,
+  createSampleDatabase,
 } from "metabase-types/api/mocks/presets";
 
 import { getParameterMappingOptions } from "./mapping-options";
@@ -44,9 +51,10 @@ function native(native) {
 
 describe("parameters/utils/mapping-options", () => {
   describe("getParameterMappingOptions", () => {
-    describe("Model question", () => {
+    describe("structured model", () => {
       let dataset;
       let virtualCardTable;
+
       beforeEach(() => {
         const question = ordersTable.question();
         dataset = question.setCard({
@@ -87,17 +95,50 @@ describe("parameters/utils/mapping-options", () => {
             icon: "calendar",
             isForeign: false,
             name: "~*~Created At~*~",
-            sectionName: "Order",
+            sectionName: "Orders",
             target: [
               "dimension",
               ["field", "CREATED_AT", { "base-type": "type/DateTime" }],
+              { "stage-number": 0 },
             ],
           },
         ]);
       });
     });
 
-    describe("Structured Query", () => {
+    describe("native model", () => {
+      it("should not return mapping options for native models", () => {
+        const card = createMockCard({
+          type: "model",
+          dataset_query: createMockNativeDatasetQuery({
+            native: {
+              query: "SELECT * FROM ORDERS",
+            },
+          }),
+        });
+        const table = createOrdersTable();
+        const metadata = createMockMetadata({
+          databases: [createSampleDatabase()],
+          tables: [
+            createMockTable({
+              id: `card__${card.id}`,
+              fields: (table.fields ?? []).map(field => ({
+                ...field,
+                table_id: `card__${card.id}`,
+              })),
+            }),
+          ],
+          questions: [card],
+        });
+        const question = new Question(card, metadata);
+        const parameter = createMockParameter({ type: "number/=" });
+
+        const options = getParameterMappingOptions(question, parameter, card);
+        expect(options).toHaveLength(0);
+      });
+    });
+
+    describe("structured query", () => {
       it("should return field-id and fk-> dimensions", () => {
         const card = structured({
           "source-table": REVIEWS_ID,
@@ -109,12 +150,13 @@ describe("parameters/utils/mapping-options", () => {
         );
         expect(options).toEqual([
           {
-            sectionName: "Review",
+            sectionName: "Reviews",
             icon: "calendar",
             name: "Created At",
             target: [
               "dimension",
               ["field", REVIEWS.CREATED_AT, { "base-type": "type/DateTime" }],
+              { "stage-number": 0 },
             ],
             isForeign: false,
           },
@@ -132,11 +174,13 @@ describe("parameters/utils/mapping-options", () => {
                   "source-field": REVIEWS.PRODUCT_ID,
                 },
               ],
+              { "stage-number": 0 },
             ],
             isForeign: true,
           },
         ]);
       });
+
       it("should also return fields from explicitly joined tables", () => {
         const card = structured({
           "source-table": ORDERS_ID,
@@ -164,17 +208,18 @@ describe("parameters/utils/mapping-options", () => {
         );
         expect(options).toEqual([
           {
-            sectionName: "Order",
+            sectionName: "Orders",
             name: "Created At",
             icon: "calendar",
             target: [
               "dimension",
               ["field", ORDERS.CREATED_AT, { "base-type": "type/DateTime" }],
+              { "stage-number": 0 },
             ],
             isForeign: false,
           },
           {
-            sectionName: "Product",
+            sectionName: "Products",
             name: "Created At",
             icon: "calendar",
             target: [
@@ -184,6 +229,7 @@ describe("parameters/utils/mapping-options", () => {
                 PRODUCTS.CREATED_AT,
                 { "base-type": "type/DateTime", "join-alias": "Product" },
               ],
+              { "stage-number": 0 },
             ],
             isForeign: true,
           },
@@ -201,6 +247,7 @@ describe("parameters/utils/mapping-options", () => {
                   "source-field": ORDERS.USER_ID,
                 },
               ],
+              { "stage-number": 0 },
             ],
             isForeign: true,
           },
@@ -218,11 +265,13 @@ describe("parameters/utils/mapping-options", () => {
                   "source-field": ORDERS.USER_ID,
                 },
               ],
+              { "stage-number": 0 },
             ],
             isForeign: true,
           },
         ]);
       });
+
       it("should return fields in nested query", () => {
         const card = structured({
           "source-query": {
@@ -236,13 +285,24 @@ describe("parameters/utils/mapping-options", () => {
         );
         expect(options).toEqual([
           {
-            // this is a source query, and tables for source queries do not have a display_name
-            sectionName: "",
+            sectionName: "Products",
+            name: "Created At",
+            icon: "calendar",
+            target: [
+              "dimension",
+              ["field", PRODUCTS.CREATED_AT, { "base-type": "type/DateTime" }],
+              { "stage-number": 0 },
+            ],
+            isForeign: false,
+          },
+          {
+            sectionName: "Summaries",
             name: "Created At",
             icon: "calendar",
             target: [
               "dimension",
               ["field", "CREATED_AT", { "base-type": "type/DateTime" }],
+              { "stage-number": 1 },
             ],
             isForeign: false,
           },
@@ -250,7 +310,7 @@ describe("parameters/utils/mapping-options", () => {
       });
     });
 
-    describe("NativeQuery", () => {
+    describe("native query", () => {
       it("should return variables for non-dimension template-tags", () => {
         const card = native({
           query: "select * from ORDERS where CREATED_AT = {{created}}",
@@ -276,6 +336,7 @@ describe("parameters/utils/mapping-options", () => {
         ]);
       });
     });
+
     it("should return dimensions for dimension template-tags", () => {
       const card = native({
         query: "select * from ORDERS where CREATED_AT = {{created}}",
@@ -296,7 +357,11 @@ describe("parameters/utils/mapping-options", () => {
         {
           name: "Created At",
           icon: "calendar",
-          target: ["dimension", ["template-tag", "created"]],
+          target: [
+            "dimension",
+            ["template-tag", "created"],
+            { "stage-number": 0 },
+          ],
           isForeign: false,
         },
       ]);

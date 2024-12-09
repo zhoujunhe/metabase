@@ -2,7 +2,7 @@
   (:require
    [clojure.test :refer :all]
    [metabase-enterprise.audit-app.permissions-test :as ee-perms-test]
-   [metabase-enterprise.audit-db :as audit-db]
+   [metabase.audit :as audit]
    [metabase.models :refer [Card Dashboard DashboardCard Pulse PulseCard
                             PulseChannel PulseChannelRecipient User]]
    [metabase.models.permissions :as perms]
@@ -19,10 +19,9 @@
     (testing "Should require a token with `:audit-app`"
       (mt/with-premium-features #{}
         (t2.with-temp/with-temp [User {user-id :id}]
-          (is (= "Audit app is a paid feature not currently available to your instance. Please upgrade to use it. Learn more at metabase.com/upgrade/"
-                 (mt/user-http-request user-id
-                                       :delete 402
-                                       (format "ee/audit-app/user/%d/subscriptions" user-id)))))))
+          (mt/assert-has-premium-feature-error "Audit app" (mt/user-http-request user-id
+                                                                                 :delete 402
+                                                                                 (format "ee/audit-app/user/%d/subscriptions" user-id))))))
 
     (mt/with-premium-features #{:audit-app}
       (doseq [run-type [:admin :non-admin]]
@@ -97,22 +96,22 @@
     (mt/with-premium-features #{:audit-app}
       (ee-perms-test/install-audit-db-if-needed!)
       (testing "None of the ids show up when perms aren't given"
-        (perms/revoke-collection-permissions! (perms-group/all-users) (audit-db/default-custom-reports-collection))
-        (perms/revoke-collection-permissions! (perms-group/all-users) (audit-db/default-audit-collection))
+        (perms/revoke-collection-permissions! (perms-group/all-users) (audit/default-custom-reports-collection))
+        (perms/revoke-collection-permissions! (perms-group/all-users) (audit/default-audit-collection))
         (is (= #{}
                (->>
                 (mt/user-http-request :rasta :get 200 "/ee/audit-app/user/audit-info")
                 keys
                 (into #{})))))
       (testing "Custom reports collection shows up when perms are given"
-        (perms/grant-collection-read-permissions! (perms-group/all-users) (audit-db/default-custom-reports-collection))
+        (perms/grant-collection-read-permissions! (perms-group/all-users) (audit/default-custom-reports-collection))
         (is (= #{:custom_reports}
                (->>
                 (mt/user-http-request :rasta :get 200 "/ee/audit-app/user/audit-info")
                 keys
                 (into #{})))))
       (testing "Everything shows up when all perms are given"
-        (perms/grant-collection-read-permissions! (perms-group/all-users) (audit-db/default-audit-collection))
+        (perms/grant-collection-read-permissions! (perms-group/all-users) (audit/default-audit-collection))
         (is (= #{:question_overview :dashboard_overview :custom_reports}
                (->>
                 (mt/user-http-request :rasta :get 200 "/ee/audit-app/user/audit-info")

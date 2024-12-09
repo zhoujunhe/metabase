@@ -27,7 +27,15 @@
    [:map
     [:temporal-unit                              {:optional true} [:ref ::temporal-bucketing/unit]]
     [:binning                                    {:optional true} [:ref ::binning/binning]]
-    [:metabase.lib.field/original-effective-type {:optional true} [:ref ::common/base-type]]]])
+    [:metabase.lib.field/original-effective-type {:optional true} [:ref ::common/base-type]]
+    [:metabase.lib.field/original-temporal-unit  {:optional true} [:ref ::temporal-bucketing/unit]]
+    ;; Inherited temporal unit captures the temporal unit, that has been set on a ref, for next stages. It is attached
+    ;; _to a column_, which is created from this ref by means of `returned-columns`, ie. is visible [inherited temporal
+    ;; unit] in next stages only. This information is used eg. to help pick a default _temporal unit_ for columns that
+    ;; are bucketed -- if a column contains `:inherited-temporal-unit`, it was bucketed already in previous stages,
+    ;; so nil default picked to avoid another round of bucketing. Shall user bucket the column again, they have to
+    ;; select the bucketing explicitly in QB.
+    [:inherited-temporal-unit  {:optional true} [:ref ::temporal-bucketing/unit]]]])
 
 (mr/def ::field.literal.options
   [:merge
@@ -73,8 +81,17 @@
   (or ((some-fn :effective-type :base-type) opts)
       ::expression/type.unknown))
 
-(mbql-clause/define-tuple-mbql-clause :expression
-  #_expression-name ::common/non-blank-string)
+(mr/def ::expression.options
+  [:merge
+   ::common/options
+   [:map
+    [:temporal-unit                              {:optional true} [:ref ::temporal-bucketing/unit]]]])
+
+(mbql-clause/define-mbql-clause :expression
+  [:tuple
+   [:= {:decode/normalize common/normalize-keyword} :expression]
+   [:ref ::expression.options]
+   [:ref #_expression-name ::common/non-blank-string]])
 
 (defmethod expression/type-of-method :expression
   [[_tag opts _expression-name]]
@@ -114,11 +131,7 @@
   ;; (see metabase.lib.convert-test/round-trip-test for examples).
   ;; :string should be removed once the legacy questions don't have to be
   ;; supported.
-  #_metric-id [:schema
-               [:or
-                [:ref ::id/legacy-metric]
-                ;; GA metric ref
-                ::common/non-blank-string]])
+  #_metric-id [:schema [:ref ::id/metric]])
 
 (lib.hierarchy/derive :metric ::ref)
 

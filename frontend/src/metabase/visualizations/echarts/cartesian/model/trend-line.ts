@@ -16,13 +16,16 @@ import { getScaledMinAndMax } from "./axis";
 import {
   getKeyBasedDatasetTransform,
   getNormalizedDatasetTransform,
+  scaleDataset,
   transformDataset,
 } from "./dataset";
 import type {
   ChartDataset,
+  DataKey,
   Datum,
   NumericAxisScaleTransforms,
   SeriesModel,
+  StackModel,
   TrendLineSeriesModel,
   TrendLinesModel,
   YAxisModel,
@@ -30,9 +33,7 @@ import type {
 
 type TrendFn = (days: number) => number;
 
-const getTrendKeyForSeries = (seriesModel: SeriesModel) => {
-  return `${seriesModel.dataKey}_trend`;
-};
+const getTrendKeyForSeries = (dataKey: DataKey) => `${dataKey}_trend`;
 
 const getSeriesModelsWithTrends = (
   rawSeries: RawSeries,
@@ -121,15 +122,20 @@ export const getTrendLines = (
   seriesModels: SeriesModel[],
   chartDataset: ChartDataset,
   settings: ComputedVisualizationSettings,
+  stackModels: StackModel[],
   renderingContext: RenderingContext,
 ): TrendLinesModel | undefined => {
   if (!settings["graph.show_trendline"]) {
     return;
   }
 
+  const visibleSeriesModels = seriesModels.filter(
+    seriesModel => seriesModel.visible,
+  );
+
   const seriesModelsWithTrends = getSeriesModelsWithTrends(
     rawSeries,
-    seriesModels,
+    visibleSeriesModels,
   );
 
   if (seriesModelsWithTrends.length === 0) {
@@ -142,7 +148,7 @@ export const getTrendLines = (
     };
 
     seriesModelsWithTrends.forEach(([seriesModel, trendFn]) => {
-      const trendLineDataKey = getTrendKeyForSeries(seriesModel);
+      const trendLineDataKey = getTrendKeyForSeries(seriesModel.dataKey);
 
       const date = tryGetDate(datum[X_AXIS_DATA_KEY]);
       if (date != null) {
@@ -155,20 +161,29 @@ export const getTrendLines = (
 
   const trendSeriesModels: TrendLineSeriesModel[] = seriesModelsWithTrends.map(
     ([seriesModel]) => ({
-      dataKey: getTrendKeyForSeries(seriesModel),
+      dataKey: getTrendKeyForSeries(seriesModel.dataKey),
       sourceDataKey: seriesModel.dataKey,
       name: `${seriesModel.name}; trend line`, // not used in UI
       color: Color(renderingContext.getColor(seriesModel.color))
         .lighten(0.25)
         .hex(),
+      visible: true,
+      column: seriesModel.column,
+      columnIndex: seriesModel.columnIndex,
     }),
   );
   const dataKeys = trendSeriesModels.map(seriesModel => seriesModel.dataKey);
 
-  const transformedDataset = transformDataset(dataset, [
+  const scaledTrendDataset = scaleDataset(dataset, trendSeriesModels, settings);
+  const transformedDataset = transformDataset(scaledTrendDataset, [
     {
       condition: settings["stackable.stack_type"] === "normalized",
-      fn: getNormalizedDatasetTransform(dataKeys),
+      fn: getNormalizedDatasetTransform(
+        stackModels.map(stackModel => ({
+          ...stackModel,
+          seriesKeys: stackModel.seriesKeys.map(getTrendKeyForSeries),
+        })),
+      ),
     },
     getKeyBasedDatasetTransform(dataKeys, value =>
       yAxisScaleTransforms.toEChartsAxisValue(value),

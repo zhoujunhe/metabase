@@ -3,24 +3,23 @@
  * doesn't mean that the token is active or that it has all feature flags enabled.
  *
  * `isEE` means enterprise instance without a token and `isOSS` means open-source instance.
- * In the same way, custom `describe` blocks `describeEE` and `describeOSS` are used to
- * conditionally run tests only against a corresponding Metabase instance.
- *
- * There is a subset of UI elements that appear only in an open-source instance. Test those
- * using a `describeOSS` block, and vice-versa.
- *
  */
 export const isEE = Cypress.env("IS_ENTERPRISE");
 export const isOSS = !isEE;
+
+/** run only if the test is running on an EE jar */
+export const onlyOnEE = () => cy.onlyOn(isEE);
+
+/** run only if the test is running on an OSS jar */
+export const onlyOnOSS = () => cy.onlyOn(isOSS);
 
 /**
  *
  * @param {boolean} cond
  */
-const conditionalDescribe = cond => (cond ? describe : describe.skip);
+export const conditionalDescribe = cond => (cond ? describe : describe.skip);
 
 export const describeEE = conditionalDescribe(isEE);
-export const describeOSS = conditionalDescribe(isOSS);
 
 /**
  *
@@ -81,3 +80,32 @@ export const deleteToken = () => {
     },
   });
 };
+
+export const mockSessionPropertiesTokenFeatures = features => {
+  cy.intercept({ method: "GET", url: "/api/session/properties" }, request => {
+    request.on("response", response => {
+      if (typeof response.body === "object") {
+        response.body = {
+          ...response.body,
+          "token-features": {
+            ...response.body["token-features"],
+            ...features,
+          },
+        };
+      }
+    });
+  });
+};
+
+// Gets an object that reflects a *partial* premium feature error - it must
+// be a partial, otherwise we would need to have a stack trace in this error
+// object.
+export const getPartialPremiumFeatureError = name => ({
+  cause: `${name} is a paid feature not currently available to your instance. Please upgrade to use it. Learn more at metabase.com/upgrade/`,
+  data: {
+    "status-code": 402,
+    status: "error-premium-feature-not-available",
+  },
+  message: `${name} is a paid feature not currently available to your instance. Please upgrade to use it. Learn more at metabase.com/upgrade/`,
+  status: "error-premium-feature-not-available",
+});

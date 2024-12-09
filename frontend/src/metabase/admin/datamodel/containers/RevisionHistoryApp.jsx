@@ -1,58 +1,48 @@
 /* eslint-disable react/prop-types */
 import { Component } from "react";
 import { connect } from "react-redux";
+import _ from "underscore";
 
-import Metrics from "metabase/entities/metrics";
 import Segments from "metabase/entities/segments";
+import Tables from "metabase/entities/tables";
 
 import RevisionHistory from "../components/revisions/RevisionHistory";
-import { fetchRevisions } from "../datamodel";
-import { getRevisions, getCurrentUser } from "../selectors";
+import { fetchSegmentRevisions } from "../datamodel";
+import { getCurrentUser, getRevisions } from "../selectors";
 
 const mapStateToProps = (state, props) => ({
-  objectType: props.params.entity,
   id: props.params.id,
   user: getCurrentUser(state),
   revisions: getRevisions(state),
 });
 
-const mapDispatchToProps = { fetchRevisions };
+const mapDispatchToProps = { fetchSegmentRevisions };
 
 class RevisionHistoryApp extends Component {
   componentDidMount() {
-    const { id, objectType } = this.props;
-    this.props.fetchRevisions({ entity: objectType, id });
+    const { id } = this.props;
+    this.props.fetchSegmentRevisions(id);
   }
 
   render() {
-    return this.props.objectType === "metric" ? (
-      <MetricRevisionHistory {...this.props} />
-    ) : (
-      <SegmentRevisionHistory {...this.props} />
-    );
+    return <SegmentRevisionHistory {...this.props} />;
   }
 }
 
 export default connect(mapStateToProps, mapDispatchToProps)(RevisionHistoryApp);
 
-class MetricRevisionHistoryInner extends Component {
-  render() {
-    const { metric, ...props } = this.props;
-    return <RevisionHistory object={metric} {...props} />;
-  }
-}
-
-const MetricRevisionHistory = Metrics.load({ id: (state, { id }) => id })(
-  MetricRevisionHistoryInner,
-);
-
 class SegmentRevisionHistoryInner extends Component {
   render() {
     const { segment, ...props } = this.props;
-    return <RevisionHistory object={segment} {...props} />;
+    return <RevisionHistory segment={segment} {...props} />;
   }
 }
 
-const SegmentRevisionHistory = Segments.load({ id: (state, { id }) => id })(
-  SegmentRevisionHistoryInner,
-);
+const SegmentRevisionHistory = _.compose(
+  Segments.load({ id: (_state, { id }) => id }),
+  Tables.load({
+    id: (_state, { segment }) => segment?.table_id,
+    fetchType: "fetchMetadataAndForeignTables",
+    requestType: "fetchMetadataDeprecated",
+  }),
+)(SegmentRevisionHistoryInner);

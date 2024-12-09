@@ -1,32 +1,31 @@
 import userEvent from "@testing-library/user-event";
 
 import {
-  setupSearchEndpoints,
-  setupRecentViewsEndpoints,
   setupCollectionByIdEndpoint,
+  setupRecentViewsEndpoints,
+  setupSearchEndpoints,
   setupUserRecipientsEndpoint,
 } from "__support__/server-mocks";
 import {
-  renderWithProviders,
-  screen,
   fireEvent,
   getIcon,
+  renderWithProviders,
+  screen,
   waitForLoaderToBeRemoved,
 } from "__support__/ui";
 import * as domUtils from "metabase/lib/dom";
 import registerVisualizations from "metabase/visualizations/register";
 import type {
-  VirtualDashboardCard,
   LinkCardSettings,
+  VirtualDashboardCard,
 } from "metabase-types/api";
 import {
-  createMockCollectionItem,
   createMockCollection,
-  createMockRecentItem,
-  createMockTable,
-  createMockDashboard,
-  createMockUser,
+  createMockCollectionItem,
   createMockLinkDashboardCard,
+  createMockRecentCollectionItem,
+  createMockRecentTableItem,
+  createMockUser,
 } from "metabase-types/api/mocks";
 
 import type { LinkVizProps } from "./LinkViz";
@@ -284,28 +283,26 @@ describe("LinkViz", () => {
     });
 
     it("clicking a recent item should update the entity", async () => {
-      const recentTableItem = createMockRecentItem({
-        cnt: 20,
-        user_id: 20,
+      const recentTableItem = createMockRecentTableItem({
         model: "table",
-        model_id: 121,
-        model_object: createMockTable({
-          id: 121,
-          name: "Table Uno",
-          display_name: "Table Uno",
-          db_id: 20,
-        }),
+        id: 121,
+        name: "Table Uno",
+        display_name: "Table Uno",
+        database: {
+          id: 20,
+          name: "Database Uno",
+          initial_sync_status: "complete",
+        },
       });
 
-      const recentDashboardItem = createMockRecentItem({
-        cnt: 20,
-        user_id: 20,
+      const recentDashboardItem = createMockRecentCollectionItem({
+        id: 131,
+        name: "Dashboard Uno",
         model: "dashboard",
-        model_id: 131,
-        model_object: createMockDashboard({
-          id: 131,
-          name: "Dashboard Uno",
-        }),
+        parent_collection: {
+          id: 1,
+          name: "Collection Uno",
+        },
       });
 
       setupRecentViewsEndpoints([recentTableItem, recentDashboardItem]);

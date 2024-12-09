@@ -1,20 +1,20 @@
 import { createMockMetadata } from "__support__/metadata";
 import { checkNotNull } from "metabase/lib/types";
-import { createMockMetric, createMockSegment } from "metabase-types/api/mocks";
+import { createQuery, createQueryWithClauses } from "metabase-lib/test-helpers";
+import { createMockSegment } from "metabase-types/api/mocks";
 import {
+  ORDERS,
+  ORDERS_ID,
+  PEOPLE,
+  PRODUCTS,
   createOrdersTable,
   createPeopleTable,
   createProductsTable,
   createReviewsTable,
   createSampleDatabase,
-  ORDERS,
-  ORDERS_ID,
-  PEOPLE,
-  PRODUCTS,
 } from "metabase-types/api/mocks/presets";
 
 const SEGMENT_ID = 1;
-const METRIC_ID = 1;
 
 const metadata = createMockMetadata({
   databases: [
@@ -31,17 +31,6 @@ const metadata = createMockMetadata({
               table_id: ORDERS_ID,
               definition: {
                 filter: [">", ["field", ORDERS.TOTAL, null], 30],
-                "source-table": ORDERS_ID,
-              },
-            }),
-          ],
-          metrics: [
-            createMockMetric({
-              id: METRIC_ID,
-              name: "Total Order Value",
-              table_id: ORDERS_ID,
-              definition: {
-                aggregation: [["sum", ["field", ORDERS.TOTAL, null]]],
                 "source-table": ORDERS_ID,
               },
             }),
@@ -66,11 +55,18 @@ const userName = checkNotNull(metadata.field(ORDERS.USER_ID))
   .mbql();
 
 const segment = checkNotNull(metadata.segment(SEGMENT_ID)).filterClause();
-const metric = checkNotNull(metadata.metric(METRIC_ID)).aggregationClause();
 
-const legacyQuery = checkNotNull(metadata.table(ORDERS_ID)).legacyQuery({
-  foo: 42,
+const query = createQueryWithClauses({
+  query: createQuery({ metadata }),
+  expressions: [
+    {
+      name: "foo",
+      operator: "+",
+      args: [1, 2],
+    },
+  ],
 });
+const stageIndex = -1;
 
 // shared test cases used in compile, formatter, and syntax tests:
 //
@@ -199,6 +195,108 @@ const expression = [
     ],
     "should handle priority for addition and subtraction with parenthesis",
   ],
+
+  [
+    'contains([Product → Ean], "A", "B")',
+    [
+      "contains",
+      {},
+      ["field", PRODUCTS.EAN, { "source-field": ORDERS.PRODUCT_ID }],
+      "A",
+      "B",
+    ],
+    "should handle contains with multiple arguments and empty options",
+  ],
+
+  [
+    'contains([Product → Ean], "A", "B", "case-insensitive")',
+    [
+      "contains",
+      { "case-sensitive": false },
+      ["field", PRODUCTS.EAN, { "source-field": ORDERS.PRODUCT_ID }],
+      "A",
+      "B",
+    ],
+    "should handle contains with multiple arguments and non-empty options",
+  ],
+
+  [
+    'doesNotContain([User → Name], "A", "B", "C")',
+    [
+      "does-not-contain",
+      {},
+      ["field", PEOPLE.NAME, { "source-field": ORDERS.USER_ID }],
+      "A",
+      "B",
+      "C",
+    ],
+    "should handle doesNotContain with multiple arguments and empty options",
+  ],
+
+  [
+    'doesNotContain([User → Name], "A", "B", "C", "case-insensitive")',
+    [
+      "does-not-contain",
+      { "case-sensitive": false },
+      ["field", PEOPLE.NAME, { "source-field": ORDERS.USER_ID }],
+      "A",
+      "B",
+      "C",
+    ],
+    "should handle doesNotContain with multiple arguments and empty options",
+  ],
+
+  [
+    'startsWith([Product → Category], "A", "B")',
+    [
+      "starts-with",
+      {},
+      ["field", PRODUCTS.CATEGORY, { "source-field": ORDERS.PRODUCT_ID }],
+      "A",
+      "B",
+    ],
+    "should handle startsWith with multiple arguments and empty options",
+  ],
+
+  [
+    'startsWith([Product → Category], "A", "B", "case-insensitive")',
+    [
+      "starts-with",
+      { "case-sensitive": false },
+      ["field", PRODUCTS.CATEGORY, { "source-field": ORDERS.PRODUCT_ID }],
+      "A",
+      "B",
+    ],
+    "should handle startsWith with multiple arguments and non-empty options",
+  ],
+
+  [
+    'endsWith([User → Email], "A", "B", "C", "D")',
+    [
+      "ends-with",
+      {},
+      ["field", PEOPLE.EMAIL, { "source-field": ORDERS.USER_ID }],
+      "A",
+      "B",
+      "C",
+      "D",
+    ],
+    "should handle endsWith with multiple arguments and empty options",
+  ],
+
+  [
+    'endsWith([User → Email], "A", "B", "C", "D", "case-insensitive")',
+    [
+      "ends-with",
+      { "case-sensitive": false },
+      ["field", PEOPLE.EMAIL, { "source-field": ORDERS.USER_ID }],
+      "A",
+      "B",
+      "C",
+      "D",
+    ],
+    "should handle endsWith with multiple arguments and non-empty options",
+  ],
 ];
 
 const aggregation = [
@@ -215,8 +313,6 @@ const aggregation = [
     ["-", 1, ["/", ["sum", ["*", total, 2]], ["count"]]],
     "aggregation with math inside and outside",
   ],
-  ["[Total Order Value]", metric, "metric"],
-  ["[Total Order Value] * 2", ["*", metric, 2], "metric with math"],
   ["Share([Total] > 50)", ["share", [">", total, 50]], "share aggregation"],
   [
     "CountIf([Total] > 50)",
@@ -295,9 +391,9 @@ const filter = [
 ];
 
 export const dataForFormatting = [
-  ["expression", expression, { startRule: "expression", legacyQuery }],
-  ["aggregation", aggregation, { startRule: "aggregation", legacyQuery }],
-  ["filter", filter, { startRule: "boolean", legacyQuery }],
+  ["expression", expression, { startRule: "expression", query, stageIndex }],
+  ["aggregation", aggregation, { startRule: "aggregation", query, stageIndex }],
+  ["filter", filter, { startRule: "boolean", query, stageIndex }],
 ];
 
 /**

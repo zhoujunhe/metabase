@@ -3,16 +3,17 @@ import {
   filterNullDimensionValues,
   getCardsColumnByDataKeyMap,
   getJoinedCardsDataset,
+  scaleDataset,
   sortDataset,
 } from "metabase/visualizations/echarts/cartesian/model/dataset";
 import {
   getCardSeriesModels,
   getDimensionModel,
+  getWaterfallChartDataDensity,
+  getWaterfallLabelFormatter,
 } from "metabase/visualizations/echarts/cartesian/model/series";
-import type {
-  BaseCartesianChartModel,
-  ShowWarning,
-} from "metabase/visualizations/echarts/cartesian/model/types";
+import type { WaterfallChartModel } from "metabase/visualizations/echarts/cartesian/model/types";
+import type { ShowWarning } from "metabase/visualizations/echarts/types";
 import { getCartesianChartColumns } from "metabase/visualizations/lib/graph/columns";
 import type {
   ComputedVisualizationSettings,
@@ -32,9 +33,10 @@ import {
 export const getWaterfallChartModel = (
   rawSeries: RawSeries,
   settings: ComputedVisualizationSettings,
+  hiddenSeries: string[],
   renderingContext: RenderingContext,
   showWarning?: ShowWarning,
-): BaseCartesianChartModel => {
+): WaterfallChartModel => {
   // Waterfall chart support one card only
   const [singleRawSeries] = rawSeries;
   const { data } = singleRawSeries;
@@ -45,21 +47,29 @@ export const getWaterfallChartModel = (
   const [seriesModel] = getCardSeriesModels(
     singleRawSeries,
     cardsColumns[0],
+    [],
     false,
     true,
     settings,
-    renderingContext,
   );
 
-  let dataset = getJoinedCardsDataset(rawSeries, cardsColumns, showWarning);
-  dataset = sortDataset(dataset, settings["graph.x_axis.scale"], showWarning);
+  const unsortedDataset = getJoinedCardsDataset(
+    rawSeries,
+    cardsColumns,
+    showWarning,
+  );
+  const dataset = sortDataset(
+    unsortedDataset,
+    settings["graph.x_axis.scale"],
+    showWarning,
+  );
+  let scaledDataset = scaleDataset(dataset, [seriesModel], settings);
 
   const xAxisModel = getWaterfallXAxisModel(
     dimensionModel,
     rawSeries,
-    dataset,
+    scaledDataset,
     settings,
-    renderingContext,
     showWarning,
   );
   if (
@@ -67,7 +77,7 @@ export const getWaterfallChartModel = (
     xAxisModel.axisType === "time" ||
     xAxisModel.isHistogram
   ) {
-    dataset = filterNullDimensionValues(dataset, showWarning);
+    scaledDataset = filterNullDimensionValues(scaledDataset, showWarning);
   }
 
   const yAxisScaleTransforms = getAxisTransforms(
@@ -75,32 +85,48 @@ export const getWaterfallChartModel = (
   );
 
   const transformedDataset = getWaterfallDataset(
-    dataset,
+    scaledDataset,
     yAxisScaleTransforms,
     seriesModel.dataKey,
     settings,
     xAxisModel,
   );
 
+  const { formatter: waterfallLabelFormatter, isCompact } =
+    getWaterfallLabelFormatter(seriesModel, transformedDataset, settings);
+
+  const dataDensity = getWaterfallChartDataDensity(
+    transformedDataset,
+    waterfallLabelFormatter,
+    settings,
+    renderingContext,
+  );
+
   // Pass waterfall dataset and keys for correct extent computation
   const leftAxisModel = getYAxisModel(
     [WATERFALL_END_KEY],
     [],
+    [],
     transformedDataset,
     settings,
     { [WATERFALL_END_KEY]: seriesModel.column },
-    renderingContext,
+    null,
+    {
+      compact:
+        settings["graph.label_value_formatting"] === "compact" || isCompact,
+    },
   );
 
   // Extending the original dataset with total datum for tooltips
   const originalDatasetWithTotal = extendOriginalDatasetWithTotalDatum(
-    dataset,
+    scaledDataset,
     transformedDataset[transformedDataset.length - 1],
     seriesModel.dataKey,
     settings,
   );
 
   return {
+    stackModels: [],
     dataset: originalDatasetWithTotal,
     transformedDataset,
     seriesModels: [seriesModel],
@@ -113,5 +139,8 @@ export const getWaterfallChartModel = (
     seriesIdToDataKey: {
       [WATERFALL_TOTAL_KEY]: seriesModel.dataKey,
     },
+    waterfallLabelFormatter,
+    dataDensity,
+    seriesLabelsFormatters: {},
   };
 };

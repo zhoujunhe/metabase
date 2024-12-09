@@ -18,7 +18,11 @@
 
     .content,
     .example {
-      color: var(--color-white);
+      color: var(--mb-color-text-white);
     }
+  }
+
+  .label {
+    width: 100%;
   }
 }

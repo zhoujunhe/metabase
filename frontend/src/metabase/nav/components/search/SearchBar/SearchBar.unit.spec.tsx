@@ -10,17 +10,16 @@ import {
 import {
   renderWithProviders,
   screen,
-  within,
-  waitForLoaderToBeRemoved,
   waitFor,
+  waitForLoaderToBeRemoved,
+  within,
 } from "__support__/ui";
 import { checkNotNull } from "metabase/lib/types";
 import { SearchBar } from "metabase/nav/components/search/SearchBar";
 import type { CollectionItem, RecentItem } from "metabase-types/api";
 import {
   createMockCollectionItem,
-  createMockModelObject,
-  createMockRecentItem,
+  createMockRecentTableItem,
   createMockUser,
 } from "metabase-types/api/mocks";
 import {
@@ -47,9 +46,10 @@ const TEST_RECENT_VIEWS_RESULTS: RecentItem[] = [
   "Recents CDE",
   "Recents DEF",
 ].map((name, index) =>
-  createMockRecentItem({
-    model_object: createMockModelObject({ name }),
-    model_id: index + 1,
+  createMockRecentTableItem({
+    name,
+    display_name: name,
+    id: index + 1,
   }),
 );
 

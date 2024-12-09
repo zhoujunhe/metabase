@@ -1,5 +1,6 @@
 import type {
   Alert,
+  AlertCard,
   AlertId,
   CreateAlertRequest,
   ListAlertsRequest,
@@ -19,18 +20,18 @@ import {
 export const alertApi = Api.injectEndpoints({
   endpoints: builder => ({
     listAlerts: builder.query<Alert[], ListAlertsRequest | void>({
-      query: body => ({
+      query: params => ({
         method: "GET",
         url: "/api/alert",
-        body,
+        params,
       }),
       providesTags: (alerts = []) => provideAlertListTags(alerts),
     }),
     listCardAlerts: builder.query<Alert[], ListCardAlertsRequest>({
-      query: ({ id, ...body }) => ({
+      query: ({ id, ...params }) => ({
         method: "GET",
         url: `/api/alert/question/${id}`,
-        body,
+        params,
       }),
       providesTags: (alerts = []) => provideAlertListTags(alerts),
     }),
@@ -70,6 +71,13 @@ export const alertApi = Api.injectEndpoints({
       invalidatesTags: (_, error, id) =>
         invalidateTags(error, [listTag("alert"), idTag("alert", id)]),
     }),
+    testAlert: builder.mutation<void, Partial<Alert> & { cards: AlertCard[] }>({
+      query: body => ({
+        method: "POST",
+        url: `/api/pulse/test`,
+        body,
+      }),
+    }),
   }),
 });
 
@@ -80,4 +88,5 @@ export const {
   useCreateAlertMutation,
   useUpdateAlertMutation,
   useDeleteAlertSubscriptionMutation,
+  useTestAlertMutation,
 } = alertApi;

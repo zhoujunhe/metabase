@@ -26,7 +26,6 @@ You can set different log levels for different areas of the application, e.g.,:
     <Logger name="metabase-enterprise" level="INFO"/>
     <Logger name="metabase.plugins" level="DEBUG"/>
     <Logger name="metabase.server.middleware" level="DEBUG"/>
-    <Logger name="metabase.query-processor.async" level="DEBUG"/>
     <Logger name="com.mchange" level="ERROR"/>
 
     <!-- Example: Add trace logging to the Metabase analysis process, which can help debugging trouble with syncing, fingerprinting and scanning -->
@@ -55,7 +54,7 @@ To get Jetty logs, add the following lines to the Log4J2 XML file in the <Logger
 Before running the Metabase Docker image, you'll need to pass the custom `log4j.configurationFile` argument. Add a `JAVA_OPTS=-Dlog4j.configurationFile=file:/path/to/custom/log4j2.xml` to the environment variables of the container, like this:
 
 ```
-docker run -p 3000:3000 -v $PWD/my_log4j2.xml:/tmp/my_log4j2.xml -e JAVA_OPTS=-Dlog4j.configurationFile=file:///tmp/my_log4j2.xml metabase/metabase`
+docker run -p 3000:3000 -v $PWD/my_log4j2.xml:/tmp/my_log4j2.xml -e JAVA_OPTS=-Dlog4j.configurationFile=file:/tmp/my_log4j2.xml metabase/metabase`
 ```
 
 ## Disable emoji or colorized logging
@@ -66,7 +65,7 @@ By default Metabase will include emoji characters in logs. You can disable emoji
 
 ```
 export MB_EMOJI_IN_LOGS="false"
-java -jar metabase.jar
+java --add-opens java.base/java.nio=ALL-UNNAMED -jar metabase.jar
 ```
 
 [default-log-config]: https://github.com/metabase/metabase/blob/master/resources/log4j2.xml

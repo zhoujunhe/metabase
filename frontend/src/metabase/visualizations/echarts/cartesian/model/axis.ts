@@ -1,8 +1,10 @@
-import d3 from "d3";
+import * as d3 from "d3";
 import dayjs from "dayjs";
 import _ from "underscore";
 
 import { NULL_DISPLAY_VALUE } from "metabase/lib/constants";
+import { formatValue } from "metabase/lib/formatting";
+import type { OptionsType } from "metabase/lib/formatting/types";
 import {
   getObjectEntries,
   getObjectKeys,
@@ -19,45 +21,45 @@ import {
 } from "metabase/visualizations/echarts/cartesian/model/dataset";
 import type {
   AxisFormatter,
-  DataKey,
-  Extent,
   ChartDataset,
+  DataKey,
+  DateRange,
+  DimensionModel,
+  Extent,
+  NumericAxisScaleTransforms,
+  NumericXAxisModel,
   SeriesExtents,
   SeriesModel,
+  StackModel,
+  TimeSeriesInterval,
+  TimeSeriesXAxisModel,
   XAxisModel,
   YAxisModel,
-  DimensionModel,
-  TimeSeriesInterval,
-  DateRange,
-  TimeSeriesXAxisModel,
-  NumericXAxisModel,
-  ShowWarning,
-  NumericAxisScaleTransforms,
 } from "metabase/visualizations/echarts/cartesian/model/types";
 import {
   computeTimeseriesDataInverval,
-  getTimezone,
+  getTimezoneOrOffset,
   minTimeseriesUnit,
   tryGetDate,
 } from "metabase/visualizations/echarts/cartesian/utils/timeseries";
 import { computeNumericDataInverval } from "metabase/visualizations/lib/numeric";
+import type { ComputedVisualizationSettings } from "metabase/visualizations/types";
 import type {
-  ComputedVisualizationSettings,
-  RenderingContext,
-} from "metabase/visualizations/types";
-import type {
+  DatasetColumn,
   DateTimeAbsoluteUnit,
+  NumericScale,
+  RawSeries,
+  RowValue,
   SeriesSettings,
   StackType,
-  DatasetColumn,
-  RowValue,
-  RawSeries,
-  NumericScale,
 } from "metabase-types/api";
 import { numericScale } from "metabase-types/api";
 import { isAbsoluteDateTimeUnit } from "metabase-types/guards/date-time";
 
+import type { ShowWarning } from "../../types";
+
 import { getAxisTransforms } from "./transforms";
+import { getFormattingOptionsWithoutScaling } from "./util";
 
 const KEYS_TO_COMPARE = new Set([
   "number_style",
@@ -188,7 +190,10 @@ function generateSplits(
 
 function axisCost(extents: Extent[], favorUnsplit = true) {
   const axisExtent = d3.extent(extents.flatMap(e => e));
-  const axisRange = axisExtent[1] - axisExtent[0];
+
+  // TODO: handle cases where members of axisExtent is undefined
+  const axisRange = axisExtent[1]! - axisExtent[0]!;
+
   if (favorUnsplit && extents.length === 0) {
     return SPLIT_AXIS_UNSPLIT_COST;
   } else if (axisRange === 0) {
@@ -251,18 +256,48 @@ export function computeSplit(
 
 const getYAxisSplit = (
   seriesModels: SeriesModel[],
+  stackModels: StackModel[],
   seriesExtents: SeriesExtents,
   settings: ComputedVisualizationSettings,
   isAutoSplitSupported: boolean,
 ) => {
-  const axisBySeriesKey = seriesModels.reduce((acc, seriesModel) => {
-    const seriesSettings: SeriesSettings = settings.series(
-      seriesModel.legacySeriesSettingsObjectKey,
-    );
+  const stackedKeys = new Set(
+    stackModels.flatMap(stackModel => stackModel.seriesKeys),
+  );
+  const nonStackedKeys = new Set(
+    seriesModels
+      .map(seriesModel => seriesModel.dataKey)
+      .filter(seriesKey => !stackedKeys.has(seriesKey)),
+  );
 
-    acc[seriesModel.dataKey] = seriesSettings?.["axis"];
-    return acc;
-  }, {} as Record<DataKey, string | undefined>);
+  const stackedSeriesAxis = stackModels.every(
+    stackModel => stackModel.axis === "right",
+  )
+    ? "right"
+    : "left";
+
+  if (settings["stackable.stack_type"] === "normalized") {
+    return stackedSeriesAxis === "left"
+      ? [stackedKeys, nonStackedKeys]
+      : [nonStackedKeys, stackedKeys];
+  }
+
+  const axisBySeriesKey = seriesModels.reduce(
+    (acc, seriesModel) => {
+      const seriesSettings: SeriesSettings = settings.series(
+        seriesModel.legacySeriesSettingsObjectKey,
+      );
+
+      const seriesStack = stackModels.find(stackModel =>
+        stackModel.seriesKeys.includes(seriesModel.dataKey),
+      );
+
+      acc[seriesModel.dataKey] =
+        seriesStack != null ? seriesStack.axis : seriesSettings?.["axis"];
+      return acc;
+    },
+    {} as Record<DataKey, string | undefined>,
+  );
 
   const left: DataKey[] = [];
   const right: DataKey[] = [];
@@ -306,39 +341,48 @@ const getYAxisSplit = (
 
 const calculateStackedExtent = (
   seriesKeys: DataKey[],
-  data: ChartDataset,
-): Extent => {
-  let min = 0;
-  let max = 0;
+  dataset: ChartDataset,
+): Extent | null => {
+  let min: number | null = null;
+  let max: number | null = null;
 
-  data.forEach(entry => {
-    let positiveStack = 0;
-    let negativeStack = 0;
+  dataset.forEach(entry => {
+    let positiveStack: number | null = null;
+    let negativeStack: number | null = null;
+
     seriesKeys.forEach(key => {
       const value = entry[key];
       if (typeof value === "number") {
         if (value >= 0) {
-          positiveStack += value;
+          positiveStack = (positiveStack ?? 0) + value;
         } else {
-          negativeStack += value;
+          negativeStack = (negativeStack ?? 0) + value;
         }
       }
+
+      const values = [positiveStack, negativeStack, min, max].filter(isNotNull);
+      if (values.length !== 0) {
+        min = Math.min(...values);
+        max = Math.max(...values);
+      }
     });
-    min = Math.min(min, negativeStack);
-    max = Math.max(max, positiveStack);
   });
+
+  if (min == null || max == null) {
+    return null;
+  }
 
   return [min, max];
 };
 
 function calculateNonStackedExtent(
   seriesKeys: DataKey[],
-  data: ChartDataset,
-): Extent {
+  dataset: ChartDataset,
+): Extent | null {
   let min = Infinity;
   let max = -Infinity;
 
-  data.forEach(entry => {
+  dataset.forEach(entry => {
     seriesKeys.forEach(key => {
       const value = entry[key];
       if (typeof value === "number") {
@@ -348,8 +392,8 @@ function calculateNonStackedExtent(
     });
   });
 
-  if (min === Infinity || max === -Infinity) {
-    return [0, 0];
+  if (!isFinite(min) || !isFinite(max)) {
+    return null;
   }
 
   return [min, max];
@@ -360,27 +404,34 @@ const NORMALIZED_RANGE: Extent = [0, 1];
 const getYAxisFormatter = (
   column: DatasetColumn,
   settings: ComputedVisualizationSettings,
-  renderingContext: RenderingContext,
+  stackType: StackType,
+  formattingOptions?: OptionsType,
 ): AxisFormatter => {
-  const isNormalized = settings["stackable.stack_type"] === "normalized";
+  const isNormalized = stackType === "normalized";
 
   if (isNormalized) {
     return (value: RowValue) =>
-      renderingContext.formatValue(value, {
-        column,
-        number_style: "percent",
-      });
+      String(
+        formatValue(value, {
+          column,
+          number_style: "percent",
+        }),
+      );
   }
 
   return (value: RowValue) => {
     if (!isNumber(value)) {
-      return " ";
+      return "";
     }
 
-    return renderingContext.formatValue(value, {
+    // since we already transformed the dataset values, we do not need to
+    // consider scaling anymore
+    const options = getFormattingOptionsWithoutScaling({
       column,
       ...(settings.column?.(column) ?? {}),
+      ...formattingOptions,
     });
+    return String(formatValue(value, options));
   };
 };
 
@@ -405,8 +456,33 @@ const getYAxisLabel = (
   return seriesNames[0];
 };
 
+function findWidestRange(extents: Extent[]): Extent | null {
+  if (extents.length === 0) {
+    return null;
+  }
+
+  let min = Infinity;
+  let max = -Infinity;
+
+  extents.forEach(([start, end]) => {
+    if (start < min) {
+      min = start;
+    }
+    if (end > max) {
+      max = end;
+    }
+  });
+
+  if (min === Infinity || max === -Infinity) {
+    return [0, 0];
+  }
+
+  return [min, max];
+}
+
 function getYAxisExtent(
   seriesKeys: DataKey[],
+  stackModels: StackModel[],
   dataset: ChartDataset,
   stackType?: StackType,
 ): Extent {
@@ -418,29 +494,50 @@ function getYAxisExtent(
     return NORMALIZED_RANGE;
   }
 
-  return stackType === "stacked"
-    ? calculateStackedExtent(seriesKeys, dataset)
-    : calculateNonStackedExtent(seriesKeys, dataset);
+  const stacksExtents = stackModels.map(stackModel =>
+    calculateStackedExtent(stackModel.seriesKeys, dataset),
+  );
+
+  const nonStackedKeys = seriesKeys.filter(seriesKey =>
+    stackModels.every(stackModel => !stackModel.seriesKeys.includes(seriesKey)),
+  );
+  const nonStackedExtent = calculateNonStackedExtent(nonStackedKeys, dataset);
+
+  const combinedExtent = findWidestRange(
+    [...stacksExtents, nonStackedExtent].filter(isNotNull),
+  );
+
+  return combinedExtent != null ? combinedExtent : [0, 0];
 }
 
 export function getYAxisModel(
   seriesKeys: string[],
   seriesNames: string[],
-  dataset: ChartDataset,
+  stackModels: StackModel[],
+  trasnformedDataset: ChartDataset,
   settings: ComputedVisualizationSettings,
   columnByDataKey: Record<DataKey, DatasetColumn>,
-  renderingContext: RenderingContext,
+  stackType: StackType,
+  formattingOptions?: OptionsType,
 ): YAxisModel | null {
   if (seriesKeys.length === 0) {
     return null;
   }
 
-  const stackType = settings["stackable.stack_type"];
-
-  const extent = getYAxisExtent(seriesKeys, dataset, stackType);
+  const extent = getYAxisExtent(
+    seriesKeys,
+    stackModels,
+    trasnformedDataset,
+    stackType,
+  );
   const column = columnByDataKey[seriesKeys[0]];
   const label = getYAxisLabel(seriesNames, settings);
-  const formatter = getYAxisFormatter(column, settings, renderingContext);
+  const formatter = getYAxisFormatter(
+    column,
+    settings,
+    stackType,
+    formattingOptions,
+  );
 
   return {
     seriesKeys,
@@ -448,22 +545,26 @@ export function getYAxisModel(
     column,
     label,
     formatter,
+    isNormalized: stackType === "normalized",
   };
 }
 
 export function getYAxesModels(
   seriesModels: SeriesModel[],
   dataset: ChartDataset,
+  transformedDataset: ChartDataset,
   settings: ComputedVisualizationSettings,
   columnByDataKey: Record<DataKey, DatasetColumn>,
   isAutoSplitSupported: boolean,
-  renderingContext: RenderingContext,
+  stackModels: StackModel[],
+  isCompactFormatting: boolean,
 ) {
   const seriesDataKeys = seriesModels.map(seriesModel => seriesModel.dataKey);
   const extents = getDatasetExtents(seriesDataKeys, dataset);
 
   const [leftAxisSeriesKeysSet, rightAxisSeriesKeysSet] = getYAxisSplit(
     seriesModels,
+    stackModels,
     extents,
     settings,
     isAutoSplitSupported,
@@ -474,35 +575,70 @@ export function getYAxesModels(
   const rightAxisSeriesKeys: string[] = [];
   const rightAxisSeriesNames: string[] = [];
 
-  seriesModels.forEach(({ dataKey, name }) => {
-    if (leftAxisSeriesKeysSet.has(dataKey)) {
-      leftAxisSeriesKeys.push(dataKey);
-      leftAxisSeriesNames.push(name);
-    }
-    if (rightAxisSeriesKeysSet.has(dataKey)) {
-      rightAxisSeriesKeys.push(dataKey);
-      rightAxisSeriesNames.push(name);
+  seriesModels.forEach(({ dataKey, visible, name }) => {
+    if (visible) {
+      if (leftAxisSeriesKeysSet.has(dataKey)) {
+        leftAxisSeriesKeys.push(dataKey);
+        leftAxisSeriesNames.push(name);
+      }
+      if (rightAxisSeriesKeysSet.has(dataKey)) {
+        rightAxisSeriesKeys.push(dataKey);
+        rightAxisSeriesNames.push(name);
+      }
     }
   });
+
+  const [leftStackModels, rightStackModels] = _.partition(
+    stackModels,
+    stackModel => stackModel.axis === "left",
+  );
 
   return {
     leftAxisModel: getYAxisModel(
       leftAxisSeriesKeys,
       leftAxisSeriesNames,
-      dataset,
+      leftStackModels,
+      transformedDataset,
       settings,
       columnByDataKey,
-      renderingContext,
+      settings["stackable.stack_type"] ?? null,
+      { compact: isCompactFormatting },
     ),
     rightAxisModel: getYAxisModel(
       rightAxisSeriesKeys,
       rightAxisSeriesNames,
-      dataset,
+      rightStackModels,
+      transformedDataset,
       settings,
       columnByDataKey,
-      renderingContext,
+      settings["stackable.stack_type"] === "normalized"
+        ? null
+        : (settings["stackable.stack_type"] ?? null),
+      { compact: isCompactFormatting },
     ),
   };
+}
+
+type GetYAxisFormattingOptions = {
+  compactSeriesDataKeys: DataKey[];
+  axisSeriesKeysSet: Set<string>;
+  settings: ComputedVisualizationSettings;
+};
+
+export function getYAxisFormattingOptions({
+  compactSeriesDataKeys,
+  axisSeriesKeysSet,
+  settings,
+}: GetYAxisFormattingOptions): OptionsType {
+  const isCompact =
+    settings["graph.label_value_formatting"] === "compact" ||
+    compactSeriesDataKeys.some(dataKey => axisSeriesKeysSet.has(dataKey));
+
+  if (isCompact) {
+    return { compact: isCompact };
+  }
+
+  return {};
 }
 
 export function getTimeSeriesXAxisModel(
@@ -511,7 +647,6 @@ export function getTimeSeriesXAxisModel(
   dataset: ChartDataset,
   settings: ComputedVisualizationSettings,
   label: string | undefined,
-  renderingContext: RenderingContext,
   showWarning?: ShowWarning,
 ): TimeSeriesXAxisModel {
   const xValues = dataset.map(datum => datum[X_AXIS_DATA_KEY]);
@@ -524,7 +659,11 @@ export function getTimeSeriesXAxisModel(
     dimensionModel,
     showWarning,
   );
-  const { interval: dataTimeSeriesInterval, timezone } = timeSeriesInfo;
+  const {
+    interval: dataTimeSeriesInterval,
+    timezone,
+    offsetMinutes,
+  } = timeSeriesInfo;
   const formatter = (value: RowValue, unit?: DateTimeAbsoluteUnit) => {
     const formatUnit =
       unit ??
@@ -543,7 +682,7 @@ export function getTimeSeriesXAxisModel(
       column,
     };
 
-    return renderingContext.formatValue(value, params);
+    return String(formatValue(value, params));
   };
 
   // ECharts, when selecting chart ticks, can use either the browser timezone or UTC when `useUTC` is true.
@@ -554,7 +693,13 @@ export function getTimeSeriesXAxisModel(
     if (!date) {
       return null;
     }
-    return date.tz(timezone).format("YYYY-MM-DDTHH:mm:ss[Z]");
+
+    // Safari doesn't support offset-based timezones (e.g., "+07:00") in the Date object,
+    // which Day.js relies on. To avoid runtime exceptions, we manually adjust the time
+    // when an offset is provided. Otherwise, we use Day.js timezone conversion.
+    return offsetMinutes != null
+      ? date.add(offsetMinutes, "minute").format()
+      : date.tz(timezone).format("YYYY-MM-DDTHH:mm:ss[Z]");
   };
   const fromEChartsAxisValue = (rawValue: number) => {
     return dayjs.utc(rawValue);
@@ -577,7 +722,6 @@ function getNumericXAxisModel(
   settings: ComputedVisualizationSettings,
   label: string | undefined,
   isPadded: boolean,
-  renderingContext: RenderingContext,
 ): NumericXAxisModel {
   const axisTransforms = getAxisTransforms(scale);
   const dimensionColumn = dimensionModel.column;
@@ -593,11 +737,13 @@ function getNumericXAxisModel(
     computeNumericDataInverval(xValues);
 
   const formatter = (value: RowValue) =>
-    renderingContext.formatValue(value, {
-      column: dimensionColumn,
-      ...(settings.column?.(dimensionColumn) ?? {}),
-      compact: settings["graph.x_axis.axis_enabled"] === "compact",
-    });
+    String(
+      formatValue(value, {
+        column: dimensionColumn,
+        ...(settings.column?.(dimensionColumn) ?? {}),
+        compact: settings["graph.x_axis.axis_enabled"] === "compact",
+      }),
+    );
 
   const intervalsCount = (extent[1] - extent[0]) / interval;
   const ticksMaxInterval = dimensionColumn.binning_info?.bin_width;
@@ -626,7 +772,6 @@ export function getXAxisModel(
   rawSeries: RawSeries,
   dataset: ChartDataset,
   settings: ComputedVisualizationSettings,
-  renderingContext: RenderingContext,
   showWarning?: ShowWarning,
 ): XAxisModel {
   const label = settings["graph.x_axis.labels_enabled"]
@@ -643,7 +788,6 @@ export function getXAxisModel(
       dataset,
       settings,
       label,
-      renderingContext,
       showWarning,
     );
   }
@@ -656,7 +800,6 @@ export function getXAxisModel(
       settings,
       label,
       !isScatter,
-      renderingContext,
     );
   }
 
@@ -668,17 +811,19 @@ export function getXAxisModel(
       return NULL_DISPLAY_VALUE;
     }
 
-    return renderingContext.formatValue(value, {
-      column: dimensionColumn,
-      ...(settings.column?.(dimensionColumn) ?? {}),
-      compact: settings["graph.x_axis.axis_enabled"] === "compact",
-      noRange: isHistogram,
-    });
+    return String(
+      formatValue(value, {
+        column: dimensionColumn,
+        ...(settings.column?.(dimensionColumn) ?? {}),
+        compact: settings["graph.x_axis.axis_enabled"] === "compact",
+        noRange: isHistogram,
+      }),
+    );
   };
 
   const histogramInterval = isHistogram
-    ? dimensionColumn.binning_info?.bin_width ??
-      computeNumericDataInverval(dataset.map(datum => datum[X_AXIS_DATA_KEY]))
+    ? (dimensionColumn.binning_info?.bin_width ??
+      computeNumericDataInverval(dataset.map(datum => datum[X_AXIS_DATA_KEY])))
     : undefined;
 
   const valuesCount = isScatter
@@ -743,7 +888,10 @@ function getTimeSeriesXAxisInfo(
       .map(column => (isAbsoluteDateTimeUnit(column.unit) ? column.unit : null))
       .filter(isNotNull),
   );
-  const timezone = getTimezone(rawSeries, showWarning);
+  const { timezone, offsetMinutes } = getTimezoneOrOffset(
+    rawSeries,
+    showWarning,
+  );
   const interval = (computeTimeseriesDataInverval(xValues, unit) ?? {
     count: 1,
     unit: "day",
@@ -763,7 +911,7 @@ function getTimeSeriesXAxisInfo(
     intervalsCount = Math.ceil(max.diff(min, interval.unit) / interval.count);
   }
 
-  return { interval, timezone, intervalsCount, range, unit };
+  return { interval, timezone, offsetMinutes, intervalsCount, range, unit };
 }
 
 export function getScaledMinAndMax(

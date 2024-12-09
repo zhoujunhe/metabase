@@ -3,18 +3,11 @@
    [clojure.test :refer :all]
    [metabase.xrays.automagic-dashboards.dashboard-templates :as dashboard-templates]))
 
-(deftest ^:parallel ga-dimension?-test
-  (are [x expected] (= expected
-                       (dashboard-templates/ga-dimension? x))
-    "ga:foo" true
-    "foo"    false))
-
 (deftest ^:parallel ->type-test
   (are [x expected] (= expected
                        (#'dashboard-templates/->type x))
-    :foo     :foo
-    "ga:foo" "ga:foo"
-    "Foo"    :type/Foo))
+    :foo  :foo
+    "Foo" :type/Foo))
 
 (deftest ^:parallel get-dashboard-templates-test
   (testing "This also tests that all the dashboard templates are valid (else there would be nils returned)"
@@ -27,13 +20,12 @@
   (is (some? (dashboard-templates/get-dashboard-templates ["table" "GenericTable" "ByCountry"]))))
 
 (deftest ^:parallel dimension-form?-test
-  (are [x expected] (= expected
-                       (dashboard-templates/dimension-form? x))
-    [:dimension "Foo"]  true
-    ["dimension" "Foo"] true
-    ["DIMENSION" "Foo"] true
-    42                  false
-    [:baz :bar]         false))
+  (are [x pred] (pred (dashboard-templates/dimension-form? x))
+    [:dimension "Foo"]  true?
+    ["dimension" "Foo"] true?
+    ["DIMENSION" "Foo"] true?
+    42                  false?
+    [:baz :bar]         false?))
 
 (deftest ^:parallel collect-dimensions-test
   (is (= ["Foo" "Baz" "Bar"]

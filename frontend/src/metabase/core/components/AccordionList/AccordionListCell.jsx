@@ -9,15 +9,15 @@ import LoadingSpinner from "metabase/components/LoadingSpinner";
 import ListS from "metabase/css/components/list.module.css";
 import CS from "metabase/css/core/index.css";
 import { color } from "metabase/lib/colors";
-import { Icon, Box } from "metabase/ui";
+import { Box, Icon } from "metabase/ui";
 
 import styles from "./AccordionListCell.module.css";
 import {
-  ListCellItem,
-  FilterContainer,
   Content,
-  IconWrapper,
   EmptyStateContainer,
+  FilterContainer,
+  IconWrapper,
+  ListCellItem,
 } from "./AccordionListCell.styled";
 
 export const AccordionListCell = ({
@@ -206,7 +206,7 @@ export const AccordionListCell = ({
       </div>
     );
   } else if (type === "header-hidden") {
-    content = <div className={CS.my1} />;
+    content = <div className={cx({ [CS.my1]: itemIndex > 0 })} />;
   } else if (type === "no-results") {
     content = (
       <EmptyStateContainer>
@@ -282,7 +282,7 @@ export const AccordionListCell = ({
               {icon}
             </span>
           )}
-          <div className="List-item-content">
+          <div>
             {name && (
               <h4
                 data-element-id="list-item-title"

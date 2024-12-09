@@ -38,6 +38,25 @@ The database username for the account that you want to use to connect to your da
 
 The password for the username that you use to connect to the database.
 
+### Use an authentication provider
+
+{% include plans-blockquote.html feature="Authenticating with a provider" %}
+
+Instead of a password, you can authenticate with a supported provider.
+
+Only for self-hosted Pro and Enterprise plans.
+
+#### Azure Managed Identity
+
+To use Azure Managed Identity, you'll need to input your [client ID](https://learn.microsoft.com/en-us/previous-versions/azure/postgresql/single-server/how-to-connect-with-managed-identity#retrieving-the-access-token-from-azure-instance-metadata-service).
+
+#### Oauth
+
+To use Oauth as a provider, you'll need to input your:
+
+- Auth token URL
+- Auth token request headers (a JSON map)
+
 ### Schemas
 
 You can specify which schemas you want to sync and scan. Options are:
@@ -83,11 +102,7 @@ See the PostgreSQL docs for a table about the different [SSL Modes](https://jdbc
 
 If you set the SSL Mode to either "verify-ca" or "verify-full", you'll need to specify a root certificate (PEM). You have the option of using a **Local file path** or an **Uploaded file path**. If you're on Metabase Cloud, you'll need to select **Uploaded file path** and upload your certificate.
 
-### Use an SSH tunnel
-
-See our [guide to SSH tunneling](../ssh-tunnel.md).
-
-### Authenticate client certificate
+#### Authenticate client certificate
 
 Toggle on to bring up client certificate options.
 
@@ -109,6 +124,12 @@ openssl pkcs8 -topk8 -inform PEM -outform DER -in client-key.pem -out client-key
 
 Note: if you're using GCP and you managed to issue client certificates, everything will be given in PEM format, you only need to transform the client-key.pem into a client-key.der for the "SSL Client Key"
 
+### Use an SSH tunnel
+
+See our [guide to SSH tunneling](../ssh-tunnel.md).
+
+## Advanced settings
+
 ### Unfold JSON Columns
 
 For PostgreSQL databases, Metabase can unfold JSON columns into component fields to yield a table where each JSON key becomes a column. JSON unfolding is on by default, but you can turn off JSON unfolding if performance is slow.
@@ -129,7 +150,7 @@ PostgreSQL connection URIs expect [percent-encoding](https://developer.mozilla.o
 
 Turn this option **OFF** if people want to click **Run** (the play button) before applying any [Summarize](../../questions/query-builder/introduction.md#grouping-your-metrics) or filter selections.
 
-By default, Metabase will execute a query as soon as you choose an grouping option from the **Summarize** menu or a filter condition from the [drill-through menu](https://www.metabase.com/learn/questions/drill-through). If your database is slow, you may want to disable re-running to avoid loading data on each click.
+By default, Metabase will execute a query as soon as you choose an grouping option from the **Summarize** menu or a filter condition from the [drill-through menu](https://www.metabase.com/learn/metabase-basics/querying-and-dashboards/questions/drill-through). If your database is slow, you may want to disable re-running to avoid loading data on each click.
 
 ### Choose when Metabase syncs and scans
 
@@ -159,19 +180,6 @@ If you've selected **Choose when syncs and scans happen** > **ON**, you'll see t
 Turn this option **ON** to scan a sample of values every time Metabase runs a [sync](../sync-scan.md#how-database-syncs-work).
 
 A fingerprinting query examines the first 10,000 rows from each column and uses that data to guesstimate how many unique values each column has, what the minimum and maximum values are for numeric and timestamp columns, and so on. If you leave this option **OFF**, Metabase will only fingerprint your columns once during setup.
-
-### Default result cache duration
-
-{% include plans-blockquote.html feature="Database-specific caching" %}
-
-How long to keep question results. By default, Metabase will use the value you supply on the [cache settings page](../../configuring-metabase/caching.md), but if this database has other factors that influence the freshness of data, it could make sense to set a custom duration. You can also choose custom durations on individual questions or dashboards to help improve performance.
-
-Options are:
-
-- **Use instance default (TTL)**. TTL is time to live, meaning how long the cache remains valid before Metabase should run the query again.
-- **Custom**.
-
-If you are on a paid plan, you can also set cache duration per questions. See [Advanced caching controls](../../configuring-metabase/caching.md#advanced-caching-controls).
 
 ## Further reading
 

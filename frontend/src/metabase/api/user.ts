@@ -3,28 +3,27 @@ import type {
   ListUsersRequest,
   ListUsersResponse,
   UpdatePasswordRequest,
-  UserId,
-  User,
   UpdateUserRequest,
+  User,
+  UserId,
 } from "metabase-types/api";
 
 import { Api } from "./api";
 import {
   idTag,
-  listTag,
   invalidateTags,
-  provideUserTags,
+  listTag,
   provideUserListTags,
+  provideUserTags,
 } from "./tags";
 
 export const userApi = Api.injectEndpoints({
   endpoints: builder => ({
     listUsers: builder.query<ListUsersResponse, ListUsersRequest>({
-      query: ({ limit, offset, ...body }) => ({
+      query: params => ({
         method: "GET",
         url: "/api/user",
-        params: { limit, offset },
-        body,
+        params,
       }),
       providesTags: response =>
         response ? provideUserListTags(response.data) : [],

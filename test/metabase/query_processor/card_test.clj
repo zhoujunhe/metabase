@@ -1,13 +1,17 @@
 (ns metabase.query-processor.card-test
   "There are more e2e tests in [[metabase.api.card-test]]."
   (:require
-   [cheshire.core :as json]
    [clojure.test :refer :all]
-   [metabase.api.common :as api]
    [metabase.models :refer [Card]]
+   [metabase.models.data-permissions :as data-perms]
+   [metabase.models.interface :as mi]
+   [metabase.models.permissions :as perms]
+   [metabase.models.permissions-group :as perms-group]
    [metabase.query-processor :as qp]
    [metabase.query-processor.card :as qp.card]
    [metabase.test :as mt]
+   [metabase.util :as u]
+   [metabase.util.json :as json]
    [toucan2.tools.with-temp :as t2.with-temp]))
 
 (defn run-query-for-card
@@ -15,11 +19,12 @@
   [card-id]
   ;; TODO -- we shouldn't do the perms checks if there is no current User context. It seems like API-level perms check
   ;; stuff doesn't belong in the Dashboard QP namespace
-  (binding [api/*current-user-permissions-set* (atom #{"/"})]
+  (mt/as-admin
     (qp.card/process-query-for-card
      card-id :api
-     :run (fn [query info]
-            (qp/process-query (assoc query :info info))))))
+     :make-run (constantly
+                (fn [query info]
+                  (qp/process-query (assoc query :info info)))))))
 
 (defn field-filter-query
   "A query with a Field Filter parameter"
@@ -159,9 +164,60 @@
                                                           {:aggregation [[:count]]})
 
                                                         :visualization_settings
-                                                        {:column_settings {(json/generate-string
+                                                        {:column_settings {(json/encode
                                                                             [:ref [:field Integer/MAX_VALUE {:base-type :type/DateTime, :temporal-unit :month}]])
                                                                            {:date_abbreviate true
                                                                             :some_other_key  [:ref [:field Integer/MAX_VALUE {:base-type :type/DateTime, :temporal-unit :month}]]}}}}]
       (is (= [[100]]
              (mt/rows (run-query-for-card card-id)))))))
+
+(deftest ^:parallel pivot-tables-should-not-override-the-run-function
+  (testing "Pivot tables should not override the run function (#44160)"
+    (t2.with-temp/with-temp [:model/Card {card-id :id} {:dataset_query
+                                                        (mt/mbql-query venues
+                                                          {:aggregation [[:count]]})
+                                                        :display :pivot}]
+      (let [result (run-query-for-card card-id)]
+        (is (=? {:status :completed}
+                result))
+        (is (= [[100]] (mt/rows result)))))))
+
+(deftest nested-query-permissions-test
+  (testing "Should be able to run a Card with another Card as its source query with just perms for the former (#15131)"
+    (mt/with-no-data-perms-for-all-users!
+      (mt/with-non-admin-groups-no-root-collection-perms
+        (mt/with-temp [:model/Collection allowed-collection    {}
+                       :model/Collection disallowed-collection {}
+                       :model/Card       parent-card           {:dataset_query {:database (mt/id)
+                                                                                :type     :native
+                                                                                :native   {:query "SELECT id FROM venues ORDER BY id ASC LIMIT 2;"}}
+                                                                :database_id   (mt/id)
+                                                                :collection_id (u/the-id disallowed-collection)}
+                       :model/Card       child-card            {:dataset_query {:database (mt/id)
+                                                                                :type     :query
+                                                                                :query    {:source-table (format "card__%d" (u/the-id parent-card))}}
+                                                                :collection_id (u/the-id allowed-collection)}]
+          (perms/grant-collection-read-permissions! (perms-group/all-users) allowed-collection)
+          (data-perms/set-database-permission! (perms-group/all-users) (mt/id) :perms/create-queries :query-builder-and-native)
+          (data-perms/set-database-permission! (perms-group/all-users) (mt/id) :perms/view-data :unrestricted)
+          (mt/with-test-user :rasta
+            (letfn [(process-query-for-card [card]
+                      (qp.card/process-query-for-card
+                       (u/the-id card) :api
+                       :make-run (constantly
+                                  (fn [query info]
+                                    (let [info (assoc info :query-hash (byte-array 0))]
+                                      (qp/process-query (assoc query :info info)))))))]
+              (testing "Should not be able to run the parent Card"
+                (is (not (mi/can-read? disallowed-collection)))
+                (is (not (mi/can-read? parent-card)))
+                (is (thrown-with-msg?
+                     clojure.lang.ExceptionInfo
+                     #"\QYou don't have permissions to do that.\E"
+                     (process-query-for-card parent-card))))
+              (testing "Should be able to run the child Card (#15131)"
+                (is (not (mi/can-read? parent-card)))
+                (is (mi/can-read? allowed-collection))
+                (is (mi/can-read? child-card))
+                (is (= [[1] [2]]
+                       (mt/rows (process-query-for-card child-card))))))))))))

@@ -1,11 +1,10 @@
-(ns metabase-enterprise.advanced-permissions.common-test
+(ns ^:mb/driver-tests metabase-enterprise.advanced-permissions.common-test
   (:require
    [clojure.test :refer :all]
    [metabase-enterprise.advanced-permissions.api.util-test
     :as advanced-perms.api.tu]
    [metabase-enterprise.advanced-permissions.common
     :as advanced-permissions.common]
-   [metabase-enterprise.test :as met]
    [metabase.api.database :as api.database]
    [metabase.driver :as driver]
    [metabase.models
@@ -67,28 +66,55 @@
 
 (deftest new-database-view-data-permission-level-test
   (mt/with-additional-premium-features #{:sandboxes :advanced-permissions}
+    (mt/with-temp [:model/Database         {db-id :id}      {}
+                   :model/PermissionsGroup {group-id :id}   {}]
+      (let [perm-value (fn [db-id] (t2/select-one-fn :perm_value
+                                                     :model/DataPermissions
+                                                     :db_id     db-id
+                                                     :group_id  group-id
+                                                     :table_id  nil
+                                                     :perm_type :perms/view-data))]
+        (testing "A new database defaults to `:unrestricted` if no other perms are set"
+          (mt/with-temp [:model/Database {db-id-2 :id} {}]
+            (is (= :unrestricted (perm-value db-id-2)))))
+
+        (testing "A new database defaults to `:blocked` if the group has `:blocked` for any other database"
+          (data-perms/set-database-permission! group-id db-id :perms/view-data :blocked)
+          (mt/with-temp [:model/Database {db-id-2 :id} {}]
+            (is (= :blocked (perm-value db-id-2)))))
+
+        (testing "A new database defaults to `:blocked` if the group has any connection impersonation"
+          (data-perms/set-database-permission! group-id db-id :perms/view-data :unrestricted)
+          (mt/with-temp [:model/ConnectionImpersonation _ {:group_id group-id
+                                                           :db_id    db-id}
+                         :model/Database {db-id-2 :id} {}]
+            (is (= :blocked (perm-value db-id-2)))))
+
+        (testing "A new database defaults to `:blocked` if the group has a sandbox for any table"
+          (mt/with-temp [:model/Table {table-id :id} {:db_id db-id}
+                         :model/GroupTableAccessPolicy _ {:group_id group-id
+                                                          :table_id table-id}
+                         :model/Database {db-id-2 :id} {}]
+            (is (= :blocked (perm-value db-id-2)))))))))
+
+(deftest new-table-view-data-permission-level-test
+  (mt/with-additional-premium-features #{:sandboxes :advanced-permissions}
     (mt/with-temp [:model/PermissionsGroup {group-id :id}   {}
-                   :model/Database         {db-id :id}      {}]
-      (testing "A new database defaults to `:unrestricted` if no other perms are set"
-        ;; First delete the default permissions for the group so we start with a clean slate
-        (t2/delete! :model/DataPermissions :group_id group-id)
-        (is (= :unrestricted (advanced-permissions.common/new-database-view-data-permission-level group-id))))
-
-      (testing "A new database defaults to `:blocked` if the group has `:blocked` for any other database"
-        (data-perms/set-database-permission! group-id db-id :perms/view-data :blocked)
-        (is (= :blocked (advanced-permissions.common/new-database-view-data-permission-level group-id))))
-
-      (testing "A new database defaults to `:blocked` if the group has any connection impersonation"
-        (data-perms/set-database-permission! group-id db-id :perms/view-data :unrestricted)
-        (advanced-perms.api.tu/with-impersonations! {:impersonations [{:db-id      db-id
-                                                                       :attribute  "impersonation_attr"
-                                                                       :attributes {"impersonation_attr" "impersonation_role"}}]}
-          (is (= :blocked (advanced-permissions.common/new-database-view-data-permission-level (u/the-id &group))))))
-
-      (testing "A new database defaults to `:blocked` if the group has any sandbox"
-        (data-perms/set-database-permission! group-id db-id :perms/view-data :unrestricted)
-        (met/with-gtaps! {:gtaps {:venues {}}, :attributes {"a" 50}}
-          (is (= :blocked (advanced-permissions.common/new-database-view-data-permission-level (u/the-id &group)))))))))
+                   :model/Database         {db-id :id}      {}
+                   :model/Table            {table-id-1 :id} {:db_id db-id :schema "PUBLIC"}
+                   :model/Table            {table-id-2 :id} {:db_id db-id :schema "PUBLIC"}]
+      (let [perm-value (fn [table-id] (t2/select-one-fn :perm_value
+                                                        :model/DataPermissions
+                                                        :db_id     db-id
+                                                        :group_id  group-id
+                                                        :table_id  table-id
+                                                        :perm_type :perms/view-data))]
+        (testing "New table gets `blocked` view-data perms if any tables in the DB are `blocked`"
+          (data-perms/set-table-permission! group-id table-id-1 :perms/view-data :blocked)
+          (data-perms/set-table-permission! group-id table-id-2 :perms/view-data :unrestricted)
+          (mt/with-temp [:model/Table {table-id-3 :id} {:db_id db-id :schema "PUBLIC"}]
+            (is (nil? (perm-value nil)))
+            (is (= :blocked (perm-value table-id-3)))))))))
 
 (deftest new-group-view-data-permission-level
   (mt/with-additional-premium-features #{:sandboxes :advanced-permissions}
@@ -118,7 +144,6 @@
                                                                        :card_id              card-id
                                                                        :attribute_remappings {"foo" 1}}]
             (is (= :blocked (advanced-permissions.common/new-group-view-data-permission-level db-id)))))))))
-
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                        Data model permission enforcement                                       |
@@ -770,10 +795,10 @@
   (perms/grant-application-permissions! (perms-group/all-users) :setting)
   (testing "Upload DB can be set with the right permission"
     (mt/with-all-users-data-perms-graph! {(mt/id) {:details :yes}}
-      (mt/user-http-request :rasta :put 204 "setting/" {:uploads-database-id (mt/id)})))
+      (mt/user-http-request :rasta :put 204 "setting/" {:uploads-settings {:db_id (mt/id) :schema_name nil :table_prefix nil}})))
   (testing "Upload DB cannot be set without the right permission"
     (mt/with-all-users-data-perms-graph! {(mt/id) {:details :no}}
-      (mt/user-http-request :rasta :put 403 "setting/" {:uploads-database-id (mt/id)})))
+      (mt/user-http-request :rasta :put 403 "setting/" {:uploads-settings {:db_id (mt/id) :schema_name nil :table_prefix nil}})))
   (perms/revoke-application-permissions! (perms-group/all-users) :setting))
 
 (deftest upload-csv-test
@@ -784,9 +809,11 @@
           [table (upload-test/create-upload-table!)]
           (let [db-id       (mt/id)
                 upload-csv! (fn []
-                              (upload-test/upload-example-csv! {:grant-permission? false
-                                                                :schema-name       (:schema table)
-                                                                :table-prefix      "uploaded_magic_"}))]
+                              (upload-test/do-with-uploaded-example-csv!
+                               {:grant-permission? false
+                                :schema-name       (:schema table)
+                                :table-prefix      "uploaded_magic_"}
+                               identity))]
             (doseq [[schema-perms can-upload? description]
                     [[:query-builder               true  "Data permissions on schema should succeed"]
                      [:no                          false "No data permissions on schema should fail"]
@@ -858,29 +885,24 @@
   (mt/test-drivers (mt/normal-drivers-with-feature :uploads :schemas)
     (testing "GET /api/database and GET /api/database/:id responses should include can_upload depending on unrestricted data access to the upload schema"
       (mt/with-model-cleanup [:model/Table]
-        (let [schema-name (sql.tx/session-schema driver/*driver*)]
+        (let [schema-name (sql.tx/session-schema driver/*driver*)
+              db-id       (u/the-id (mt/db))]
           (upload-test/with-upload-table! [table (upload-test/create-upload-table! :schema-name schema-name)]
-            (let [db-id (u/the-id (mt/db))]
-              (mt/with-temp [:model/Table {} {:db_id db-id :schema "some_schema"}]
-                (mt/with-temporary-setting-values [uploads-enabled      true
-                                                   uploads-database-id  db-id
-                                                   uploads-schema-name  schema-name
-                                                   uploads-table-prefix "uploaded_magic_"]
-                  (doseq [[schema-perms can-upload?] {:query-builder               true
-                                                      :no                          false
-                                                      {(:id table) :query-builder} false}]
-                    (testing (format "can_upload should be %s if the user has %s access to the upload schema"
-                                     can-upload? schema-perms)
-                      (mt/with-all-users-data-perms-graph! {db-id {:view-data :unrestricted
-                                                                   :create-queries {"some_schema" :query-builder
-                                                                                    schema-name schema-perms}}}
-                        (testing "GET /api/database"
-                          (let [result (->> (mt/user-http-request :rasta :get 200 "database")
-                                            :data
-                                            (filter #(= (:id %) db-id))
-                                            first)]
-                            (def res (mt/user-http-request :rasta :get 200 "database"))
-                            (is (= can-upload? (:can_upload result)))))
-                        (testing "GET /api/database/:id"
-                          (let [result (mt/user-http-request :rasta :get 200 (format "database/%d" db-id))]
-                            (is (= can-upload? (:can_upload result)))))))))))))))))
+            (mt/with-temp [:model/Table {} {:db_id db-id :schema "some_schema"}]
+              (doseq [[schema-perms can-upload?] {:query-builder               true
+                                                  :no                          false
+                                                  {(:id table) :query-builder} false}]
+                (testing (format "can_upload should be %s if the user has %s access to the upload schema"
+                                 can-upload? schema-perms)
+                  (mt/with-all-users-data-perms-graph! {db-id {:view-data :unrestricted
+                                                               :create-queries {"some_schema" :query-builder
+                                                                                schema-name schema-perms}}}
+                    (testing "GET /api/database"
+                      (let [result (->> (mt/user-http-request :rasta :get 200 "database")
+                                        :data
+                                        (filter #(= (:id %) db-id))
+                                        first)]
+                        (is (= can-upload? (:can_upload result)))))
+                    (testing "GET /api/database/:id"
+                      (let [result (mt/user-http-request :rasta :get 200 (format "database/%d" db-id))]
+                        (is (= can-upload? (:can_upload result)))))))))))))))

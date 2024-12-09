@@ -1,27 +1,26 @@
-import type { AnyAction, ThunkDispatch } from "@reduxjs/toolkit";
 import { within } from "@testing-library/react";
 
 import {
   setupAlertsEndpoints,
   setupCardEndpoints,
   setupCardQueryEndpoints,
+  setupCardQueryMetadataEndpoint,
   setupDatabaseEndpoints,
   setupTableEndpoints,
   setupUnauthorizedCardEndpoints,
 } from "__support__/server-mocks";
 import {
+  act,
   renderWithProviders,
   screen,
   waitForLoaderToBeRemoved,
 } from "__support__/ui";
-import { createMockConfig } from "embedding-sdk/test/mocks/config";
+import { InteractiveQuestionResult } from "embedding-sdk/components/private/InteractiveQuestionResult";
+import { createMockAuthProviderUriConfig } from "embedding-sdk/test/mocks/config";
 import { setupSdkState } from "embedding-sdk/test/server-mocks/sdk-init";
 import {
-  clearQueryResult,
-  runQuestionQuery,
-} from "metabase/query_builder/actions";
-import {
   createMockCard,
+  createMockCardQueryMetadata,
   createMockColumn,
   createMockDatabase,
   createMockDataset,
@@ -29,7 +28,8 @@ import {
   createMockTable,
   createMockUser,
 } from "metabase-types/api/mocks";
-import type { State } from "metabase-types/store";
+
+import { useInteractiveQuestionContext } from "../../private/InteractiveQuestion/context";
 
 import { InteractiveQuestion } from "./InteractiveQuestion";
 
@@ -44,6 +44,7 @@ const TEST_COLUMN = createMockColumn({
   display_name: "Test Column",
   name: "Test Column",
 });
+
 const TEST_DATASET = createMockDataset({
   data: createMockDatasetData({
     cols: [TEST_COLUMN],
@@ -51,10 +52,26 @@ const TEST_DATASET = createMockDataset({
   }),
 });
 
+// Provides a button to re-run the query
+function InteractiveQuestionCustomLayout() {
+  const { resetQuestion } = useInteractiveQuestionContext();
+
+  return (
+    <div>
+      <button onClick={resetQuestion}>Run Query</button>
+      <InteractiveQuestionResult withTitle />
+    </div>
+  );
+}
+
 const setup = ({
   isValidCard = true,
+  withCustomLayout = false,
+  withChartTypeSelector = false,
 }: {
   isValidCard?: boolean;
+  withCustomLayout?: boolean;
+  withChartTypeSelector?: boolean;
 } = {}) => {
   const { state } = setupSdkState({
     currentUser: TEST_USER,
@@ -63,6 +80,12 @@ const setup = ({
   const TEST_CARD = createMockCard();
   if (isValidCard) {
     setupCardEndpoints(TEST_CARD);
+    setupCardQueryMetadataEndpoint(
+      TEST_CARD,
+      createMockCardQueryMetadata({
+        databases: [TEST_DB],
+      }),
+    );
   } else {
     setupUnauthorizedCardEndpoints(TEST_CARD);
   }
@@ -74,12 +97,19 @@ const setup = ({
   setupCardQueryEndpoints(TEST_CARD, TEST_DATASET);
 
   return renderWithProviders(
-    <InteractiveQuestion questionId={TEST_CARD.id} />,
+    <InteractiveQuestion
+      questionId={TEST_CARD.id}
+      withChartTypeSelector={withChartTypeSelector}
+    >
+      {withCustomLayout ? <InteractiveQuestionCustomLayout /> : undefined}
+    </InteractiveQuestion>,
     {
       mode: "sdk",
-      sdkConfig: createMockConfig({
-        jwtProviderUri: "http://TEST_URI/sso/metabase",
-      }),
+      sdkProviderProps: {
+        config: createMockAuthProviderUriConfig({
+          authProviderUri: "http://TEST_URI/sso/metabase",
+        }),
+      },
       storeInitialState: state,
     },
   );
@@ -89,7 +119,33 @@ describe("InteractiveQuestion", () => {
   it("should initially render with a loader", async () => {
     setup();
 
-    expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
+    expect(screen.getByTestId("loading-indicator")).toBeInTheDocument();
+  });
+
+  it("should render loading state when rerunning the query", async () => {
+    setup({ withCustomLayout: true });
+
+    await waitForLoaderToBeRemoved();
+
+    expect(
+      await within(screen.getByTestId("TableInteractive-root")).findByText(
+        TEST_COLUMN.display_name,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      await within(screen.getByRole("gridcell")).findByText("Test Row"),
+    ).toBeInTheDocument();
+
+    expect(screen.queryByTestId("loading-indicator")).not.toBeInTheDocument();
+
+    // Simulate drilling down by re-running the query again
+    act(() => screen.getByText("Run Query").click());
+
+    expect(screen.queryByText("Question not found")).not.toBeInTheDocument();
+    expect(screen.getByTestId("loading-indicator")).toBeInTheDocument();
+    expect(
+      within(await screen.findByRole("gridcell")).getByText("Test Row"),
+    ).toBeInTheDocument();
   });
 
   it("should render when question is valid", async () => {
@@ -107,37 +163,6 @@ describe("InteractiveQuestion", () => {
     ).toBeInTheDocument();
   });
 
-  it("should render loading state when drilling down", async () => {
-    const { store } = setup();
-
-    await waitForLoaderToBeRemoved();
-
-    expect(
-      within(screen.getByTestId("TableInteractive-root")).getByText(
-        TEST_COLUMN.display_name,
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("gridcell")).getByText("Test Row"),
-    ).toBeInTheDocument();
-
-    expect(screen.queryByTestId("loading-spinner")).not.toBeInTheDocument();
-    // Mimicking drilling down by rerunning the query again
-    const storeDispatch = store.dispatch as unknown as ThunkDispatch<
-      State,
-      void,
-      AnyAction
-    >;
-    storeDispatch(clearQueryResult());
-    storeDispatch(runQuestionQuery());
-
-    expect(screen.queryByText("Question not found")).not.toBeInTheDocument();
-    expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
-    expect(
-      within(await screen.findByRole("gridcell")).getByText("Test Row"),
-    ).toBeInTheDocument();
-  });
-
   it("should not render an error if a question isn't found before the question loaded", async () => {
     setup();
 
@@ -152,7 +177,24 @@ describe("InteractiveQuestion", () => {
 
     await waitForLoaderToBeRemoved();
 
-    expect(screen.getByText("Error")).toBeInTheDocument();
     expect(screen.getByText("Question not found")).toBeInTheDocument();
+  });
+
+  it("should show a chart type selector button if withChartTypeSelector is true", async () => {
+    setup({ withChartTypeSelector: true });
+    await waitForLoaderToBeRemoved();
+
+    expect(
+      screen.getByTestId("chart-type-selector-button"),
+    ).toBeInTheDocument();
+  });
+
+  it("should not show a chart type selector button if withChartTypeSelector is false", async () => {
+    setup({ withChartTypeSelector: false });
+    await waitForLoaderToBeRemoved();
+
+    expect(
+      screen.queryByTestId("chart-type-selector-button"),
+    ).not.toBeInTheDocument();
   });
 });

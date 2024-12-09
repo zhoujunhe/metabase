@@ -8,7 +8,7 @@ describe("schemas", () => {
     { model: "pulse", entityType: "pulses" },
     { model: "collection", entityType: "collections" },
     { model: "segment", entityType: "segments" },
-    { model: "metric", entityType: "metrics" },
+    { model: "metric", entityType: "questions" },
     { model: "snippet", entityType: "snippets" },
     { model: "snippetCollection", entityType: "snippetCollections" },
   ];
@@ -16,6 +16,7 @@ describe("schemas", () => {
   describe("entityTypeForModel", () => {
     MODEL_ENTITY_TYPE.forEach(testCase => {
       const { model, entityType } = testCase;
+
       it(`returns "${entityType}" for "${model}" model`, () => {
         expect(entityTypeForModel(model)).toBe(entityType);
       });
@@ -25,6 +26,7 @@ describe("schemas", () => {
   describe("entityTypeForObject", () => {
     MODEL_ENTITY_TYPE.forEach(testCase => {
       const { model, entityType } = testCase;
+
       it(`returns "${entityType}" for "${model}" model`, () => {
         expect(entityTypeForObject({ model })).toBe(entityType);
       });

@@ -1,11 +1,11 @@
 (ns metabase.api.dataset
   "/api/dataset endpoints."
   (:require
-   [cheshire.core :as json]
    [clojure.string :as str]
    [compojure.core :refer [POST]]
    [metabase.api.common :as api]
    [metabase.api.field :as api.field]
+   [metabase.api.query-metadata :as api.query-metadata]
    [metabase.driver :as driver]
    [metabase.driver.util :as driver.u]
    [metabase.events :as events]
@@ -13,10 +13,11 @@
    [metabase.lib.schema.id :as lib.schema.id]
    [metabase.lib.schema.info :as lib.schema.info]
    [metabase.models.card :refer [Card]]
-   [metabase.models.database :as database :refer [Database]]
+   [metabase.models.database :refer [Database]]
    [metabase.models.params.custom-values :as custom-values]
    [metabase.models.persisted-info :as persisted-info]
    [metabase.models.table :refer [Table]]
+   [metabase.models.visualization-settings :as mb.viz]
    [metabase.query-processor :as qp]
    [metabase.query-processor.compile :as qp.compile]
    [metabase.query-processor.middleware.constraints :as qp.constraints]
@@ -24,9 +25,9 @@
    [metabase.query-processor.pivot :as qp.pivot]
    [metabase.query-processor.streaming :as qp.streaming]
    [metabase.query-processor.util :as qp.util]
-   [metabase.shared.models.visualization-settings :as mb.viz]
    [metabase.util :as u]
    [metabase.util.i18n :refer [tru]]
+   [metabase.util.json :as json]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
    [metabase.util.malli.schema :as ms]
@@ -46,9 +47,9 @@
     (api/read-check Card source-card-id)
     source-card-id))
 
-(mu/defn ^:private run-streaming-query :- (ms/InstanceOfClass metabase.async.streaming_response.StreamingResponse)
+(mu/defn- run-streaming-query :- (ms/InstanceOfClass metabase.async.streaming_response.StreamingResponse)
   [{:keys [database], :as query}
-   & {:keys [context export-format]
+   & {:keys [context export-format was-pivot]
       :or   {context       :ad-hoc
              export-format :api}}]
   (span/with-span!
@@ -75,7 +76,12 @@
                            (assoc :metadata/model-metadata (:result_metadata source-card)))]
       (binding [qp.perms/*card-id* source-card-id]
         (qp.streaming/streaming-response [rff export-format]
-          (qp/process-query (update query :info merge info) rff))))))
+          (if was-pivot
+            (qp.pivot/run-pivot-query (-> query
+                                          (assoc :constraints (qp.constraints/default-query-constraints))
+                                          (update :info merge info))
+                                      rff)
+            (qp/process-query (update query :info merge info) rff)))))))
 
 (api/defendpoint POST "/"
   "Execute a query and retrieve the results in the usual format. The query will not use the cache."
@@ -85,7 +91,6 @@
    (-> query
        (update-in [:middleware :js-int-to-string?] (fnil identity true))
        qp/userland-query-with-default-constraints)))
-
 
 ;;; ----------------------------------- Downloading Query Results in Other Formats -----------------------------------
 
@@ -117,38 +122,47 @@
 (defn- viz-setting-key-fn
   "Key function for parsing JSON visualization settings into the DB form. Converts most keys to
   keywords, but leaves column references as strings."
-   [json-key]
-   (if (re-matches column-ref-regex json-key)
-     json-key
-     (keyword json-key)))
+  [json-key]
+  (if (re-matches column-ref-regex json-key)
+    json-key
+    (keyword json-key)))
 
 (api/defendpoint POST ["/:export-format", :export-format export-format-regex]
   "Execute a query and download the result data as a file in the specified format."
-  [export-format :as {{:keys [query visualization_settings format_rows]
+  [export-format :as {{:keys [query visualization_settings pivot_results format_rows]
                        :or   {visualization_settings "{}"}} :params}]
   {query                  ms/JSONString
    visualization_settings ms/JSONString
-   format_rows            [:maybe :boolean]
-   export-format          (into [:enum] export-formats)}
-  (let [query        (json/parse-string query keyword)
-        viz-settings (-> (json/parse-string visualization_settings viz-setting-key-fn)
-                         (update :table.columns mbql.normalize/normalize)
-                         mb.viz/db->norm)
-        query        (-> query
-                         (assoc :viz-settings viz-settings)
-                         (dissoc :constraints)
-                         (update :middleware #(-> %
-                                                  (dissoc :add-default-userland-constraints? :js-int-to-string?)
-                                                  (assoc :process-viz-settings? true
-                                                         :skip-results-metadata? true
-                                                         :format-rows? format_rows))))]
+   format_rows            [:maybe ms/BooleanValue]
+   pivot_results          [:maybe ms/BooleanValue]
+   export-format          ExportFormat}
+  (let [{:keys [was-pivot] :as query} (json/decode+kw query)
+        query                         (dissoc query :was-pivot)
+        viz-settings                  (-> (json/decode visualization_settings viz-setting-key-fn)
+                                          (update :table.columns mbql.normalize/normalize)
+                                          mb.viz/norm->db)
+        query                         (-> query
+                                          (assoc :viz-settings viz-settings)
+                                          (dissoc :constraints)
+                                          (update :middleware #(-> %
+                                                                   (dissoc :add-default-userland-constraints? :js-int-to-string?)
+                                                                   (assoc :format-rows?          (or format_rows false)
+                                                                          :pivot?                (or pivot_results false)
+                                                                          :process-viz-settings? true
+                                                                          :skip-results-metadata? true))))]
     (run-streaming-query
      (qp/userland-query query)
      :export-format export-format
-     :context       (export-format->context export-format))))
-
+     :context      (export-format->context export-format)
+     :was-pivot    was-pivot)))
 
 ;;; ------------------------------------------------ Other Endpoints -------------------------------------------------
+
+(api/defendpoint POST "/query_metadata"
+  "Get all of the required query metadata for an ad-hoc query."
+  [:as {{:keys [database] :as query} :body}]
+  {database ms/PositiveInt}
+  (api.query-metadata/batch-fetch-query-metadata [query]))
 
 (api/defendpoint POST "/native"
   "Fetch a native version of an MBQL query."
@@ -159,7 +173,7 @@
     (qp.perms/check-current-user-has-adhoc-native-query-perms query)
     (let [driver (driver.u/database->driver database)
           prettify (partial driver/prettify-native-form driver)
-          compiled (qp.compile/compile-and-splice-parameters query)]
+          compiled (qp.compile/compile-with-inline-parameters query)]
       (cond-> compiled
         (not (false? pretty)) (update :query prettify)))))
 
@@ -176,7 +190,8 @@
       (qp.pivot/run-pivot-query (assoc query
                                        :constraints (qp.constraints/default-query-constraints)
                                        :info        info)
-                                rff))))
+                                rff)
+      query)))
 
 (defn- parameter-field-values
   [field-ids query]
@@ -199,8 +214,8 @@
   consulted if `:values_source_type` is nil. Query is an optional string return matching field values not all."
   [parameter field-ids query]
   (custom-values/parameter->values
-    parameter query
-    (fn [] (parameter-field-values field-ids query))))
+   parameter query
+   (fn [] (parameter-field-values field-ids query))))
 
 (api/defendpoint POST "/parameter/values"
   "Return parameter values for cards or dashboards that are being edited."

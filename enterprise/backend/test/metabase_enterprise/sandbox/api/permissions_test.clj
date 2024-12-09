@@ -1,6 +1,5 @@
 (ns metabase-enterprise.sandbox.api.permissions-test
   (:require
-   [cheshire.core :as json]
    [clojure.string :as str]
    [clojure.test :refer :all]
    [metabase-enterprise.sandbox.models.group-table-access-policy
@@ -13,6 +12,7 @@
    [metabase.query-processor.compile :as qp.compile]
    [metabase.test :as mt]
    [metabase.util :as u]
+   [metabase.util.json :as json]
    [metabase.util.malli.schema :as ms]
    [toucan2.core :as t2]
    [toucan2.tools.with-temp :as t2.with-temp]))
@@ -55,7 +55,7 @@
                               [:table_id             [:= (mt/id :venues)]]
                               [:card_id              nil?]
                               [:attribute_remappings nil?]]]
-                      (t2/select GroupTableAccessPolicy :group_id (u/the-id &group))))))
+                            (t2/select GroupTableAccessPolicy :group_id (u/the-id &group))))))
             (let [graph    (mt/user-http-request :crowberto :get 200 "permissions/graph")
                   graph'   (assoc-in graph (db-graph-keypath &group) (updated-db-perms))
                   response (mt/user-http-request :crowberto :put 200 "permissions/graph" graph')]
@@ -86,7 +86,6 @@
                                 [:group_id             [:= (u/the-id &group)]]
                                 [:table_id             [:= (u/the-id db-2-table)]]
                                 [:card_id              nil?]
-                                [:permission_id        nil?]
                                 [:attribute_remappings nil?]]]
                               (t2/select GroupTableAccessPolicy
                                          :group_id (u/the-id &group)
@@ -98,7 +97,6 @@
                                 [:group_id             [:= (u/the-id other-group)]]
                                 [:table_id             [:= (mt/id :venues)]]
                                 [:card_id              nil?]
-                                [:permission_id        nil?]
                                 [:attribute_remappings nil?]]]
                               (t2/select GroupTableAccessPolicy :group_id (u/the-id other-group)))))))))))))
 
@@ -119,9 +117,9 @@
   (let [persisted-info (persisted-info/turn-on-model! (mt/user->id :rasta) card)]
     (t2/update! PersistedInfo {:card_id (u/the-id card)}
                 {:definition (json/encode
-                               (persisted-info/metadata->definition
-                                 (:result_metadata card)
-                                 (:table_name persisted-info)))
+                              (persisted-info/metadata->definition
+                               (:result_metadata card)
+                               (:table_name persisted-info)))
                  :active true
                  :state "persisted"
                  :query_hash (persisted-info/query-hash (:dataset_query card))})))

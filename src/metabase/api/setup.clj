@@ -19,7 +19,7 @@
    [metabase.models.user :as user :refer [User]]
    [metabase.public-settings :as public-settings]
    [metabase.public-settings.premium-features :as premium-features]
-   [metabase.server.middleware.session :as mw.session]
+   [metabase.request.core :as request]
    [metabase.setup :as setup]
    [metabase.util :as u]
    [metabase.util.i18n :as i18n :refer [tru]]
@@ -74,11 +74,19 @@
   (when email
     (if-not (email/email-configured?)
       (log/error "Could not invite user because email is not configured.")
-      (u/prog1 (user/create-and-invite-user! user invitor true)
+      (u/prog1 (user/insert-new-user! user)
         (user/set-permissions-groups! <> [(perms-group/all-users) (perms-group/admin)])
-        (events/publish-event! :event/user-invited {:object (assoc <> :invite_method "email")})
-        (snowplow/track-event! ::snowplow/invite-sent api/*current-user-id* {:invited-user-id (u/the-id <>)
-                                                                             :source          "setup"})))))
+        (events/publish-event! :event/user-invited
+                               {:object
+                                (assoc <>
+                                       :is_from_setup true
+                                       :invite_method "email"
+                                       :sso_source    (:sso_source <>))
+                                :details {:invitor (select-keys invitor [:email :first_name])}})
+        (snowplow/track-event! ::snowplow/invite
+                               {:event           :invite-sent
+                                :invited-user-id (u/the-id <>)
+                                :source          "setup"})))))
 
 (defn- setup-set-settings! [{:keys [email site-name site-locale]}]
   ;; set a couple preferences
@@ -135,9 +143,9 @@
       (events/publish-event! :event/user-login {:user-id user-id})
       (when-not (:last_login superuser)
         (events/publish-event! :event/user-joined {:user-id user-id}))
-      (snowplow/track-event! ::snowplow/new-user-created user-id)
+      (snowplow/track-event! ::snowplow/account {:event :new-user-created} user-id)
       ;; return response with session ID and set the cookie as well
-      (mw.session/set-session-cookies request {:id session-id} session (t/zoned-date-time (t/zone-id "GMT"))))))
+      (request/set-session-cookies request {:id session-id} session (t/zoned-date-time (t/zone-id "GMT"))))))
 
 ;;; Admin Checklist
 
@@ -167,13 +175,13 @@
              [:collection :boolean]
              [:embedded-resource :boolean]]]])
 
-(mu/defn ^:private state-for-checklist :- ChecklistState
+(mu/defn- state-for-checklist :- ChecklistState
   []
   {:db-type    (mdb/db-type)
    :hosted?    (premium-features/is-hosted?)
    :embedding  {:interested? (not (= (embed.settings/embedding-homepage) :hidden))
                 :done?       (= (embed.settings/embedding-homepage) :dismissed-done)
-                :app-origin  (boolean (embed.settings/embedding-app-origin))}
+                :app-origin  (boolean (embed.settings/embedding-app-origins-interactive))}
    :configured {:email (email/email-configured?)
                 :slack (slack/slack-configured?)
                 :sso   (google/google-auth-enabled)}
@@ -183,18 +191,18 @@
                                                :from   [[(t2/table-name :model/Table) :t]]
                                                :join   [[(t2/table-name :model/Database) :d] [:= :d.id :t.db_id]]
                                                :where  (mi/exclude-internal-content-hsql :model/Database :table-alias :d)})))}
-   :exists     {:non-sample-db (t2/exists? :model/Database {:where (mi/exclude-internal-content-hsql :model/Database)})
-                :dashboard     (t2/exists? :model/Dashboard {:where (mi/exclude-internal-content-hsql :model/Dashboard)})
-                :pulse         (t2/exists? :model/Pulse)
-                :hidden-table  (t2/exists? :model/Table {:where [:and
-                                                                 [:not= :visibility_type nil]
-                                                                 (mi/exclude-internal-content-hsql :model/Table)]})
-                :collection    (t2/exists? :model/Collection {:where (mi/exclude-internal-content-hsql :model/Collection)})
-                :model         (t2/exists? :model/Card {:where [:and
-                                                                [:= :type "model"]
-                                                                (mi/exclude-internal-content-hsql :model/Card)]})
+   :exists     {:non-sample-db     (t2/exists? :model/Database {:where (mi/exclude-internal-content-hsql :model/Database)})
+                :dashboard         (t2/exists? :model/Dashboard {:where (mi/exclude-internal-content-hsql :model/Dashboard)})
+                :pulse             (t2/exists? :model/Pulse)
+                :hidden-table      (t2/exists? :model/Table {:where [:and
+                                                                     [:not= :visibility_type nil]
+                                                                     (mi/exclude-internal-content-hsql :model/Table)]})
+                :collection        (t2/exists? :model/Collection {:where (mi/exclude-internal-content-hsql :model/Collection)})
+                :model             (t2/exists? :model/Card {:where [:and
+                                                                    [:= :type "model"]
+                                                                    (mi/exclude-internal-content-hsql :model/Card)]})
                 :embedded-resource (or (t2/exists? :model/Card :enable_embedding true)
-                          (t2/exists? :model/Dashboard :enable_embedding true))}})
+                                       (t2/exists? :model/Dashboard :enable_embedding true))}})
 
 (defn- get-connected-tasks
   [{:keys [configured counts exists embedding] :as _info}]
@@ -213,7 +221,7 @@
    {:title       (tru "Set Slack credentials")
     :group       (tru "Get connected")
     :description (tru "Does your team use Slack? If so, you can send automated updates via dashboard subscriptions.")
-    :link        "/admin/settings/slack"
+    :link        "/admin/settings/notifications/slack"
     :completed   (configured :slack)
     :triggered   :always}
    {:title       (tru "Setup embedding")
@@ -263,7 +271,7 @@
     :completed   (exists :model)
     :triggered   (not (exists :model))}])
 
-(mu/defn ^:private checklist-items
+(mu/defn- checklist-items
   [info :- ChecklistState]
   (remove nil?
           [{:name  (tru "Get connected")

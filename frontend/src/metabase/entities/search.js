@@ -8,7 +8,6 @@ import Actions from "./actions";
 import Bookmarks from "./bookmarks";
 import Collections from "./collections";
 import Dashboards from "./dashboards";
-import Metrics from "./metrics";
 import Pulses from "./pulses";
 import Questions from "./questions";
 import Segments from "./segments";
@@ -132,30 +131,30 @@ export default createEntity({
     getCollection: object => {
       const entity = entityForObject(object);
       return entity
-        ? entity?.objectSelectors?.getCollection?.(object) ??
+        ? (entity?.objectSelectors?.getCollection?.(object) ??
             object?.collection ??
-            null
+            null)
         : warnEntityAndReturnObject(object);
     },
 
     getName: object => {
       const entity = entityForObject(object);
       return entity
-        ? entity?.objectSelectors?.getName?.(object) ?? object?.name
+        ? (entity?.objectSelectors?.getName?.(object) ?? object?.name)
         : warnEntityAndReturnObject(object);
     },
 
     getColor: object => {
       const entity = entityForObject(object);
       return entity
-        ? entity?.objectSelectors?.getColor?.(object) ?? null
+        ? (entity?.objectSelectors?.getColor?.(object) ?? null)
         : warnEntityAndReturnObject(object);
     },
 
     getIcon: object => {
       const entity = entityForObject(object);
       return entity
-        ? entity?.objectSelectors?.getIcon?.(object) ?? null
+        ? (entity?.objectSelectors?.getIcon?.(object) ?? null)
         : warnEntityAndReturnObject(object);
     },
   },
@@ -166,7 +165,6 @@ export default createEntity({
       Bookmarks.actionShouldInvalidateLists(action) ||
       Collections.actionShouldInvalidateLists(action) ||
       Dashboards.actionShouldInvalidateLists(action) ||
-      Metrics.actionShouldInvalidateLists(action) ||
       Pulses.actionShouldInvalidateLists(action) ||
       Questions.actionShouldInvalidateLists(action) ||
       Segments.actionShouldInvalidateLists(action) ||

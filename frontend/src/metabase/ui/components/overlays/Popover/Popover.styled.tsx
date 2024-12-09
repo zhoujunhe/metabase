@@ -16,12 +16,21 @@ export const getPopoverOverrides = (): MantineThemeOverride["components"] => ({
       dropdown: {
         padding: 0,
         overflow: "auto",
+        background: "var(--mb-color-background)",
+        borderColor: "var(--mb-color-border)",
+        color: "var(--mb-color-text-primary)",
       },
     }),
   },
   PopoverDropdown: {
     defaultProps: {
       onMouseDownCapture: (event: SyntheticEvent) => {
+        // prevent nested popovers from closing each other
+        // see useClickOutside in @mantine/hooks for the reference
+        const target = event.target as HTMLElement;
+        target.setAttribute("data-ignore-outside-clicks", "true");
+      },
+      onTouchStartCapture: (event: SyntheticEvent) => {
         // prevent nested popovers from closing each other
         // see useClickOutside in @mantine/hooks for the reference
         const target = event.target as HTMLElement;

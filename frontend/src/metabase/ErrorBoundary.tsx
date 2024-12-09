@@ -1,15 +1,15 @@
-import type { ErrorInfo, ComponentType } from "react";
+import type { ComponentType, ErrorInfo } from "react";
 import { Component } from "react";
 
 import { SmallGenericError } from "metabase/components/ErrorPages";
 
 // eslint-disable-next-line import/no-default-export -- deprecated usage
 export default class ErrorBoundary extends Component<
-  {
+  React.PropsWithChildren<{
     onError?: (errorInfo: ErrorInfo) => void;
     errorComponent?: ComponentType;
     message?: string;
-  },
+  }>,
   {
     hasError: boolean;
   }

@@ -1,15 +1,17 @@
-(ns metabase.query-processor-test.offset-test
+(ns ^:mb/driver-tests metabase.query-processor-test.offset-test
   "Tests for the new :offset window function clause (#9393)."
   (:require
    [clojure.test :refer :all]
    [java-time.api :as t]
    [medley.core :as m]
+   [metabase.driver :as driver]
    [metabase.lib.core :as lib]
    [metabase.lib.metadata :as lib.metadata]
    [metabase.lib.metadata.jvm :as lib.metadata.jvm]
    [metabase.query-processor :as qp]
    [metabase.query-processor.test-util :as qp.test-util]
-   [metabase.test :as mt]))
+   [metabase.test :as mt]
+   [metabase.test.data.interface :as tx]))
 
 (defn- ->local-date [t]
   (t/local-date
@@ -165,8 +167,9 @@
                   [#t "2018-01-01" 510043.47 1.48]   ; 248% growth!
                   [#t "2019-01-01" 577064.96 0.13]   ; 13% growth doesn't look like a hockey stick to me!
                   [#t "2020-01-01" 176095.93 -0.69]] ; sales down by 69%, oops!
-                 (mt/formatted-rows [->local-date 2.0 2.0]
-                                    (qp/process-query query)))))))))
+                 (mt/formatted-rows
+                  [->local-date 2.0 2.0]
+                  (qp/process-query query)))))))))
 
 (deftest ^:parallel offset-aggregation-two-breakouts-test
   (mt/test-drivers (mt/normal-drivers-with-feature :window-functions/offset)
@@ -283,3 +286,27 @@
                (mt/formatted-rows
                 [->local-date 2.0]
                 (qp/process-query (mt/obj->json->obj query)))))))))
+
+(deftest ^:parallel sort-by-offset-aggregation-test
+  (testing "Should be able to sort by an Offset() expression in an aggregation (#42554)"
+    (mt/test-drivers (mt/normal-drivers-with-feature :window-functions/offset)
+      (let [query (-> (mt/mbql-query orders
+                        {:breakout    [[:field %created_at {:base-type :type/DateTime, :temporal-unit :month}]],
+                         :aggregation [[:offset
+                                        {:display-name "X", :name "X", :lib/uuid "59590ea6-b853-4c2f-99dd-a3b0f5662fa7"}
+                                        [:sum [:field %total {:base-type :type/Float}]]
+                                        -1]]
+                         :order-by [[:asc [:aggregation 0]]]
+                         :limit    3})
+                      (assoc-in [:middleware :format-rows?] false))]
+        (mt/with-native-query-testing-context query
+          (is (= (if (tx/sorts-nil-first? driver/*driver* :type/Float)
+                   [[#t "2016-04-01" nil]
+                    [#t "2016-05-01" 52.76]
+                    [#t "2016-06-01" 1265.73]]
+                   [[#t "2016-05-01" 52.76]
+                    [#t "2016-06-01" 1265.73]
+                    [#t "2016-07-01" 2072.92]])
+                 (mt/formatted-rows
+                  [->local-date 2.0]
+                  (qp/process-query query)))))))))

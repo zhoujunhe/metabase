@@ -4,7 +4,7 @@ import { PLUGIN_SELECTORS } from "metabase/plugins";
 import { VisualizationRunningState } from "./QueryVisualization";
 
 type SetupOpts = {
-  customMessage?: (isSlow: boolean) => string;
+  customMessage?: (isSlow?: boolean) => string;
 };
 
 function setup({ customMessage }: SetupOpts = {}) {
@@ -18,24 +18,28 @@ function setup({ customMessage }: SetupOpts = {}) {
 }
 
 describe("VisualizationRunningState", () => {
-  it("should render the different loading messages after a while", () => {
+  it("should render the different loading messages after a while", async () => {
     jest.useFakeTimers();
 
     setup();
-    expect(screen.getByText("Doing science...")).toBeInTheDocument();
+    expect(await screen.findByText("Doing science...")).toBeInTheDocument();
 
     jest.advanceTimersByTime(5000);
-    expect(screen.getByText("Waiting for results...")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Waiting for results..."),
+    ).toBeInTheDocument();
   });
 
-  it("should only render the custom loading message when it was customized", () => {
-    const customMessage = (isSlow: boolean) =>
+  it("should only render the custom loading message when it was customized", async () => {
+    const customMessage = (isSlow?: boolean) =>
       isSlow ? `Custom message (slow)...` : `Custom message...`;
 
     setup({ customMessage });
-    expect(screen.getByText("Custom message...")).toBeInTheDocument();
+    expect(await screen.findByText("Custom message...")).toBeInTheDocument();
 
     jest.advanceTimersByTime(5000);
-    expect(screen.getByText("Custom message (slow)...")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Custom message (slow)..."),
+    ).toBeInTheDocument();
   });
 });

@@ -13,10 +13,9 @@ runs:
       id: matrix
       with:
         script: | # js
-          const java = 11;
+          const java = 21;
 
           const defaultRunner = "ubuntu-22.04";
-          const beefierRunner = "buildjet-2vcpu-ubuntu-2204";
 
           const defaultOptions = {
             "java-version": java,
@@ -35,9 +34,13 @@ runs:
             ["dashboard", {} ],
             ["dashboard-cards", {} ],
             ["dashboard-filters", {} ],
+            ["dashboard-filters-2", {} ],
             ["embedding", {} ],
+            ["embedding-sdk", { context: "embedding-sdk" } ],
             ["filters", {} ],
+            ["filters-reproductions", {}],
             ["joins", {} ],
+            ["metrics", {} ],
             ["models", {} ],
             ["native", {} ],
             ["native-filters", {} ],
@@ -45,6 +48,8 @@ runs:
             ["organization", {} ],
             ["permissions", {} ],
             ["question", {} ],
+            ["question-reproductions", {} ],
+            ["search", {}],
             ["sharing", {} ],
             ["visualizations-charts", {} ],
             ["visualizations-tabular", {} ],

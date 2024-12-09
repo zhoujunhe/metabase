@@ -1,12 +1,17 @@
 import { createSelector } from "@reduxjs/toolkit";
 import { updateIn } from "icepick";
+import { useEffect, useMemo } from "react";
 import { t } from "ttag";
 import _ from "underscore";
 
-import { databaseApi, tableApi } from "metabase/api";
+import {
+  databaseApi,
+  tableApi,
+  useGetTableQuery,
+  useGetTableQueryMetadataQuery,
+} from "metabase/api";
 import Fields from "metabase/entities/fields";
 import Questions from "metabase/entities/questions";
-import Metrics from "metabase/entities/metrics"; // eslint-disable-line import/order -- circular dependencies
 import Segments from "metabase/entities/segments";
 import { color } from "metabase/lib/colors";
 import {
@@ -17,6 +22,8 @@ import {
 import {
   compose,
   createThunkAction,
+  useDispatch,
+  useSelector,
   withAction,
   withCachedDataAndRequestState,
   withNormalize,
@@ -29,9 +36,9 @@ import {
 } from "metabase/selectors/metadata";
 import {
   convertSavedQuestionToVirtualTable,
-  getQuestionVirtualTableId,
   getCollectionVirtualSchemaId,
   getCollectionVirtualSchemaName,
+  getQuestionVirtualTableId,
 } from "metabase-lib/v1/metadata/utils/saved-questions";
 
 // OBJECT ACTIONS
@@ -51,6 +58,32 @@ const Tables = createEntity({
   nameOne: "table",
   path: "/api/table",
   schema: TableSchema,
+
+  rtk: {
+    getUseGetQuery: fetchType => {
+      if (fetchType === "fetchMetadata") {
+        return {
+          useGetQuery: useGetTableQueryMetadataQuery,
+        };
+      }
+
+      if (fetchType === "fetchMetadataDeprecated") {
+        return {
+          useGetQuery: useGetTableQueryMetadataQuery,
+        };
+      }
+
+      if (fetchType === "fetchMetadataAndForeignTables") {
+        return {
+          useGetQuery: useGetMetadataAndForeignTables,
+        };
+      }
+
+      return {
+        useGetQuery: useGetTableQuery,
+      };
+    },
+  },
 
   api: {
     list: async ({ dbId, schemaName, ...params } = {}, dispatch) => {
@@ -106,9 +139,29 @@ const Tables = createEntity({
     // loads `query_metadata` for a single table
     fetchMetadata: compose(
       withAction(FETCH_METADATA),
+      withNormalize(TableSchema),
+    )(
+      ({ id, ...params }, options = {}) =>
+        dispatch =>
+          entityCompatibleQuery(
+            { id, ...params, ...options.params },
+            dispatch,
+            tableApi.endpoints.getTableQueryMetadata,
+            { forceRefetch: false },
+          ),
+    ),
+
+    // fetches table metadata with the request state & caching managed by the entity framework
+    // data is not properly cached & invalidated this way, prefer fetchMetadata instead
+    // used only to support legacy entity framework loader HoCs
+    fetchMetadataDeprecated: compose(
+      withAction(FETCH_METADATA),
       withCachedDataAndRequestState(
         ({ id }) => [...Tables.getObjectStatePath(id)],
-        ({ id }) => [...Tables.getObjectStatePath(id), "fetchMetadata"],
+        ({ id }) => [
+          ...Tables.getObjectStatePath(id),
+          "fetchMetadataDeprecated",
+        ],
         entityQuery => Tables.getQueryKey(entityQuery),
       ),
       withNormalize(TableSchema),
@@ -118,7 +171,7 @@ const Tables = createEntity({
           entityCompatibleQuery(
             { id, ...params, ...options.params },
             dispatch,
-            tableApi.endpoints.getTableMetadata,
+            tableApi.endpoints.getTableQueryMetadata,
           ),
     ),
 
@@ -127,14 +180,16 @@ const Tables = createEntity({
       FETCH_TABLE_METADATA,
       ({ id }, options = {}) =>
         async (dispatch, getState) => {
-          await dispatch(Tables.actions.fetchMetadata({ id }, options));
+          await dispatch(
+            Tables.actions.fetchMetadataDeprecated({ id }, options),
+          );
           // fetch foreign key linked table's metadata as well
           const table = Tables.selectors[
             options.selectorName || "getObjectUnfiltered"
           ](getState(), { entityId: id });
           await Promise.all([
             ...getTableForeignKeyTableIds(table).map(id =>
-              dispatch(Tables.actions.fetchMetadata({ id }, options)),
+              dispatch(Tables.actions.fetchMetadataDeprecated({ id }, options)),
             ),
             ...getTableForeignKeyFieldIds(table).map(id =>
               dispatch(Fields.actions.fetch({ id }, options)),
@@ -176,6 +231,24 @@ const Tables = createEntity({
   },
 
   reducer: (state = {}, { type, payload, error }) => {
+    if (type === Fields.actionTypes.UPDATE && !error) {
+      const updatedField = payload.field;
+      const tableId = updatedField.table_id;
+      const table = state[tableId];
+
+      if (table) {
+        return {
+          ...state,
+          [tableId]: {
+            ...table,
+            original_fields: table.original_fields?.map(field => {
+              return field.id === updatedField.id ? updatedField : field;
+            }),
+          },
+        };
+      }
+    }
+
     if (type === Questions.actionTypes.CREATE && !error) {
       const card = payload.question;
       const virtualQuestionTable = convertSavedQuestionToVirtualTable(card);
@@ -245,17 +318,6 @@ const Tables = createEntity({
       }
     }
 
-    if (type === Metrics.actionTypes.CREATE && !error) {
-      const { table_id: tableId, id: metricId } = payload.metric;
-      const table = state[tableId];
-      if (table) {
-        return {
-          ...state,
-          [tableId]: { ...table, metrics: [metricId, ...table.metrics] },
-        };
-      }
-    }
-
     if (type === Segments.actionTypes.UPDATE && !error) {
       const { table_id: tableId, archived, id: segmentId } = payload.segment;
       const table = state[tableId];
@@ -265,20 +327,6 @@ const Tables = createEntity({
           [tableId]: {
             ...table,
             segments: table.segments.filter(id => id !== segmentId),
-          },
-        };
-      }
-    }
-
-    if (type === Metrics.actionTypes.UPDATE) {
-      const { table_id: tableId, archived, id: metricId } = payload.metric;
-      const table = state[tableId];
-      if (archived && table && table.metrics) {
-        return {
-          ...state,
-          [tableId]: {
-            ...table,
-            metrics: table.metrics.filter(id => id !== metricId),
           },
         };
       }
@@ -324,6 +372,41 @@ const Tables = createEntity({
     ),
   },
 });
+
+const useGetMetadataAndForeignTables = (entityQuery, options) => {
+  const dispatch = useDispatch();
+  const table = useSelector(state =>
+    Tables.selectors[options.selectorName || "getObjectUnfiltered"](state, {
+      entityId: entityQuery.id,
+    }),
+  );
+
+  const result = useGetTableQueryMetadataQuery(entityQuery, options);
+
+  const tableForeignKeyTableIds = useMemo(
+    () => (table ? getTableForeignKeyTableIds(table) : []),
+    [table],
+  );
+  const tableForeignKeyFieldIds = useMemo(
+    () => (table ? getTableForeignKeyFieldIds(table) : []),
+    [table],
+  );
+
+  // fetch foreign key linked tables metadata as well
+  useEffect(() => {
+    for (const id of tableForeignKeyTableIds) {
+      dispatch(Tables.actions.fetchMetadataDeprecated({ id }, options));
+    }
+  }, [dispatch, options, tableForeignKeyTableIds]);
+
+  useEffect(() => {
+    for (const id of tableForeignKeyFieldIds) {
+      dispatch(Fields.actions.fetch({ id }, options));
+    }
+  }, [dispatch, options, tableForeignKeyFieldIds]);
+
+  return result;
+};
 
 function getTableForeignKeyTableIds(table) {
   return _.chain(table.fields)

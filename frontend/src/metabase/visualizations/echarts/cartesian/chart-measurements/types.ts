@@ -1,11 +1,7 @@
-import type { ComputedVisualizationSettings } from "metabase/visualizations/types";
-
-export interface Padding {
-  top: number;
-  left: number;
-  bottom: number;
-  right: number;
-}
+import type {
+  ComputedVisualizationSettings,
+  Padding,
+} from "metabase/visualizations/types";
 
 export interface TicksDimensions {
   yTicksWidthLeft: number;
@@ -22,6 +18,8 @@ export interface ChartBoundsCoords {
   right: number;
 }
 
+export type TicksRotation = "horizontal" | "vertical";
+
 export interface ChartMeasurements {
   padding: Padding;
   ticksDimensions: TicksDimensions;
@@ -29,4 +27,5 @@ export interface ChartMeasurements {
   boundaryWidth: number;
   outerHeight: number;
   axisEnabledSetting: ComputedVisualizationSettings["graph.x_axis.axis_enabled"];
+  stackedBarTicksRotation?: TicksRotation;
 }

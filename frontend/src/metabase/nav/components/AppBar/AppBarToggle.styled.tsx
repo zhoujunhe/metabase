@@ -1,7 +1,6 @@
 import { css } from "@emotion/react";
 import styled from "@emotion/styled";
 
-import { color } from "metabase/lib/colors";
 import { Icon } from "metabase/ui";
 
 interface SidebarButtonProps {
@@ -23,17 +22,19 @@ interface SidebarIconProps {
   isLogoVisible?: boolean;
 }
 
-export const SidebarIcon = styled(Icon)<SidebarIconProps>`
-  color: ${color("brand")};
+export const SidebarIcon = styled(Icon, {
+  shouldForwardProp: propName => propName !== "isLogoVisible",
+})<SidebarIconProps>`
+  color: var(--mb-color-brand);
   display: block;
 
   ${props =>
     !props.isLogoVisible &&
     css`
-      color: ${color("text-medium")};
+      color: var(--mb-color-text-medium);
 
       &:hover {
-        color: ${color("brand")};
+        color: var(--mb-color-brand);
       }
     `}
 `;

@@ -1,4 +1,3 @@
-import dayjs from "dayjs";
 import { t } from "ttag";
 
 import type {
@@ -6,14 +5,11 @@ import type {
   DateRange,
   DimensionModel,
   Extent,
-  ShowWarning,
   TimeSeriesXAxisModel,
   WaterfallXAxisModel,
 } from "metabase/visualizations/echarts/cartesian/model/types";
-import type {
-  ComputedVisualizationSettings,
-  RenderingContext,
-} from "metabase/visualizations/types";
+import type { ShowWarning } from "metabase/visualizations/echarts/types";
+import type { ComputedVisualizationSettings } from "metabase/visualizations/types";
 import type { RawSeries, RowValue } from "metabase-types/api";
 
 import { getXAxisModel } from "../../model/axis";
@@ -26,7 +22,7 @@ const getTotalTimeSeriesXValue = ({
 }: TimeSeriesXAxisModel) => {
   const [, lastDate] = range;
   const { unit, count } = interval;
-  return lastDate.add(count, unit).toISOString();
+  return lastDate.add(count, unit);
 };
 
 export const getWaterfallXAxisModel = (
@@ -34,7 +30,6 @@ export const getWaterfallXAxisModel = (
   rawSeries: RawSeries,
   dataset: ChartDataset,
   settings: ComputedVisualizationSettings,
-  renderingContext: RenderingContext,
   showWarning?: ShowWarning,
 ): WaterfallXAxisModel => {
   const xAxisModel = getXAxisModel(
@@ -42,7 +37,6 @@ export const getWaterfallXAxisModel = (
     rawSeries,
     dataset,
     settings,
-    renderingContext,
     showWarning,
   );
 
@@ -53,15 +47,15 @@ export const getWaterfallXAxisModel = (
 
   if (isTimeSeriesAxis(xAxisModel)) {
     const totalXValue = getTotalTimeSeriesXValue(xAxisModel);
-    const range: DateRange = [xAxisModel.range[0], dayjs(totalXValue)];
-    const intervalsCount = xAxisModel.intervalsCount;
+    const range: DateRange = [xAxisModel.range[0], totalXValue];
+    const intervalsCount = xAxisModel.intervalsCount + 1;
     const formatter = (valueRaw: RowValue) => {
-      const dateValue = tryGetDate(valueRaw);
-      if (dateValue == null) {
+      const value = tryGetDate(valueRaw);
+      if (value == null) {
         return "";
       }
 
-      if (dateValue.isSame(dayjs(totalXValue), xAxisModel.interval.unit)) {
+      if (value.isSame(totalXValue, xAxisModel.interval.unit)) {
         return t`Total`;
       }
 
@@ -72,7 +66,7 @@ export const getWaterfallXAxisModel = (
       ...xAxisModel,
       range,
       intervalsCount,
-      totalXValue,
+      totalXValue: totalXValue.toISOString(),
       formatter,
     };
   }
@@ -80,6 +74,8 @@ export const getWaterfallXAxisModel = (
   if (isNumericAxis(xAxisModel)) {
     const totalXValue = xAxisModel.extent[1] + xAxisModel.interval;
     const extent: Extent = [xAxisModel.extent[0], totalXValue];
+    const intervalsCount = xAxisModel.intervalsCount + 1;
+
     const formatter = (valueRaw: RowValue) => {
       if (valueRaw === totalXValue) {
         return t`Total`;
@@ -91,6 +87,7 @@ export const getWaterfallXAxisModel = (
     return {
       ...xAxisModel,
       totalXValue,
+      intervalsCount,
       extent,
       formatter,
     };

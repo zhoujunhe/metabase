@@ -1,6 +1,6 @@
 import userEvent from "@testing-library/user-event";
 
-import { screen } from "__support__/ui";
+import { screen, within } from "__support__/ui";
 import {
   createMockSettingDefinition,
   createMockSettings,
@@ -46,7 +46,8 @@ describe("SettingsEditor", () => {
     ).not.toBeInTheDocument();
   });
 
-  describe("SameSite cookie note check with authorized origins", () => {
+  // eslint-disable-next-line jest/no-disabled-tests -- disabled until metabase#43523
+  describe.skip("SameSite cookie note check with authorized origins", () => {
     it("should display a note if any authorized origins do not match the instance domain", async () => {
       await setupEmbedding({
         settings: [
@@ -114,5 +115,11 @@ describe("SettingsEditor", () => {
 });
 
 const goToInteractiveEmbeddingSettings = async () => {
-  await userEvent.click(screen.getByText("Configure"));
+  await userEvent.click(
+    within(
+      screen.getByRole("article", {
+        name: "Interactive embedding",
+      }),
+    ).getByText("Configure"),
+  );
 };

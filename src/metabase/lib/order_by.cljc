@@ -14,7 +14,7 @@
    [metabase.lib.schema.order-by :as lib.schema.order-by]
    [metabase.lib.util :as lib.util]
    [metabase.lib.util.match :as lib.util.match]
-   [metabase.shared.util.i18n :as i18n]
+   [metabase.util.i18n :as i18n]
    [metabase.util.malli :as mu]))
 
 (lib.hierarchy/derive :asc  ::order-by-clause)
@@ -57,7 +57,7 @@
     (throw (ex-info (i18n/tru "Can''t order by nil") {})))
   (lib.options/ensure-uuid [:asc (lib.ref/ref x)]))
 
-(mu/defn ^:private with-direction :- ::lib.schema.order-by/order-by
+(mu/defn- with-direction :- ::lib.schema.order-by/order-by
   "Update the direction of an order by clause."
   [clause    :- ::lib.schema.order-by/order-by
    direction :- ::lib.schema.order-by/direction]
@@ -95,7 +95,7 @@
      (lib.util/update-query-stage query stage-number update :order-by (fn [order-bys]
                                                                         (conj (vec order-bys) new-order-by))))))
 
-(mu/defn order-bys :- [:maybe [:sequential ::lib.schema.order-by/order-by]]
+(mu/defn order-bys :- [:maybe ::lib.schema.order-by/order-bys]
   "Get the order-by clauses in a query."
   ([query :- ::lib.schema/query]
    (order-bys query -1))
@@ -103,12 +103,12 @@
     stage-number :- :int]
    (not-empty (get (lib.util/query-stage query stage-number) :order-by))))
 
-(defn- orderable-column? [{:keys [base-type], :as _column-metadata}]
+(defn- orderable-column? [{:keys [base-type]}]
   (some (fn [orderable-base-type]
           (isa? base-type orderable-base-type))
         lib.schema.expression/orderable-types))
 
-(mu/defn orderable-columns :- [:sequential ::lib.schema.metadata/column]
+(mu/defn orderable-columns :- [:maybe [:sequential ::lib.schema.metadata/column]]
   "Get column metadata for all the columns you can order by in a given `stage-number` of a `query`. Rules are as
   follows:
 
@@ -156,7 +156,7 @@
                             (comp (map lib.ref/ref)
                                   (keep-indexed (fn [index an-order-by]
                                                   (when-let [col (lib.equality/find-matching-column
-                                                                   query stage-number an-order-by columns)]
+                                                                  query stage-number an-order-by columns)]
                                                     [col index]))))
                             existing-order-bys)]
          (mapv #(let [pos (matching %)]

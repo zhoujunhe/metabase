@@ -1,3 +1,5 @@
+import { focusNativeEditor } from "./e2e-native-editor-helpers";
+
 // Find a text field by label text, type it in, then blur the field.
 // Commonly used in our Admin section as we auto-save settings.
 export function typeAndBlurUsingLabel(label, value) {
@@ -35,16 +37,11 @@ export function openNativeEditor({
 
   databaseName && cy.findByText(databaseName).click();
 
-  return focusNativeEditor().as(alias);
-}
+  // We are first loading databases to see if we should show the
+  // database selector or simply display the previously selected database
+  cy.findAllByTestId("loading-indicator").should("not.exist");
 
-export function focusNativeEditor() {
-  return cy
-    .findByTestId("native-query-editor")
-    .should("be.visible")
-    .should("have.class", "ace_editor")
-    .click()
-    .should("have.class", "ace_focus");
+  return focusNativeEditor().as(alias);
 }
 
 /**
@@ -171,6 +168,25 @@ export function visitModel(id, { hasDataAccess = true } = {}) {
 }
 
 /**
+ * Visit a metric and wait for its query to load.
+ *
+ * @param {number} id
+ */
+export function visitMetric(id, { hasDataAccess = true } = {}) {
+  const alias = "metricQuery" + id;
+
+  if (hasDataAccess) {
+    cy.intercept("POST", "/api/dataset").as(alias);
+  } else {
+    cy.intercept("POST", `/api/card/**/${id}/query`).as(alias);
+  }
+
+  cy.visit(`/metric/${id}`);
+
+  cy.wait("@" + alias);
+}
+
+/**
  * Visit a dashboard and wait for the related queries to load.
  *
  * @param {number|string} dashboardIdOrAlias
@@ -196,7 +212,7 @@ function visitDashboardById(dashboard_id, config) {
   }).then(({ status, body: { dashcards, tabs } }) => {
     const dashboardAlias = "getDashboard" + dashboard_id;
 
-    cy.intercept("GET", `/api/dashboard/${dashboard_id}`).as(dashboardAlias);
+    cy.intercept("GET", `/api/dashboard/${dashboard_id}*`).as(dashboardAlias);
 
     const canViewDashboard = hasAccess(status);
 
@@ -273,7 +289,7 @@ function dashboardHasQuestions(cards) {
 }
 
 export function interceptIfNotPreviouslyDefined({ method, url, alias } = {}) {
-  const aliases = Object.keys(cy.state("aliases"));
+  const aliases = Object.keys(cy.state("aliases") ?? {});
 
   const isAlreadyDefined = aliases.find(a => a === alias);
 
@@ -282,12 +298,20 @@ export function interceptIfNotPreviouslyDefined({ method, url, alias } = {}) {
   }
 }
 
+/**
+ *
+ * @param {string=} name
+ * @param {Object=} options
+ * @param {boolean=} [options.addToDashboard]
+ * @param {boolean=} [options.wrapId]
+ * @param {string=} [options.idAlias]
+ */
 export function saveQuestion(
   name,
-  { wrapId = false, idAlias = "questionId" } = {},
+  { addToDashboard = false, wrapId = false, idAlias = "questionId" } = {},
 ) {
   cy.intercept("POST", "/api/card").as("saveQuestion");
-  cy.findByText("Save").click();
+  cy.findByTestId("qb-header").button("Save").click();
 
   cy.findByTestId("save-question-modal").within(modal => {
     if (name) {
@@ -303,7 +327,13 @@ export function saveQuestion(
   });
 
   cy.get("#QuestionSavedModal").within(() => {
-    cy.button("Not now").click();
+    cy.findByText(/add this to a dashboard/i).should("be.visible");
+
+    if (addToDashboard) {
+      cy.button("Yes please!").click();
+    } else {
+      cy.button("Not now").click();
+    }
   });
 }
 
@@ -317,22 +347,47 @@ export function saveSavedQuestion() {
   cy.wait("@updateQuestion");
 }
 
-export function visitPublicQuestion(id) {
+/**
+ *
+ * @param {number} id
+ * @param {object} options
+ * @param {Record<string, string>} options.params
+ * @param {Record<string, string>} options.hash
+ */
+export function visitPublicQuestion(id, { params = {}, hash = {} } = {}) {
+  const searchParams = new URLSearchParams(params).toString();
+  const searchSection = searchParams ? `?${searchParams}` : "";
+  const hashParams = new URLSearchParams(hash).toString();
+  const hashSection = hashParams ? `#${hashParams}` : "";
+
   cy.request("POST", `/api/card/${id}/public_link`).then(
     ({ body: { uuid } }) => {
       cy.signOut();
-      cy.visit(`/public/question/${uuid}`);
+      cy.visit({
+        url: `/public/question/${uuid}` + searchSection + hashSection,
+      });
     },
   );
 }
 
-export function visitPublicDashboard(id, { params = {} } = {}) {
+/**
+ *
+ * @param {number} id
+ * @param {object} options
+ * @param {Record<string, string>} options.params
+ * @param {Record<string, string>} options.hash
+ */
+export function visitPublicDashboard(id, { params = {}, hash = {} } = {}) {
+  const searchParams = new URLSearchParams(params).toString();
+  const searchSection = searchParams ? `?${searchParams}` : "";
+  const hashParams = new URLSearchParams(hash).toString();
+  const hashSection = hashParams ? `#${hashParams}` : "";
+
   cy.request("POST", `/api/dashboard/${id}/public_link`).then(
     ({ body: { uuid } }) => {
       cy.signOut();
       cy.visit({
-        url: `/public/dashboard/${uuid}`,
-        qs: params,
+        url: `/public/dashboard/${uuid}` + searchSection + hashSection,
       });
     },
   );

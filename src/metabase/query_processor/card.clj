@@ -6,18 +6,20 @@
    [metabase.api.common :as api]
    [metabase.legacy-mbql.normalize :as mbql.normalize]
    [metabase.legacy-mbql.schema :as mbql.s]
+   [metabase.legacy-mbql.util :as mbql.u]
    [metabase.lib.schema.id :as lib.schema.id]
    [metabase.lib.schema.parameter :as lib.schema.parameter]
    [metabase.lib.schema.template-tag :as lib.schema.template-tag]
    [metabase.lib.util.match :as lib.util.match]
    [metabase.models.cache-config :as cache-config]
-   [metabase.models.card :as card :refer [Card]]
+   [metabase.models.card :refer [Card]]
    [metabase.models.query :as query]
-   [metabase.public-settings.premium-features :as premium-features :refer [defenterprise]]
+   [metabase.public-settings.premium-features :refer [defenterprise]]
    [metabase.query-processor :as qp]
    [metabase.query-processor.error-type :as qp.error-type]
    [metabase.query-processor.middleware.constraints :as qp.constraints]
    [metabase.query-processor.middleware.permissions :as qp.perms]
+   [metabase.query-processor.pivot :as qp.pivot]
    [metabase.query-processor.schema :as qp.schema]
    [metabase.query-processor.streaming :as qp.streaming]
    [metabase.query-processor.util :as qp.util]
@@ -25,7 +27,7 @@
    [metabase.util.i18n :refer [tru]]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
-   #_{:clj-kondo/ignore [:discouraged-namespace]}
+   ^{:clj-kondo/ignore [:discouraged-namespace]}
    [toucan2.core :as t2]))
 
 (set! *warn-on-reflection* true)
@@ -43,18 +45,80 @@
            (assoc strategy :avg-execution-ms (or et 0)))
     strategy))
 
+(defn- explict-stage-references
+  [parameters]
+  (into #{}
+        (keep (fn [{:keys [target]}]
+                (when (mbql.u/is-clause? :dimension target)
+                  (get-in target [2 :stage-number]))))
+        parameters))
+
+(defn- point-parameters-to-last-stage
+  "Points temporal-unit parameters to the last stage.
+  This function is normally called for models or metrics, where the first and the last
+  stages are the same. By using -1 as stage number we make sure that the expansion of
+  models/metrics doesn't cause the filter to be added at the wrong stage."
+  [parameters]
+  (mapv (fn [{:keys [target], :as parameter}]
+          (cond-> parameter
+            (and (mbql.u/is-clause? :dimension target)
+                 (some? (get-in target [2 :stage-number])))
+            (assoc-in [:target 2 :stage-number] -1)))
+        parameters))
+
+(defn- last-stage-number
+  [outer-query]
+  (mbql.u/legacy-last-stage-number (:query outer-query)))
+
+(defn- nest-query
+  [query]
+  (assoc query :query {:source-query (:query query)}))
+
+(defn- add-stage-to-temporal-unit-parameters
+  "Points temporal-unit parameters to the penultimate stage unless the stage is specified."
+  [parameters]
+  (mapv (fn [{param-type :type, :keys [target], :as parameter}]
+          (cond-> parameter
+            (and (= param-type :temporal-unit)
+                 (mbql.u/is-clause? :dimension target)
+                 (nil? (get-in target [2 :stage-number])))
+            (assoc-in [:target 2 :stage-number] -2)))
+        parameters))
+
 (defn query-for-card
   "Generate a query for a saved Card"
-  [{query :dataset_query
-    :as   card} parameters constraints middleware & [ids]]
-  (let [query     (-> query
-                      ;; don't want default constraints overridding anything that's already there
-                      (m/dissoc-in [:middleware :add-default-userland-constraints?])
-                      (assoc :constraints constraints
-                             :parameters  parameters
-                             :middleware  middleware))
-        cs        (-> (cache-strategy card (:dashboard-id ids))
-                      (enrich-strategy query))]
+  [{dataset-query :dataset_query
+    card-type     :type
+    :as           card} parameters constraints middleware & [ids]]
+  (let [stage-numbers (explict-stage-references parameters)
+        explicit-stage-numbers? (boolean (seq stage-numbers))
+        parameters (cond-> parameters
+                     ;; models are not transparent (questions and metrics are)
+                     (and explicit-stage-numbers? (= card-type :model))
+                     point-parameters-to-last-stage)
+        ;; The FE might have "added" a stage so that a question with breakouts
+        ;; at the last stage can be filtered on the summary results. We know
+        ;; this happened if we get a reference to one above the last stage.
+        filter-stage-added? (and explicit-stage-numbers?
+                                 (= (inc (last-stage-number dataset-query))
+                                    (apply max stage-numbers)))
+        query (cond-> dataset-query
+                (and explicit-stage-numbers?
+                     (or
+                      ;; stage-number 0 means filtering the results of models and metrics
+                      (not= card-type :question)
+                      ;; the FE assumed an extra stage, so we add it
+                      filter-stage-added?))
+                nest-query)
+        query (-> query
+                  ;; don't want default constraints overridding anything that's already there
+                  (m/dissoc-in [:middleware :add-default-userland-constraints?])
+                  (assoc :constraints constraints
+                         :parameters  (cond-> parameters
+                                        filter-stage-added? add-stage-to-temporal-unit-parameters)
+                         :middleware  middleware))
+        cs    (-> (cache-strategy card (:dashboard-id ids))
+                  (enrich-strategy query))]
     (assoc query :cache-strategy cs)))
 
 (def ^:dynamic *allow-arbitrary-mbql-parameters*
@@ -143,7 +207,7 @@
      [:template-tag tag-name]
      (name tag-name))))
 
-(mu/defn ^:private validate-card-parameters
+(mu/defn- validate-card-parameters
   "Unless [[*allow-arbitrary-mbql-parameters*]] is truthy, check to make all supplied `parameters` actually match up
   with template tags in the query for Card with `card-id`."
   [card-id    :- ::lib.schema.id/card
@@ -165,23 +229,27 @@
 (mu/defn process-query-for-card-default-qp :- :some
   "Default value of the `:qp` option for [[process-query-for-card]]."
   [query :- ::qp.schema/query
-   rff   :- ::qp.schema/rff]
+   rff   :- [:maybe ::qp.schema/rff]]
   (qp/process-query (qp/userland-query query) rff))
 
-(defn- process-query-for-card-default-run-fn
-  "Create the default `:run` function for [[process-query-for-card]]."
+(defn process-query-for-card-default-run-fn
+  "Create the default `:make-run` function for [[process-query-for-card]]."
   [qp export-format]
   (^:once fn* [query info]
-   (qp.streaming/streaming-response [rff export-format (u/slugify (:card-name info))]
-     (qp (update query :info merge info) rff))))
+    (qp.streaming/streaming-response [rff export-format (u/slugify (:card-name info))]
+      (qp (update query :info merge info) rff))))
 
 (mu/defn process-query-for-card
   "Run the query for Card with `parameters` and `constraints`. By default, returns results in a
   `metabase.async.streaming_response.StreamingResponse` (see [[metabase.async.streaming-response]]) that should be
-  returned as the result of an API endpoint fn, but you can return something different by passing a different `:run`
-  option. `:run` has a signature
+  returned as the result of an API endpoint fn, but you can return something different by passing a different `:make-run`
+  option. `:make-run` has a signature.
 
-    (run query info) => result
+    (make-run qp export-format) => (fn run [query info])
+
+  The produced `run` fn has a signature, it should use the qp in to produce the results.
+
+    (run query info) => results
 
   Will throw an Exception if preconditions (such as read perms) are not met *before* returning the
   `StreamingResponse`.
@@ -191,39 +259,44 @@
   options."
   [card-id :- ::lib.schema.id/card
    export-format
-   & {:keys [parameters constraints context dashboard-id dashcard-id middleware qp run ignore-cache]
+   & {:keys [parameters constraints context dashboard-id dashcard-id middleware qp make-run ignore-cache]
       :or   {constraints (qp.constraints/default-query-constraints)
              context     :question
-             qp          process-query-for-card-default-qp
-             ;; param `run` can be used to control how the query is ran, e.g. if you need to customize the `context`
+             ;; param `make-run` can be used to control how the query is ran, e.g. if you need to customize the `context`
              ;; passed to the QP
-             run         (process-query-for-card-default-run-fn qp export-format)}}]
+             make-run    process-query-for-card-default-run-fn}}]
   {:pre [(int? card-id) (u/maybe? sequential? parameters)]}
-  (let [dash-viz (when (and (not= context :question)
-                            dashcard-id)
-                   (t2/select-one-fn :visualization_settings :model/DashboardCard :id dashcard-id))
-        card     (api/read-check (t2/select-one [Card :id :name :dataset_query :database_id :collection_id
-                                                 :type :result_metadata :visualization_settings
-                                                 :cache_invalidated_at]
-                                                :id card-id))
-        query    (-> (query-for-card card parameters constraints middleware {:dashboard-id dashboard-id})
-                     (update :viz-settings (fn [viz] (merge viz dash-viz)))
-                     (update :middleware (fn [middleware]
-                                           (merge
-                                            {:js-int-to-string? true, :ignore-cached-results? ignore-cache}
-                                            middleware))))
-        info     (cond-> {:executed-by            api/*current-user-id*
-                          :context                context
-                          :card-id                card-id
-                          :card-name              (:name card)
-                          :dashboard-id           dashboard-id
-                          :visualization-settings (:visualization_settings card)}
-                   (and (= (:type card) :model) (seq (:result_metadata card)))
-                   (assoc :metadata/model-metadata (:result_metadata card)))]
-    (api/check-not-archived card)
+  (let [card       (api/read-check (t2/select-one [Card :id :name :dataset_query :database_id :collection_id
+                                                   :type :result_metadata :visualization_settings :display
+                                                   :cache_invalidated_at]
+                                                  :id card-id))
+        dash-viz   (when (and (not= context :question)
+                              dashcard-id)
+                     (t2/select-one-fn :visualization_settings :model/DashboardCard :id dashcard-id))
+        card-viz   (:visualization_settings card)
+        merged-viz (m/deep-merge card-viz dash-viz)
+        ;; We need to check this here because dashcards don't get selected until this point
+        qp         (if (= :pivot (:display card))
+                     qp.pivot/run-pivot-query
+                     (or qp process-query-for-card-default-qp))
+        runner     (make-run qp export-format)
+        query      (-> (query-for-card card parameters constraints middleware {:dashboard-id dashboard-id})
+                       (assoc :viz-settings merged-viz)
+                       (update :middleware (fn [middleware]
+                                             (merge
+                                              {:js-int-to-string? true, :ignore-cached-results? ignore-cache}
+                                              middleware))))
+        info       (cond-> {:executed-by            api/*current-user-id*
+                            :context                context
+                            :card-id                card-id
+                            :card-name              (:name card)
+                            :dashboard-id           dashboard-id
+                            :visualization-settings merged-viz}
+                     (and (= (:type card) :model) (seq (:result_metadata card)))
+                     (assoc :metadata/model-metadata (:result_metadata card)))]
     (when (seq parameters)
       (validate-card-parameters card-id (mbql.normalize/normalize-fragment [:parameters] parameters)))
     (log/tracef "Running query for Card %d:\n%s" card-id
                 (u/pprint-to-str query))
     (binding [qp.perms/*card-id* card-id]
-      (run query info))))
+      (runner query info))))

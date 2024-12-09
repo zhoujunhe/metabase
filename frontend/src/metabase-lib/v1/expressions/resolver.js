@@ -1,10 +1,10 @@
-import { ngettext, msgid, t } from "ttag";
+import { msgid, ngettext, t } from "ttag";
 
 import { ResolverError } from "metabase-lib/v1/expressions/pratt/types";
 
 import { OPERATOR as OP } from "./tokenizer";
 
-import { getMBQLName, MBQL_CLAUSES } from "./index";
+import { MBQL_CLAUSES, getMBQLName, isOptionsObject } from "./index";
 
 const FIELD_MARKERS = ["dimension", "segment", "metric"];
 export const LOGICAL_OPS = [OP.Not, OP.And, OP.Or];
@@ -40,32 +40,29 @@ function findMBQL(op) {
   return clause;
 }
 
-// a is the type of the argument expected,
-// as defined in MBQL_CLAUSES,
-// and b is the inferred type of the argument
-const isCompatible = (a, b) => {
-  if (a === "any") {
+const isCompatible = (expectedType, inferredType) => {
+  if (expectedType === "any" || inferredType === "any") {
     return true;
   }
-  if (a === b) {
+  if (expectedType === inferredType) {
     return true;
   }
   // if b is a string, then it can be an arg to a function that expects a datetime argument.
   // This allows datetime string literals to work as args for functions that expect datetime types.
   // FIXME: By doing this we are allowing string columns to be arguments to functions, which isn’t valid MBQL.
-  if (a === "datetime" && b === "string") {
+  if (expectedType === "datetime" && inferredType === "string") {
     return true;
   }
   if (
-    a === "expression" &&
-    (b === "datetime" || b === "number" || b === "string")
+    expectedType === "expression" &&
+    ["datetime", "number", "string", "boolean"].includes(inferredType)
   ) {
     return true;
   }
-  if (a === "aggregation" && b === "number") {
+  if (expectedType === "aggregation" && inferredType === "number") {
     return true;
   }
-  if (a === "number" && b === "aggregation") {
+  if (expectedType === "number" && inferredType === "aggregation") {
     return true;
   }
   return false;
@@ -206,7 +203,7 @@ export function resolve({
       }
     }
     const resolvedOperands = operands.map((operand, i) => {
-      if (i >= args.length) {
+      if (i >= args.length || isOptionsObject(operand)) {
         // as-is, optional object for e.g. ends-with, time-interval, etc
         return operand;
       }

@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event";
 import {
   setupDatabaseEndpoints,
   setupTableEndpoints,
-  setupUsersEndpoints,
   setupUserRecipientsEndpoint,
+  setupUsersEndpoints,
 } from "__support__/server-mocks";
 import { renderWithProviders, screen } from "__support__/ui";
 import { SearchResult } from "metabase/search/components/SearchResult";
@@ -40,7 +40,9 @@ const setup = (setupOpts: SetupOpts) => {
   });
 
   const onClick = jest.fn();
-  renderWithProviders(<SearchResult result={result} onClick={onClick} />);
+  renderWithProviders(
+    <SearchResult result={result} onClick={onClick} index={0} />,
+  );
   const link = screen.getByText(result.name);
   return { link, onClick };
 };

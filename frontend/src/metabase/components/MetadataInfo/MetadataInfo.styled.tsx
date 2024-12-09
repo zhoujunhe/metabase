@@ -38,7 +38,7 @@ export const Description = styled.div`
 `;
 
 export const EmptyDescription = styled(Description)`
-  color: ${color("text-light")};
+  color: var(--mb-color-text-light);
   font-weight: 700;
 `;
 
@@ -62,13 +62,6 @@ export const RelativeSizeIcon = styled(Icon)`
   width: 1em;
 `;
 
-export const InvertedColorRelativeSizeIcon = styled(RelativeSizeIcon)`
-  background-color: ${color("brand")};
-  color: ${color("white")};
-  border-radius: 0.3em;
-  padding: 0.3em;
-`;
-
 type FadeProps = {
   visible?: boolean;
 };
@@ -88,7 +81,7 @@ export const LoadingSpinner = styled(_LoadingSpinner)`
   flex-grow: 1;
   align-self: center;
   justify-content: center;
-  color: ${color("brand")};
+  color: var(--mb-color-brand);
 `;
 
 export const Table = styled.table`

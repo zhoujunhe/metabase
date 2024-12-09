@@ -1,8 +1,8 @@
 import styled from "@emotion/styled";
 
 import {
+  getTooltipSeparatorStyle,
   tableRowSpacingStyle,
-  tooltipSeparator,
 } from "../StackedDataTooltip/StackedDataTooltip.styled";
 
 export const TooltipTable = styled.table`
@@ -31,7 +31,7 @@ export const TableCell = styled.td`
 `;
 
 export const TableFooter = styled.tfoot`
-  ${tooltipSeparator}
+  ${({ theme }) => getTooltipSeparatorStyle(theme)}
 
   &:before {
     ${tableRowSpacingStyle}

@@ -1,11 +1,11 @@
 /* eslint-disable react/prop-types */
 import cx from "classnames";
-import { createRef, Component } from "react";
+import { Component, createRef } from "react";
 
 import EntityMenuItem from "metabase/components/EntityMenuItem";
 import EntityMenuTrigger from "metabase/components/EntityMenuTrigger";
 import CS from "metabase/css/core/index.css";
-import { Popover } from "metabase/ui";
+import { Divider, Popover } from "metabase/ui";
 
 /**
  * @deprecated: use Menu from "metabase/ui"
@@ -94,9 +94,21 @@ class EntityMenu extends Component {
               {items.map(item => {
                 if (!item) {
                   return null;
-                } else if (item.content) {
+                }
+
+                const key = item.key ?? item.title;
+
+                if (item.separator) {
                   return (
-                    <li key={item.title} data-testid={item.testId}>
+                    <li key={key}>
+                      <Divider m="sm" />
+                    </li>
+                  );
+                }
+
+                if (item.content) {
+                  return (
+                    <li key={key} data-testid={item.testId}>
                       <EntityMenuItem
                         icon={item.icon}
                         title={item.title}
@@ -106,41 +118,49 @@ class EntityMenu extends Component {
                           )
                         }
                         tooltip={item.tooltip}
-                      />
-                    </li>
-                  );
-                } else if (item.component) {
-                  return (
-                    <li key={item.title} data-testid={item.testId}>
-                      {item.component}
-                    </li>
-                  );
-                } else {
-                  return (
-                    <li key={item.title} data-testid={item.testId}>
-                      <EntityMenuItem
-                        icon={item.icon}
-                        title={item.title}
-                        externalLink={item.externalLink}
-                        action={
-                          item.action &&
-                          (e => {
-                            item.action(e);
-                            this.toggleMenu();
-                          })
-                        }
-                        event={item.event}
-                        link={item.link}
-                        tooltip={item.tooltip}
-                        disabled={item.disabled}
-                        onClose={() => {
-                          this.toggleMenu();
-                          item?.onClose?.();
-                        }}
+                        color={item.color}
+                        hoverColor={item.hoverColor}
+                        hoverBgColor={item.hoverBgColor}
                       />
                     </li>
                   );
                 }
+
+                if (item.component) {
+                  return (
+                    <li key={key} data-testid={item.testId}>
+                      {item.component}
+                    </li>
+                  );
+                }
+
+                return (
+                  <li key={key} data-testid={item.testId}>
+                    <EntityMenuItem
+                      icon={item.icon}
+                      title={item.title}
+                      externalLink={item.externalLink}
+                      action={
+                        item.action &&
+                        (e => {
+                          item.action(e);
+                          this.toggleMenu();
+                        })
+                      }
+                      event={item.event}
+                      link={item.link}
+                      tooltip={item.tooltip}
+                      disabled={item.disabled}
+                      onClose={() => {
+                        this.toggleMenu();
+                        item?.onClose?.();
+                      }}
+                      color={item.color}
+                      hoverColor={item.hoverColor}
+                      hoverBgColor={item.hoverBgColor}
+                    />
+                  </li>
+                );
               })}
             </ol>
           )}

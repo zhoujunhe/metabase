@@ -1,7 +1,7 @@
 import { b64url_to_utf8 } from "metabase/lib/encoding";
 import { CardApi, CollectionsApi, DashboardApi } from "metabase/services";
 
-import type { ReportableEntityName, ErrorPayload } from "./types";
+import type { ErrorPayload, ReportableEntityName } from "./types";
 
 export function downloadObjectAsJson(
   exportObj: ErrorPayload,
@@ -33,6 +33,7 @@ export const getEntityDetails = ({
   }
 
   switch (entity) {
+    case "metric":
     case "question":
     case "model":
       if (isAdHoc) {
@@ -55,6 +56,7 @@ export const getEntityDetails = ({
 
 export const hasQueryData = (
   entityName?: ReportableEntityName | null,
-): boolean => !!entityName && ["question", "model"].includes(entityName);
+): boolean =>
+  !!entityName && ["question", "model", "metric"].includes(entityName);
 
 const nullOnCatch = () => null;

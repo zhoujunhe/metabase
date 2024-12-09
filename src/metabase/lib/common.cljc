@@ -49,7 +49,7 @@
   [field-metadata]
   (lib.ref/ref field-metadata))
 
-(defmethod ->op-arg :metadata/legacy-metric
+(defmethod ->op-arg :metadata/metric
   [metric-def]
   (lib.ref/ref metric-def))
 
@@ -62,6 +62,11 @@
   (->op-arg (lib.options/ensure-uuid (into [(keyword operator) options]
                                            (map ->op-arg)
                                            args))))
+
+(defn ensure-ident
+  "Given an MBQL clause, ensure that it has an `:ident` in its options."
+  [clause]
+  (lib.options/update-options clause update :ident #(or % (u/generate-nano-id))))
 
 (defn defop-create
   "Impl for [[defop]]."

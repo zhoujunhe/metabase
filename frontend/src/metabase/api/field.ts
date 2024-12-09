@@ -1,32 +1,32 @@
 import type {
-  FieldId,
-  SearchFieldValuesRequest,
-  FieldValue,
-  GetFieldValuesResponse,
-  Field,
-  GetFieldRequest,
-  UpdateFieldRequest,
   CreateFieldDimensionRequest,
+  Field,
+  FieldId,
+  FieldValue,
+  GetFieldRequest,
+  GetFieldValuesResponse,
+  SearchFieldValuesRequest,
+  UpdateFieldRequest,
   UpdateFieldValuesRequest,
 } from "metabase-types/api";
 
 import { Api } from "./api";
 import {
-  provideFieldTags,
-  provideFieldValuesTags,
   idTag,
   invalidateTags,
   listTag,
+  provideFieldTags,
+  provideFieldValuesTags,
   tag,
 } from "./tags";
 
 export const fieldApi = Api.injectEndpoints({
   endpoints: builder => ({
     getField: builder.query<Field, GetFieldRequest>({
-      query: ({ id, ...body }) => ({
+      query: ({ id, ...params }) => ({
         method: "GET",
         url: `/api/field/${id}`,
-        body,
+        params,
       }),
       providesTags: field => (field ? provideFieldTags(field) : []),
     }),
@@ -38,10 +38,10 @@ export const fieldApi = Api.injectEndpoints({
       providesTags: (_, error, fieldId) => provideFieldValuesTags(fieldId),
     }),
     searchFieldValues: builder.query<FieldValue[], SearchFieldValuesRequest>({
-      query: ({ fieldId, searchFieldId, ...body }) => ({
+      query: ({ fieldId, searchFieldId, ...params }) => ({
         method: "GET",
         url: `/api/field/${fieldId}/search/${searchFieldId}`,
-        body,
+        params,
       }),
       providesTags: (_, error, { fieldId }) => provideFieldValuesTags(fieldId),
     }),

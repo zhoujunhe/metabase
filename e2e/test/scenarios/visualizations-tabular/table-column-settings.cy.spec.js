@@ -1,7 +1,7 @@
 import _ from "underscore";
 
+import { H } from "e2e/support";
 import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
-import { openNotebook, popover, restore, visualize } from "e2e/support/helpers";
 
 const { ORDERS_ID, ORDERS, PRODUCTS_ID, PRODUCTS } = SAMPLE_DATABASE;
 
@@ -215,7 +215,7 @@ const nestedQuestionWithJoinOnQuestion = card => ({
 
 describe("scenarios > visualizations > table column settings", () => {
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsNormalUser();
     cy.intercept("POST", "/api/dataset").as("dataset");
   });
@@ -350,11 +350,9 @@ describe("scenarios > visualizations > table column settings", () => {
     it("should be able to rename table columns via popover", () => {
       cy.createQuestion(tableQuestion, { visitQuestion: true });
 
-      cy.findByTestId("TableInteractive-root").within(() => {
-        cy.findByText("Product ID").click();
-      });
+      H.tableHeaderClick("Product ID");
 
-      popover().within(() => {
+      H.popover().within(() => {
         cy.icon("gear").click();
         cy.findByDisplayValue("Product ID").clear().type("prod_id");
       });
@@ -550,7 +548,7 @@ describe("scenarios > visualizations > table column settings", () => {
       const testData = {
         column: "Count",
         columnName: "Count",
-        table: "question",
+        table: "summaries",
         sanityCheck: "Product ID",
         needsScroll: false,
       };
@@ -558,7 +556,7 @@ describe("scenarios > visualizations > table column settings", () => {
       const testData2 = {
         column: "Product ID",
         columnName: "Product ID",
-        table: "question",
+        table: "summaries",
         sanityCheck: "Count",
         needsScroll: false,
       };
@@ -619,12 +617,14 @@ describe("scenarios > visualizations > table column settings", () => {
         column: "Products → Category",
         columnName: "Products → Category",
         table: "test question",
+        scrollTimes: 3,
       };
 
       const testData2 = {
         column: "Ean",
         columnName: "Product → Ean",
         table: "product",
+        scrollTimes: 3,
       };
 
       _hideColumn(testData);
@@ -765,10 +765,10 @@ describe("scenarios > visualizations > table column settings", () => {
         cy.createQuestion(nestedQuestion(card), { visitQuestion: true });
       });
 
-      openNotebook();
+      H.openNotebook();
       cy.findByTestId("fields-picker").click();
-      popover().findByText("Tax").click();
-      visualize();
+      H.popover().findByText("Tax").click();
+      H.visualize();
 
       openSettings();
 

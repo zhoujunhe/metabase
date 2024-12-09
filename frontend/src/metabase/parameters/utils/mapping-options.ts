@@ -1,14 +1,16 @@
-import { tag_names } from "cljs/metabase.shared.parameters.parameters";
+import { t } from "ttag";
+import _ from "underscore";
+
+import { tag_names } from "cljs/metabase.models.params.shared";
 import { isActionDashCard } from "metabase/actions/utils";
-import { getColumnGroupName } from "metabase/common/utils/column-groups";
 import { getColumnIcon } from "metabase/common/utils/columns";
 import { isVirtualDashCard } from "metabase/dashboard/utils";
+import { getGroupName } from "metabase/querying/filters/utils";
 import * as Lib from "metabase-lib";
 import { TemplateTagDimension } from "metabase-lib/v1/Dimension";
 import type { DimensionOptionsSection } from "metabase-lib/v1/DimensionOptions/types";
 import type Question from "metabase-lib/v1/Question";
 import {
-  columnFilterForParameter,
   dimensionFilterForParameter,
   variableFilterForParameter,
 } from "metabase-lib/v1/parameters/utils/filters";
@@ -17,6 +19,7 @@ import {
   buildDimensionTarget,
   buildTemplateTagVariableTarget,
   buildTextTagTarget,
+  getParameterColumns,
 } from "metabase-lib/v1/parameters/utils/targets";
 import type TemplateTagVariable from "metabase-lib/v1/variables/TemplateTagVariable";
 import type {
@@ -42,15 +45,15 @@ function buildStructuredQuerySectionOptions(
   query: Lib.Query,
   stageIndex: number,
   group: Lib.ColumnGroup,
+  columns: Lib.ColumnMetadata[],
 ): StructuredQuerySectionOption[] {
   const groupInfo = Lib.displayInfo(query, stageIndex, group);
-  const columns = Lib.getColumnsFromColumnGroup(group);
 
   return columns.map(column => {
     const columnInfo = Lib.displayInfo(query, stageIndex, column);
 
     return {
-      sectionName: getColumnGroupName(groupInfo),
+      sectionName: getGroupName(groupInfo, stageIndex) ?? t`Summaries`,
       name: columnInfo.displayName,
       icon: getColumnIcon(column),
       target: buildColumnTarget(query, stageIndex, column),
@@ -61,6 +64,7 @@ function buildStructuredQuerySectionOptions(
 
 function buildNativeQuerySectionOptions(
   section: DimensionOptionsSection,
+  stageIndex: number,
 ): NativeParameterMappingOption[] {
   return section.items
     .flatMap(({ dimension }) =>
@@ -70,7 +74,7 @@ function buildNativeQuerySectionOptions(
       name: dimension.displayName(),
       icon: dimension.icon() ?? "",
       isForeign: false,
-      target: buildDimensionTarget(dimension),
+      target: buildDimensionTarget(dimension, stageIndex),
     }));
 }
 
@@ -153,22 +157,27 @@ export function getParameterMappingOptions(
   }
 
   const { isNative } = Lib.queryDisplayInfo(question.query());
-  const isModel = question.type() === "model";
-  if (!isNative || isModel) {
-    // treat the dataset/model question like it is already composed so that we can apply
-    // dataset/model-specific metadata to the underlying dimension options
-    const query = isModel
-      ? question.composeQuestionAdhoc().query()
-      : question.query();
-    const stageIndex = -1;
-    const availableColumns = Lib.filterableColumns(query, stageIndex);
-    const parameterColumns = parameter
-      ? availableColumns.filter(columnFilterForParameter(parameter))
-      : availableColumns;
-    const columnGroups = Lib.groupColumns(parameterColumns);
+  if (!isNative) {
+    const { query, columns } = getParameterColumns(
+      question,
+      parameter ?? undefined,
+    );
 
-    const options = columnGroups.flatMap(group =>
-      buildStructuredQuerySectionOptions(query, stageIndex, group),
+    const columnsByStageIndex = _.groupBy(columns, "stageIndex");
+    const options = Object.entries(columnsByStageIndex).flatMap(
+      ([stageIndexString, columns]) => {
+        const groups = Lib.groupColumns(columns.map(({ column }) => column));
+        const stageIndex = parseInt(stageIndexString, 10);
+
+        return groups.flatMap(group =>
+          buildStructuredQuerySectionOptions(
+            query,
+            stageIndex,
+            group,
+            Lib.getColumnsFromColumnGroup(group),
+          ),
+        );
+      },
     );
 
     return options;
@@ -176,6 +185,7 @@ export function getParameterMappingOptions(
 
   const legacyQuery = question.legacyQuery();
   const options: NativeParameterMappingOption[] = [];
+  const stageIndex = Lib.stageCount(question.query()) - 1;
 
   options.push(
     ...legacyQuery
@@ -188,7 +198,7 @@ export function getParameterMappingOptions(
         parameter ? dimensionFilterForParameter(parameter) : undefined,
       )
       .sections()
-      .flatMap(section => buildNativeQuerySectionOptions(section)),
+      .flatMap(section => buildNativeQuerySectionOptions(section, stageIndex)),
   );
 
   return options;

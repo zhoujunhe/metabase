@@ -18,6 +18,7 @@
   information."
   (:require
    [metabase.driver :as driver]
+   [metabase.driver.util :as driver.u]
    [metabase.legacy-mbql.schema :as mbql.s]
    [metabase.lib.metadata :as lib.metadata]
    [metabase.lib.util.match :as lib.util.match]
@@ -35,7 +36,7 @@
                           i)))
         (map not= coll-1 coll-2)))
 
-(mu/defn ^:private replace-cumulative-ags :- mbql.s/Query
+(mu/defn- replace-cumulative-ags :- mbql.s/Query
   "Replace `cum-count` and `cum-sum` aggregations in `query` with `count` and `sum` aggregations, respectively."
   [query]
   (lib.util.match/replace-in query [:query :aggregation]
@@ -50,9 +51,9 @@
   [{{breakouts :breakout, aggregations :aggregation} :query, :as query}]
   (cond
     ;; no need to rewrite `:cum-sum` and `:cum-count` functions, this driver supports native window function versions
-    (driver/database-supports? driver/*driver*
-                               :window-functions/cumulative
-                               (lib.metadata/database (qp.store/metadata-provider)))
+    (driver.u/supports? driver/*driver*
+                        :window-functions/cumulative
+                        (lib.metadata/database (qp.store/metadata-provider)))
     query
 
     ;; nothing to rewrite
@@ -68,7 +69,6 @@
                                   (+ (count breakouts) i)))]
       (cond-> query'
         (seq replaced-indexes) (assoc ::replaced-indexes replaced-indexes)))))
-
 
 ;;;; Post-processing
 

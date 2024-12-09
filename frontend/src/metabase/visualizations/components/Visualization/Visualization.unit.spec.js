@@ -1,7 +1,7 @@
 import { renderWithProviders, screen } from "__support__/ui";
+import { delay } from "__support__/utils";
 import { NumberColumn, StringColumn } from "__support__/visualizations";
 import { color } from "metabase/lib/colors";
-import { delay } from "metabase/lib/promise";
 import Visualization from "metabase/visualizations/components/Visualization";
 import registerVisualizations from "metabase/visualizations/register";
 import { createMockCard } from "metabase-types/api/mocks";
@@ -56,6 +56,7 @@ describe("Visualization", () => {
         expect(chartPathsWithColor(color("brand"))).toHaveLength(2);
       });
     });
+
     describe("multiseries: multiple metrics", () => {
       it("should have correct colors", async () => {
         await renderViz([
@@ -79,6 +80,7 @@ describe("Visualization", () => {
         expect(chartPathsWithColor(color("accent1"))).toHaveLength(2); // "sum"
       });
     });
+
     describe("multiseries: multiple breakouts", () => {
       it("should have correct colors", async () => {
         await renderViz([
@@ -104,6 +106,7 @@ describe("Visualization", () => {
         expect(chartPathsWithColor(color("accent2"))).toHaveLength(2); // "b"
       });
     });
+
     describe("multiseries: dashcard", () => {
       it("should have correct colors", async () => {
         await renderViz([

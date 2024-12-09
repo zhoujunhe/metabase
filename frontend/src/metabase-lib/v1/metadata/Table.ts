@@ -1,20 +1,17 @@
-/* eslint-disable import/order */
 import _ from "underscore";
 
 // NOTE: this needs to be imported first due to some cyclical dependency nonsense
-import Question from "../Question";
-
+import { singularize } from "metabase/lib/formatting";
 import { isVirtualCardId } from "metabase-lib/v1/metadata/utils/saved-questions";
 import { getAggregationOperators } from "metabase-lib/v1/operators/utils";
-import type StructuredQuery from "metabase-lib/v1/queries/StructuredQuery";
 import type { NormalizedTable } from "metabase-types/api";
-import { singularize } from "metabase/lib/formatting";
+
+import Question from "../Question";
 
 import type Database from "./Database";
 import type Field from "./Field";
 import type ForeignKey from "./ForeignKey";
 import type Metadata from "./Metadata";
-import type Metric from "./Metric";
 import type Schema from "./Schema";
 import type Segment from "./Segment";
 
@@ -28,7 +25,7 @@ interface Table
   fields?: Field[];
   fks?: ForeignKey[];
   segments?: Segment[];
-  metrics?: Metric[];
+  metrics?: Question[];
   metadata?: Metadata;
 }
 
@@ -56,10 +53,6 @@ class Table {
     return this.fields ?? [];
   }
 
-  getMetrics() {
-    return this.metrics ?? [];
-  }
-
   isVirtualCard() {
     return isVirtualCardId(this.id);
   }
@@ -85,22 +78,6 @@ class Table {
       tableId: this.id,
       metadata: this.metadata,
     });
-  }
-
-  savedQuestionId() {
-    const match = String(this.id).match(/card__(\d+)/);
-    return match ? parseInt(match[1]) : null;
-  }
-
-  legacyQuery(query = {}) {
-    return (
-      this.question().legacyQuery({
-        useStructuredQuery: true,
-      }) as StructuredQuery
-    ).updateQuery(q => ({
-      ...q,
-      ...query,
-    }));
   }
 
   dimensions() {
@@ -136,10 +113,6 @@ class Table {
     return Object.fromEntries(
       this.aggregationOperators().map(op => [op.short, op]),
     );
-  }
-
-  aggregationOperator(short: string) {
-    return this.aggregationOperatorsLookup()[short];
   }
 
   // FIELDS

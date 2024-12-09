@@ -1,26 +1,37 @@
 import userEvent from "@testing-library/user-event";
 import fetchMock from "fetch-mock";
-import _ from "underscore";
+import { useState } from "react";
 
+import { setupEnterprisePlugins } from "__support__/enterprise";
 import {
   setupCollectionItemsEndpoint,
+  setupRecentViewsAndSelectionsEndpoints,
   setupSearchEndpoints,
 } from "__support__/server-mocks";
+import { mockSettings } from "__support__/settings";
 import {
   mockGetBoundingClientRect,
   mockScrollBy,
   renderWithProviders,
   screen,
   waitForLoaderToBeRemoved,
+  within,
 } from "__support__/ui";
 import type { CollectionId, CollectionItem } from "metabase-types/api";
 import {
   createMockCard,
   createMockCollection,
   createMockCollectionItem,
+  createMockSettings,
+  createMockTokenFeatures,
 } from "metabase-types/api/mocks";
+import { createMockState } from "metabase-types/store/mocks";
 
-import type { QuestionPickerItem, QuestionPickerValueModel } from "../types";
+import type {
+  QuestionPickerItem,
+  QuestionPickerStatePath,
+  QuestionPickerValueModel,
+} from "../types";
 
 import { QuestionPicker, defaultOptions } from "./QuestionPicker";
 import { QuestionPickerModal } from "./QuestionPickerModal";
@@ -28,20 +39,45 @@ import { QuestionPickerModal } from "./QuestionPickerModal";
 type NestedCollectionItem = Partial<CollectionItem> & {
   id: any;
   is_personal?: boolean;
-  descendants: NestedCollectionItem[];
+  descendants?: NestedCollectionItem[];
 };
 
-const myQuestion = createMockCard({
-  id: 100,
-  name: "My Question",
-  collection_id: 3,
+const myQuestion = createMockCollectionItem({
+  ...createMockCard({
+    id: 100,
+    name: "My Question",
+    collection_id: 3,
+  }),
+  model: "card",
 });
 
-const myModel = createMockCard({
-  id: 101,
-  name: "My Model",
-  collection_id: 3,
-  type: "model",
+const myVerifiedQuestion = createMockCollectionItem({
+  ...createMockCard({
+    id: 103,
+    name: "My Verified Question",
+    collection_id: 3,
+  }),
+  moderated_status: "verified",
+});
+
+const myModel = createMockCollectionItem({
+  ...createMockCard({
+    id: 101,
+    name: "My Model",
+    collection_id: 3,
+    type: "model",
+  }),
+  model: "dataset",
+});
+
+const myMetric = createMockCollectionItem({
+  ...createMockCard({
+    id: 102,
+    name: "My Metric",
+    collection_id: 3,
+    type: "metric",
+  }),
+  model: "metric",
 });
 
 const collectionTree: NestedCollectionItem[] = [
@@ -63,18 +99,7 @@ const collectionTree: NestedCollectionItem[] = [
             id: 3,
             name: "Collection 3",
             model: "collection",
-            descendants: [
-              {
-                ...myQuestion,
-                model: "card",
-                descendants: [],
-              },
-              {
-                ...myModel,
-                model: "dataset",
-                descendants: [],
-              },
-            ],
+            descendants: [myQuestion, myModel, myMetric, myVerifiedQuestion],
             location: "/4/",
             can_write: true,
             is_personal: false,
@@ -119,7 +144,7 @@ const flattenCollectionTree = (
   if (!nodes) {
     return [];
   }
-  return nodes.flatMap(({ descendants, ...node }) => [
+  return nodes.flatMap(({ descendants = [], ...node }) => [
     node,
     ...flattenCollectionTree(descendants),
   ]);
@@ -137,7 +162,6 @@ const setupCollectionTreeMocks = (node: NestedCollectionItem[]) => {
     setupCollectionItemsEndpoint({
       collection: createMockCollection({ id: node.id }),
       collectionItems,
-      models: ["collection", "dataset", "card"],
     });
 
     if (collectionItems.length > 0) {
@@ -149,7 +173,7 @@ const setupCollectionTreeMocks = (node: NestedCollectionItem[]) => {
 interface SetupOpts {
   initialValue?: {
     id: CollectionId;
-    model: "collection" | "card" | "dataset";
+    model: "collection" | "card" | "dataset" | "metric";
   };
   onChange?: (item: QuestionPickerItem) => void;
   models?: [QuestionPickerValueModel, ...QuestionPickerValueModel[]];
@@ -159,6 +183,7 @@ interface SetupOpts {
 const commonSetup = () => {
   mockGetBoundingClientRect();
   mockScrollBy();
+  setupRecentViewsAndSelectionsEndpoints([]);
 
   const allItems = flattenCollectionTree(collectionTree).map(
     createMockCollectionItem,
@@ -181,14 +206,40 @@ const setupPicker = async ({
 }: SetupOpts = {}) => {
   commonSetup();
 
-  renderWithProviders(
-    <QuestionPicker
-      onItemSelect={onChange}
-      initialValue={initialValue}
-      models={["card"]}
-      options={defaultOptions}
-    />,
-  );
+  const tokenFeatures = createMockTokenFeatures({
+    content_verification: true,
+    official_collections: true,
+  });
+  const settings = createMockSettings();
+
+  const settingValuesWithToken = {
+    ...settings,
+    "token-features": tokenFeatures,
+  };
+
+  const state = createMockState({
+    settings: mockSettings(settingValuesWithToken),
+  });
+
+  setupEnterprisePlugins();
+
+  function TestComponent() {
+    const [path, setPath] = useState<QuestionPickerStatePath>();
+
+    return (
+      <QuestionPicker
+        initialValue={initialValue}
+        models={["card"]}
+        options={defaultOptions}
+        path={path}
+        onInit={jest.fn()}
+        onItemSelect={onChange}
+        onPathChange={setPath}
+      />
+    );
+  }
+
+  renderWithProviders(<TestComponent />, { storeInitialState: state });
 
   await waitForLoaderToBeRemoved();
 };
@@ -215,7 +266,7 @@ const setupModal = async ({
 };
 
 describe("QuestionPicker", () => {
-  afterAll(() => {
+  afterEach(() => {
     jest.restoreAllMocks();
   });
 
@@ -269,11 +320,17 @@ describe("QuestionPicker", () => {
     expect(
       await screen.findByRole("button", { name: /My Question/ }),
     ).toHaveAttribute("data-active", "true");
+
+    expect(
+      await within(
+        await screen.findByRole("button", { name: /My Verified Question/ }),
+      ).findByRole("img", { name: /verified_filled/ }),
+    ).toBeInTheDocument();
   });
 });
 
 describe("QuestionPickerModal", () => {
-  afterAll(() => {
+  afterEach(() => {
     jest.restoreAllMocks();
   });
 
@@ -316,6 +373,20 @@ describe("QuestionPickerModal", () => {
     ).toBeInTheDocument();
     expect(
       await screen.findByRole("tab", { name: /Models/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("should render the metric tab if explicitly enabled", async () => {
+    await setupModal({ models: ["card", "dataset", "metric"] });
+
+    expect(
+      await screen.findByRole("tab", { name: /Questions/ }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("tab", { name: /Models/ }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("tab", { name: /Metrics/ }),
     ).toBeInTheDocument();
   });
 
@@ -365,6 +436,25 @@ describe("QuestionPickerModal", () => {
     ).toHaveAttribute("data-active", "true");
   });
 
+  it("should auto-select the metric tab when a metric is selected", async () => {
+    await setupModal({
+      initialValue: { id: 102, model: "metric" },
+      models: ["card", "dataset", "metric"],
+    });
+
+    expect(
+      await screen.findByRole("tab", { name: /Questions/ }),
+    ).toHaveAttribute("aria-selected", "false");
+    expect(await screen.findByRole("tab", { name: /Metrics/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /My Metric/ }),
+    ).toHaveAttribute("data-active", "true");
+  });
+
   it("should automatically switch to the search tab when a search query is provided", async () => {
     await setupSearchEndpoints([]);
     await setupModal();
@@ -385,7 +475,6 @@ describe("QuestionPickerModal", () => {
       "true",
     );
 
-    await screen.findByText(/loading/i);
     await screen.findByText(/Didn't find anything/i);
   });
 
@@ -409,7 +498,6 @@ describe("QuestionPickerModal", () => {
       "true",
     );
 
-    await screen.findByText(/loading/i);
     await screen.findByText(/Didn't find anything/i);
 
     await userEvent.clear(searchInput);
@@ -420,5 +508,15 @@ describe("QuestionPickerModal", () => {
     expect(
       screen.queryByRole("tab", { name: /Search/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("should be able to search for metrics", async () => {
+    await setupSearchEndpoints([myQuestion, myModel, myMetric]);
+    await setupModal({ models: ["card", "dataset", "metric"] });
+    const searchInput = await screen.findByPlaceholderText(/search/i);
+    await userEvent.type(searchInput, myMetric.name);
+    await userEvent.click(screen.getByText("Everywhere"));
+    expect(await screen.findByText(myMetric.name)).toBeInTheDocument();
+    expect(screen.queryByText(myQuestion.name)).not.toBeInTheDocument();
   });
 });

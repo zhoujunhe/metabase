@@ -1,9 +1,12 @@
 import { action } from "@storybook/addon-actions";
-import type { ComponentStory } from "@storybook/react";
+import type { StoryFn } from "@storybook/react";
 
 import { color } from "metabase/lib/colors";
 
-import ModalContent, { ModalContentActionIcon } from "./index";
+import ModalContent, {
+  ModalContentActionIcon,
+  type ModalContentProps,
+} from "./index";
 
 export default {
   title: "Components/ModalContent",
@@ -24,12 +27,12 @@ export default {
   },
 };
 
-const Template: ComponentStory<typeof ModalContent> = args => {
+const Template: StoryFn<ModalContentProps> = args => {
   return (
     <div
       style={{
         width: 1200,
-        background: color("white"),
+        background: color("bg-white"),
         border: "1px solid black",
       }}
     >
@@ -48,23 +51,32 @@ const args = {
   onBack: undefined,
 };
 
-export const Default = Template.bind({});
-Default.args = {
-  ...args,
+export const Default = {
+  render: Template,
+
+  args: {
+    ...args,
+  },
 };
 
-export const WithHeaderActions = Template.bind({});
-WithHeaderActions.args = {
-  ...args,
-  headerActions: (
-    <>
-      <ModalContentActionIcon name="pencil" onClick={action("Action1")} />
-    </>
-  ),
+export const WithHeaderActions = {
+  render: Template,
+
+  args: {
+    ...args,
+    headerActions: (
+      <>
+        <ModalContentActionIcon name="pencil" onClick={action("Action1")} />
+      </>
+    ),
+  },
 };
 
-export const WithBackButton = Template.bind({});
-WithBackButton.args = {
-  ...args,
-  onBack: action("onBack"),
+export const WithBackButton = {
+  render: Template,
+
+  args: {
+    ...args,
+    onBack: action("onBack"),
+  },
 };

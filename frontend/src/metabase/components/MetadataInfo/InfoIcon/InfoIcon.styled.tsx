@@ -2,19 +2,31 @@ import styled from "@emotion/styled";
 
 import { Icon } from "metabase/ui";
 
-export const PopoverHoverTarget = styled(Icon)<{ hasDescription: boolean }>`
-  padding: 0.7em 0.65em;
-  visibility: hidden;
+export const PopoverHoverTarget = styled(Icon, {
+  shouldForwardProp: propName => propName !== "hasDescription",
+})<{ hasDescription: boolean }>`
   flex-shrink: 0;
-  opacity: ${props => (props.hasDescription ? 0.6 : 0.3)};
+  display: none;
 
-  &[aria-expanded="true"] {
-    opacity: 1;
+  [aria-expanded="true"] & {
+    display: block;
+  }
+`;
+
+export const PopoverDefaultIcon = styled(Icon)`
+  display: block;
+
+  [aria-expanded="true"] & {
+    display: none;
   }
 `;
 
 export const HoverParent = styled.div`
   &:hover ${PopoverHoverTarget} {
-    visibility: visible;
+    display: block;
+  }
+
+  &:hover ${PopoverDefaultIcon} {
+    display: none;
   }
 `;

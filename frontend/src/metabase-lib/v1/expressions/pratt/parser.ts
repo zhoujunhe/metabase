@@ -1,11 +1,12 @@
 import { t } from "ttag";
 
-import { tokenize, TOKEN, OPERATOR } from "../tokenizer";
+import { OPERATOR, TOKEN, tokenize } from "../tokenizer";
 
 import {
   ADD,
   ARG_LIST,
   BAD_TOKEN,
+  BOOLEAN,
   CALL,
   COMMA,
   COMPARISON,
@@ -21,14 +22,13 @@ import {
   MULDIV_OP,
   NEGATIVE,
   NUMBER,
-  BOOLEAN,
   ROOT,
   STRING,
   SUB,
   WS,
 } from "./syntax";
-import type { NodeType, Token, Node, Hooks } from "./types";
-import { assert, CompileError } from "./types";
+import type { Hooks, Node, NodeType, Token } from "./types";
+import { CompileError, assert } from "./types";
 
 interface ParserOptions {
   hooks?: Hooks;
@@ -48,7 +48,10 @@ export function lexify(expression: string) {
   if (errors && errors.length > 0) {
     errors.forEach(error => {
       const { pos } = error;
-      lexs.push({ type: BAD_TOKEN, text: expression[pos], length: 1, pos });
+
+      if (typeof pos === "number") {
+        lexs.push({ type: BAD_TOKEN, text: expression[pos], length: 1, pos });
+      }
     });
   }
 

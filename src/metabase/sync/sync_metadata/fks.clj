@@ -3,7 +3,6 @@
   (:require
    [honey.sql :as sql]
    [metabase.db :as mdb]
-   [metabase.driver :as driver]
    [metabase.driver.util :as driver.u]
    [metabase.models.table :as table]
    [metabase.sync.fetch-metadata :as fetch-metadata]
@@ -78,19 +77,19 @@
                        [:not= :f.fk_target_field_id pk-field-id-query]]]})]
     (sql/format q :dialect (mdb/quoting-style (mdb/db-type)))))
 
-(mu/defn ^:private mark-fk!
+(mu/defn- mark-fk!
   "Updates the `fk_target_field_id` of a Field. Returns 1 if the Field was successfully updated, 0 otherwise."
   [database :- i/DatabaseInstance
    metadata :- i/FKMetadataEntry]
   (u/prog1 (t2/query-one (mark-fk-sql (:id database) metadata))
-  (when (= <> 1)
-    (log/info (u/format-color 'cyan "Marking foreign key from %s %s -> %s %s"
-                              (sync-util/table-name-for-logging :name (:fk-table-name metadata)
-                                                                :schema (:fk-table-schema metadata))
-                              (sync-util/field-name-for-logging :name (:fk-column-name metadata))
-                              (sync-util/table-name-for-logging :name (:fk-table-name metadata)
-                                                                :schema (:fk-table-schema metadata))
-                              (sync-util/field-name-for-logging :name (:pk-column-name metadata)))))))
+    (when (= <> 1)
+      (log/info (u/format-color 'cyan "Marking foreign key from %s %s -> %s %s"
+                                (sync-util/table-name-for-logging :name (:fk-table-name metadata)
+                                                                  :schema (:fk-table-schema metadata))
+                                (sync-util/field-name-for-logging :name (:fk-column-name metadata))
+                                (sync-util/table-name-for-logging :name (:fk-table-name metadata)
+                                                                  :schema (:fk-table-schema metadata))
+                                (sync-util/field-name-for-logging :name (:pk-column-name metadata)))))))
 
 (mu/defn sync-fks-for-table!
   "Sync the foreign keys for a specific `table`."
@@ -100,7 +99,7 @@
   ([database :- i/DatabaseInstance
     table    :- i/TableInstance]
    (sync-util/with-error-handling (format "Error syncing FKs for %s" (sync-util/name-for-logging table))
-     (let [schema-names (when (driver/database-supports? (driver.u/database->driver database) :schemas database)
+     (let [schema-names (when (driver.u/supports? (driver.u/database->driver database) :schemas database)
                           [(:schema table)])
            fk-metadata  (into [] (fetch-metadata/fk-metadata database :schema-names schema-names :table-names [(:name table)]))]
        {:total-fks   (count fk-metadata)
@@ -116,8 +115,8 @@
   [database :- i/DatabaseInstance]
   (u/prog1 (sync-util/with-error-handling (format "Error syncing FKs for %s" (sync-util/name-for-logging database))
              (let [driver       (driver.u/database->driver database)
-                   schema-names (when (driver/database-supports? driver :schemas database)
-                                  (sync-util/db->sync-schemas database))
+                   schema-names (when (driver.u/supports? driver :schemas database)
+                                  (sync-util/sync-schemas database))
                    fk-metadata  (fetch-metadata/fk-metadata database :schema-names schema-names)]
                (transduce (map (fn [x]
                                  (let [[updated failed] (try [(mark-fk! database x) 0]

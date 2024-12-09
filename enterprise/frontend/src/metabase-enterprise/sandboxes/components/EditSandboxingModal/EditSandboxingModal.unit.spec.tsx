@@ -2,9 +2,12 @@ import userEvent from "@testing-library/user-event";
 import fetchMock from "fetch-mock";
 
 import {
+  setupAdhocQueryMetadataEndpoint,
+  setupCardQueryMetadataEndpoint,
   setupCardsEndpoints,
   setupCollectionsEndpoints,
   setupDatabasesEndpoints,
+  setupRecentViewsAndSelectionsEndpoints,
 } from "__support__/server-mocks";
 import {
   mockGetBoundingClientRect,
@@ -15,12 +18,16 @@ import {
 } from "__support__/ui";
 import { ROOT_COLLECTION } from "metabase/entities/collections";
 import type { GroupTableAccessPolicy } from "metabase-types/api";
-import { createMockCard, createMockCollection } from "metabase-types/api/mocks";
 import {
-  createSampleDatabase,
+  createMockCard,
+  createMockCardQueryMetadata,
+  createMockCollection,
+} from "metabase-types/api/mocks";
+import {
   PEOPLE,
   PEOPLE_ID,
   SAMPLE_DB_ID,
+  createSampleDatabase,
 } from "metabase-types/api/mocks/presets";
 
 import EditSandboxingModal from "./EditSandboxingModal";
@@ -67,6 +74,11 @@ const setup = ({
     rootCollection: EDITABLE_ROOT_COLLECTION,
   });
 
+  setupRecentViewsAndSelectionsEndpoints([]);
+  setupAdhocQueryMetadataEndpoint(
+    createMockCardQueryMetadata({ databases: [database] }),
+  );
+
   fetchMock.post("path:/api/mt/gtap/validate", 204);
   fetchMock.get("path:/api/permissions/group/1", {});
 
@@ -79,6 +91,12 @@ const setup = ({
     });
     fetchMock.get("path:/api/collection/1", EDITABLE_ROOT_COLLECTION);
     setupCardsEndpoints([TEST_CARD]);
+    setupCardQueryMetadataEndpoint(
+      TEST_CARD,
+      createMockCardQueryMetadata({
+        databases: [database],
+      }),
+    );
   }
 
   const onSave = jest.fn();
@@ -107,12 +125,12 @@ describe("EditSandboxingModal", () => {
         const { onSave } = setup();
 
         expect(
-          screen.getByText("Grant sandboxed access to this table"),
+          screen.getByText("Restrict access to this table"),
         ).toBeInTheDocument();
 
         expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 
-        await userEvent.click(screen.getByText("Pick a column"));
+        await userEvent.click(await screen.findByText("Pick a column"));
         await userEvent.click(await screen.findByText("ID"));
 
         await userEvent.click(screen.getByText("Pick a user attribute"));
@@ -126,6 +144,7 @@ describe("EditSandboxingModal", () => {
               foo: [
                 "dimension",
                 ["field", PEOPLE.ID, { "base-type": "type/BigInteger" }],
+                { "stage-number": 0 },
               ],
             },
             card_id: null,
@@ -139,7 +158,7 @@ describe("EditSandboxingModal", () => {
         const { onSave } = setup({ shouldMockQuestions: true });
 
         expect(
-          screen.getByText("Grant sandboxed access to this table"),
+          screen.getByText("Restrict access to this table"),
         ).toBeInTheDocument();
 
         expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
@@ -189,7 +208,7 @@ describe("EditSandboxingModal", () => {
       });
 
       expect(
-        screen.getByText("Grant sandboxed access to this table"),
+        screen.getByText("Restrict access to this table"),
       ).toBeInTheDocument();
 
       expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();

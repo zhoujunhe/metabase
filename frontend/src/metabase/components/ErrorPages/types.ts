@@ -1,15 +1,16 @@
 import type {
-  Log,
   Card,
-  Dashboard,
   Collection,
+  Dashboard,
   DatasetData,
+  Log,
   MetabaseInfo,
 } from "metabase-types/api";
 
 export type ReportableEntityName =
   | "question"
   | "model"
+  | "metric"
   | "dashboard"
   | "collection";
 

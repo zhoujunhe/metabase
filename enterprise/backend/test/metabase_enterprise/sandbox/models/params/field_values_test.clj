@@ -2,21 +2,13 @@
   (:require
    [clojure.test :refer :all]
    [java-time.api :as t]
-   [metabase-enterprise.sandbox.models.group-table-access-policy
-    :refer [GroupTableAccessPolicy]]
-   [metabase-enterprise.sandbox.models.params.field-values
-    :as ee-params.field-values]
+   [metabase-enterprise.sandbox.models.group-table-access-policy :refer [GroupTableAccessPolicy]]
+   [metabase-enterprise.sandbox.models.params.field-values :as ee-params.field-values]
    [metabase-enterprise.test :as met]
-   [metabase.models
-    :refer [Card
-            Field
-            FieldValues
-            PermissionsGroup
-            PermissionsGroupMembership
-            User]]
+   [metabase.models :refer [Card Field FieldValues PermissionsGroup PermissionsGroupMembership User]]
    [metabase.models.field-values :as field-values]
    [metabase.models.params.field-values :as params.field-values]
-   [metabase.server.middleware.session :as mw.session]
+   [metabase.request.core :as request]
    [metabase.test :as mt]
    [toucan2.core :as t2]))
 
@@ -26,8 +18,8 @@
   (doseq [fv-type [:sandbox :linked-filter]]
     (testing "create a new field values and fix up the human readable values"
       (met/with-gtaps! {:gtaps {:categories {:query (mt/mbql-query categories {:filter [:and
-                                                                                       [:> $id 3]
-                                                                                       [:< $id 6]]})}}}
+                                                                                        [:> $id 3]
+                                                                                        [:< $id 6]]})}}}
         ;; the categories-id doesn't have a field values, we fake it with a full fieldvalues to make it easier to test
         (t2/insert! FieldValues {:type                  :full
                                  :field_id              (mt/id :categories :id)
@@ -53,7 +45,7 @@
 
           (testing "after changing the question, should create new FieldValues"
             (let [new-query (mt/mbql-query categories
-                                           {:filter [:and [:> $id 1] [:< $id 4]]})]
+                              {:filter [:and [:> $id 1] [:< $id 4]]})]
               (Thread/sleep 1)
               (t2/update! Card card-id {:dataset_query new-query
                                         :updated_at    (t/local-date-time)}))
@@ -68,8 +60,8 @@
 
     (testing "make sure the Fieldvalues respect [field-values/*total-max-length*]"
       (met/with-gtaps! {:gtaps {:categories {:query (mt/mbql-query categories {:filter [:and
-                                                                                       [:> $id 3]
-                                                                                       [:< $id 6]]})}}}
+                                                                                        [:> $id 3]
+                                                                                        [:< $id 6]]})}}}
         (binding [field-values/*total-max-length* 5]
           (is (= ["Asian"]
                  (:values (params.field-values/get-or-create-advanced-field-values!
@@ -120,7 +112,7 @@
       (with-redefs [ee-params.field-values/field-is-sandboxed? (constantly true)]
         (letfn [(hash-for-user-id-with-attributes [user-id login_attributes field-id]
                   (mt/with-temp-vals-in-db User user-id {:login_attributes login_attributes}
-                    (mw.session/with-current-user user-id
+                    (request/with-current-user user-id
                       (ee-params.field-values/hash-key-for-sandbox field-id))))]
           (testing "2 users in the same group"
             (mt/with-temp

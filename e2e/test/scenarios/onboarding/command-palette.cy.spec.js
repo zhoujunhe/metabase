@@ -1,31 +1,20 @@
+import { H } from "e2e/support";
 import { USERS } from "e2e/support/cypress_data";
 import {
-  ORDERS_DASHBOARD_ID,
   ORDERS_COUNT_QUESTION_ID,
+  ORDERS_DASHBOARD_ID,
 } from "e2e/support/cypress_sample_instance_data";
-import {
-  restore,
-  openCommandPalette,
-  commandPalette,
-  commandPaletteSearch,
-  closeCommandPalette,
-  visitFullAppEmbeddingUrl,
-  pressPageDown,
-  pressPageUp,
-  pressHome,
-  pressEnd,
-} from "e2e/support/helpers";
 
 const { admin } = USERS;
 
 describe("command palette", () => {
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
   it("should render a searchable command palette", () => {
-    //Add a description for a check
+    // //Add a description for a check
     cy.request("PUT", `/api/card/${ORDERS_COUNT_QUESTION_ID}`, {
       description: "The best question",
     });
@@ -34,19 +23,13 @@ describe("command palette", () => {
     cy.request(`/api/dashboard/${ORDERS_DASHBOARD_ID}`);
     cy.visit("/");
 
-    cy.findByPlaceholderText("Search…").click();
-
-    //Not sure if this is the best way to target this button
-    cy.findByRole("button", { name: / \+ K/ }).should("exist").click();
-
-    cy.findByTestId("search-results-floating-container").should("not.exist");
-    commandPalette().should("exist");
-    closeCommandPalette();
+    cy.findByRole("button", { name: /Search/ }).click();
+    H.closeCommandPalette();
 
     cy.log("open the command palette with keybinding");
-    openCommandPalette();
-    commandPalette().within(() => {
-      commandPaletteSearch().should("exist");
+    H.openCommandPalette();
+    H.commandPalette().within(() => {
+      H.commandPaletteInput().should("exist");
 
       cy.log("limit to 5 basic actions");
       cy.findByText("New question");
@@ -54,6 +37,7 @@ describe("command palette", () => {
       cy.findByText("New dashboard");
       cy.findByText("New collection");
       cy.findByText("New model");
+      cy.findByText("New metric").should("not.exist");
 
       cy.log("Should show recent items");
       cy.findByRole("option", { name: "Orders in a dashboard" }).should(
@@ -62,7 +46,7 @@ describe("command palette", () => {
       );
 
       cy.log("Should search entities and docs");
-      commandPaletteSearch().type("Orders, Count");
+      H.commandPaletteInput().type("Orders, Count");
 
       cy.findByRole("option", { name: "Orders, Count" })
         .should("contain.text", "Our analytics")
@@ -72,15 +56,15 @@ describe("command palette", () => {
 
       // Since the command palette list is virtualized, we will search for a few
       // to ensure they're reachable
-      commandPaletteSearch().clear().type("People");
+      H.commandPaletteInput().clear().type("People");
       cy.findByRole("option", { name: "People" }).should("exist");
 
-      commandPaletteSearch().clear().type("Uploads");
+      H.commandPaletteInput().clear().type("Uploads");
       cy.findByRole("option", { name: "Settings - Uploads" }).should("exist");
 
       // When entering a query, if there are results that come before search results, highlight
       // the first action, otherwise, highlight the first search result
-      commandPaletteSearch().clear().type("Or");
+      H.commandPaletteInput().clear().type("For");
       cy.findByRole("option", { name: "Performance" }).should(
         "have.attr",
         "aria-selected",
@@ -89,79 +73,102 @@ describe("command palette", () => {
       cy.findByRole("option", { name: /View and filter/ }).should("exist");
 
       // Check that we are not filtering search results by action name
-      commandPaletteSearch().clear().type("Company");
+      H.commandPaletteInput().clear().type("Company");
       cy.findByRole("option", { name: /View and filter/ }).should("exist");
-      cy.findByRole("option", { name: "PEOPLE" }).should(
+      cy.findByRole("option", { name: "REVIEWS" }).should(
         "have.attr",
         "aria-selected",
         "true",
       );
-      cy.findByRole("option", { name: "REVIEWS" }).should("exist");
+      cy.findByRole("option", { name: "PEOPLE" }).should("exist");
       cy.findByRole("option", { name: "PRODUCTS" }).should("exist");
-      commandPaletteSearch().clear();
+      H.commandPaletteInput().clear();
+
+      H.commandPaletteInput().clear().type("New met");
+      cy.findByText("New metric").should("exist");
     });
 
     cy.log("We can close the command palette using escape");
-    closeCommandPalette();
-    commandPalette().should("not.exist");
+    H.closeCommandPalette();
+    H.commandPalette().should("not.exist");
 
-    openCommandPalette();
-    //wait for things to render
-    commandPalette()
-      .findByRole("option", { name: "New question" })
-      .should("exist");
+    H.openCommandPalette();
 
-    pressPageDown();
-    commandPalette()
+    H.commandPalette()
+      .findByRole("option", { name: "Orders in a dashboard" })
+      .should("have.attr", "aria-selected", "true");
+
+    H.pressPageDown();
+
+    H.commandPalette()
       .findByRole("option", { name: "New dashboard" })
       .should("have.attr", "aria-selected", "true");
 
-    pressPageDown();
-    commandPalette()
+    H.pressPageDown();
+
+    H.commandPalette()
       .findByRole("option", { name: "New model" })
       .should("have.attr", "aria-selected", "true");
 
-    pressPageUp();
-    commandPalette()
+    H.pressPageUp();
+    H.commandPalette()
       .findByRole("option", { name: "New question" })
       .should("have.attr", "aria-selected", "true");
 
-    pressPageUp();
-    commandPalette()
-      .findByRole("option", { name: "Orders in a dashboard" })
-      .should("have.attr", "aria-selected", "true");
+    H.pressEnd();
 
-    pressEnd();
-
-    commandPalette()
+    H.commandPalette()
       .findByRole("option", { name: "New model" })
       .should("have.attr", "aria-selected", "true");
 
-    pressHome();
-    commandPalette()
+    H.pressHome();
+    H.commandPalette()
       .findByRole("option", { name: "Orders in a dashboard" })
       .should("have.attr", "aria-selected", "true");
+  });
+
+  it("should display search results in the order returned by the API", () => {
+    cy.visit("/");
+
+    cy.findByRole("button", { name: /Search/ }).click();
+    cy.intercept("/api/search?*").as("searchData");
+
+    H.commandPalette().within(() => {
+      H.commandPaletteInput().type("Cou");
+      cy.wait("@searchData");
+      cy.findByText("Loading...").should("not.exist");
+
+      cy.get("@searchData").then(({ response }) => {
+        const results = response.body.data;
+
+        results.forEach((result, index) => {
+          cy.findAllByRole("option")
+            .eq(index + 2)
+            .should("contain.text", result.name);
+        });
+      });
+    });
   });
 
   it("should render links to site settings in settings pages", () => {
     cy.visit("/admin");
     cy.findByRole("heading", { name: "Getting set up" }).should("exist");
-    openCommandPalette();
+    H.openCommandPalette();
 
-    commandPalette().within(() => {
-      commandPaletteSearch().type("Nested");
-      cy.findByRole("option", { name: "Enable Nested Queries" }).click();
+    H.commandPalette().within(() => {
+      H.commandPaletteInput().type("Custom Homepage");
+      cy.findByRole("option", { name: "Custom Homepage" }).click();
     });
 
-    cy.findByTestId("enable-nested-queries-setting").should("be.visible");
+    cy.findByTestId("custom-homepage-setting").should("be.visible");
 
     cy.location("pathname").should("contain", "settings/general");
-    cy.location("hash").should("contain", "#enable-nested-queries");
+    cy.location("hash").should("contain", "#custom-homepage");
 
-    openCommandPalette();
+    H.openCommandPalette();
 
-    commandPalette().within(() => {
-      commandPaletteSearch().clear().type("Week");
+    H.commandPalette().within(() => {
+      H.commandPaletteInput().clear().type("Week");
       cy.findByRole("option", { name: "First day of the week" }).click();
     });
 
@@ -170,7 +177,7 @@ describe("command palette", () => {
   });
 
   it("should not be accessible when doing full app embedding", () => {
-    visitFullAppEmbeddingUrl({
+    H.visitFullAppEmbeddingUrl({
       url: "/",
       qs: {
         top_nav: true,
@@ -183,8 +190,8 @@ describe("command palette", () => {
 
     cy.get("body").type("{esc}");
 
-    openCommandPalette();
-    commandPalette().should("not.exist");
+    H.openCommandPalette();
+    H.commandPalette().should("not.exist");
   });
 
   it("should not be accessible when a user is not logged in", () => {
@@ -196,18 +203,36 @@ describe("command palette", () => {
 
     cy.findByRole("heading", { name: "Sign in to Metabase" });
 
-    openCommandPalette();
-    commandPalette().should("not.exist");
+    H.openCommandPalette();
+    H.commandPalette().should("not.exist");
 
     cy.get("@database").should("be.null");
     cy.get("@search").should("be.null");
 
-    cy.findByLabelText("Email address").type(admin.email);
+    cy.findByLabelText(/Email address/).type(admin.email);
     cy.findByLabelText("Password").type(admin.password);
     cy.button("Sign in").click();
     cy.findByTestId("greeting-message");
 
-    openCommandPalette();
-    commandPalette().should("exist");
+    H.openCommandPalette();
+    H.commandPalette().should("exist");
+  });
+
+  it("The Search button should resize when on mobile", () => {
+    cy.viewport("iphone-x");
+    cy.visit("/");
+    H.commandPaletteButton().should("not.contain.text", "search");
+  });
+
+  it("Should have a new metric item", () => {
+    cy.visit("/");
+    cy.findByRole("button", { name: /Search/ }).click();
+
+    H.commandPalette().within(() => {
+      H.commandPaletteInput().should("exist").type("Me");
+      cy.findByText("New metric").should("be.visible").click();
+
+      cy.location("pathname").should("eq", "/metric/query");
+    });
   });
 });

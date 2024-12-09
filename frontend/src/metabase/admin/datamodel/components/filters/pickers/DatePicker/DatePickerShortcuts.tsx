@@ -3,21 +3,19 @@ import { useMemo } from "react";
 
 import CS from "metabase/css/core/index.css";
 import SidebarHeader from "metabase/query_builder/components/SidebarHeader";
-import type Filter from "metabase-lib/v1/queries/structured/Filter";
-import type { Filter as FilterExpression } from "metabase-types/api";
+import type { FilterMBQL } from "metabase-lib/v1/queries/structured/Filter";
 
 import type { DateShortcutOptions } from "./DatePickerShortcutOptions";
 import { DATE_SHORTCUT_OPTIONS } from "./DatePickerShortcutOptions";
-import { ShortcutButton, Separator } from "./DatePickerShortcuts.styled";
+import { Separator, ShortcutButton } from "./DatePickerShortcuts.styled";
 
 type Props = {
   className?: string;
-  primaryColor?: string;
   dateShortcutOptions?: DateShortcutOptions;
 
-  filter: Filter;
-  onCommit: (value: FilterExpression[]) => void;
-  onFilterChange: (filter: FilterExpression[]) => void;
+  filter: FilterMBQL;
+  onCommit: (value: FilterMBQL[]) => void;
+  onFilterChange: (filter: FilterMBQL[]) => void;
   onBack?: () => void;
 };
 
@@ -29,15 +27,7 @@ export default function DatePickerShortcuts({
   dateShortcutOptions,
   onCommit,
   onBack,
-  primaryColor,
 }: Props) {
-  const dimension = filter.dimension?.();
-  let title = "";
-  if (dimension) {
-    const field = dimension.field();
-    title = field.displayName({ includeTable: true });
-  }
-
   const { DAY_OPTIONS, MONTH_OPTIONS, MISC_OPTIONS } = useMemo(
     () => dateShortcutOptions ?? DATE_SHORTCUT_OPTIONS,
     [dateShortcutOptions],
@@ -48,14 +38,12 @@ export default function DatePickerShortcuts({
       {onBack ? (
         <SidebarHeader
           className={cx(CS.textDefault, CS.py1, CS.mb1)}
-          title={title}
           onBack={onBack}
         />
       ) : null}
       {DAY_OPTIONS.map(({ displayName, init }) => (
         <ShortcutButton
           key={displayName}
-          primaryColor={primaryColor}
           onClick={() => {
             onCommit(init(filter));
           }}
@@ -67,7 +55,6 @@ export default function DatePickerShortcuts({
       {MONTH_OPTIONS.map(({ displayName, init }) => (
         <ShortcutButton
           key={displayName}
-          primaryColor={primaryColor}
           onClick={() => {
             onCommit(init(filter));
           }}
@@ -79,7 +66,6 @@ export default function DatePickerShortcuts({
       {MISC_OPTIONS.map(({ displayName, init }) => (
         <ShortcutButton
           key={displayName}
-          primaryColor={primaryColor}
           onClick={() => {
             onFilterChange(init(filter));
           }}

@@ -6,7 +6,7 @@ redirect_from:
 
 # Creating an RDS database on AWS
 
-If you want to move from using Metabase just for testing to something that is ready for the big time, you need to use either PostgreSQL or MySQL/MariaDB for you application database. Here's a high-level view of Metabase deployed with a dedicated application database.
+If you want to move from using Metabase just for testing to something that is ready for the big time, you should use PostgreSQL for your application database. Here's a high-level view of Metabase deployed with a dedicated application database.
 
 ![high level architecture diagram](images/Metabase-AWS-SI.png)
 
@@ -14,27 +14,27 @@ If you want to move from using Metabase just for testing to something that is re
 
 In AWS, enter RDS in the search box or select RDS from the dropdown button on the top left of the page. Once inside RDS, click on the **Create database** button.
 
-Select PostgreSQL or MySQL as the engine type. For this example we will choose PostgreSQL on its latest version available in AWS at the time of writing (12.4-R1).
+Select PostgreSQL as the engine type. We'll choose the latest version available in AWS at the time of writing (12.4-R1).
 
 Templates: you can leave "Production" selected, or choose any other option that better suits your needs.
 
 Settings: type a unique **DB instance identifier** for your database. You'll need the username and master password to configure the environment variables in Metabase.
 
-  ![RDS Templates Section](images/RDSPostgresSettings.png)
+![RDS Templates Section](images/RDSPostgresSettings.png)
 
 Instance size: the sizing of the RDS instance depends on the number of Metabase instances that will be connected to this database, the number of simultaneous users who are using Metabase, and the number of questions, dashboards, and configurations that are saved. To start, a `t3.small` is a good choice.
 
-  ![RDS Instance size](images/RDSInstanceSize.png)
+![RDS Instance size](images/RDSInstanceSize.png)
 
 Availability & Durability: on production deployments, you **should** be using a Multi-AZ (Availability Zone) cluster, as this will ensure that the database does not goes down in case there is an issue on a single availability zone.
 
-  ![RDS MultiAZ](images/RDSMultiAZ.png)
+![RDS MultiAZ](images/RDSMultiAZ.png)
 
 Connectivity:
 
 - Ensure that you are deploying the database in the same VPC as the one you deployed the Metabase instance/s, otherwise they won't be able to see each other.
 - Create a **VPC security group**, as you will need to grant access from the Metabase instance/s to the database on the port that listens for connections.
-    ![RDS VPC Security Groups](images/RDSVPCSecurityGroup.png)
+  ![RDS VPC Security Groups](images/RDSVPCSecurityGroup.png)
 
 Additional configuration:
 

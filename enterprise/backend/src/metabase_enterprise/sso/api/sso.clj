@@ -10,7 +10,7 @@
    [metabase-enterprise.sso.integrations.saml]
    [metabase-enterprise.sso.integrations.sso-settings :as sso-settings]
    [metabase.api.common :as api]
-   [metabase.server.middleware.session :as mw.session]
+   [metabase.request.core :as request]
    [metabase.util :as u]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
@@ -37,14 +37,14 @@
       (log/error #_e "Error returning SSO entry point")
       (throw e))))
 
-(mu/defn ^:private sso-error-page
-  [^Throwable e log-direction :- [:enum "in" "out"]]
+(mu/defn- sso-error-page
+  [^Throwable e log-direction :- [:enum :in :out]]
   {:status  (get (ex-data e) :status-code 500)
    :headers {"Content-Type" "text/html"}
    :body    (stencil/render-file "metabase_enterprise/sandbox/api/error_page"
                                  (let [message    (.getMessage e)
                                        data       (u/pprint-to-str (ex-data e))]
-                                   {:logDirection   log-direction
+                                   {:logDirection   (name log-direction)
                                     :errorMessage   message
                                     :exceptionClass (.getName Exception)
                                     :additionalData data}))})
@@ -57,8 +57,7 @@
     (sso.i/sso-post req)
     (catch Throwable e
       (log/error e "Error logging in")
-      (sso-error-page e "in"))))
-
+      (sso-error-page e :in))))
 
 ;; ------------------------------ Single Logout aka SLO ------------------------------
 
@@ -70,8 +69,8 @@
 (api/defendpoint POST "/logout"
   "Logout."
   [:as {cookies :cookies}]
-  {cookies [:map [mw.session/metabase-session-cookie [:map [:value ms/NonBlankString]]]]}
-  (let [metabase-session-id (get-in cookies [mw.session/metabase-session-cookie :value])]
+  {cookies [:map [request/metabase-session-cookie [:map [:value ms/NonBlankString]]]]}
+  (let [metabase-session-id (get-in cookies [request/metabase-session-cookie :value])]
     (api/check-exists? :model/Session metabase-session-id)
     (let [{:keys [email sso_source]}
           (t2/query-one {:select [:u.email :u.sso_source]
@@ -82,7 +81,7 @@
       ;; they will never hit "/handle_slo" so we must delete the session here:
       (t2/delete! :model/Session :id metabase-session-id)
       {:saml-logout-url
-       (when (and (sso-settings/saml-enabled)
+       (when (and (sso-settings/saml-slo-enabled)
                   (= sso_source "saml"))
          (saml/logout-redirect-location
           :idp-url (sso-settings/saml-identity-provider-uri)
@@ -96,9 +95,12 @@
   "Handles client confirmation of saml logout via slo"
   [:as req]
   (try
-    (sso.i/sso-handle-slo req)
+    (if (sso-settings/saml-slo-enabled)
+      (sso.i/sso-handle-slo req)
+      (throw (ex-info "SAML Single Logout is not enabled, request forbidden."
+                      {:status-code 403})))
     (catch Throwable e
       (log/error e "Error handling SLO")
-      (sso-error-page e "out"))))
+      (sso-error-page e :out))))
 
 (api/define-routes)

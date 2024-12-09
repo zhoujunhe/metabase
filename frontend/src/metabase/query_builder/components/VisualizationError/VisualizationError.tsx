@@ -8,8 +8,7 @@ import CS from "metabase/css/core/index.css";
 import QueryBuilderS from "metabase/css/query_builder.module.css";
 import { getEngineNativeType } from "metabase/lib/engine";
 import { useSelector } from "metabase/lib/redux";
-import MetabaseSettings from "metabase/lib/settings";
-import { isNotNull } from "metabase/lib/types";
+import { getLearnUrl } from "metabase/selectors/settings";
 import { getShowMetabaseLinks } from "metabase/selectors/whitelabel";
 import * as Lib from "metabase-lib";
 import type Question from "metabase-lib/v1/Question";
@@ -18,25 +17,15 @@ import { VISUALIZATION_SLOW_TIMEOUT } from "../../constants";
 
 import {
   QueryError,
+  QueryErrorContent,
   QueryErrorHeader,
   QueryErrorIcon,
-  QueryErrorTitle,
   QueryErrorLink,
   QueryErrorMessage,
-  QueryErrorContent,
+  QueryErrorTitle,
 } from "./VisualizationError.styled";
+import { AdminEmail } from "./components";
 import { adjustPositions, stripRemarks } from "./utils";
-
-function EmailAdmin(): JSX.Element | null {
-  const hasAdminEmail = isNotNull(MetabaseSettings.adminEmail());
-  return hasAdminEmail ? (
-    <span className={QueryBuilderS.QueryErrorAdminEmail}>
-      <a className={CS.noDecoration} href={`mailto:${hasAdminEmail}`}>
-        {hasAdminEmail}
-      </a>
-    </span>
-  ) : null;
-}
 
 interface VisualizationErrorProps {
   via: Record<string, any>[];
@@ -65,7 +54,7 @@ export function VisualizationError({
           type="timeout"
           title={t`Your question took too long`}
           message={t`We didn't get an answer back from your database in time, so we had to stop. You can try again in a minute, or if the problem persists, you can email an admin to let them know.`}
-          action={<EmailAdmin />}
+          action={<AdminEmail />}
         />
       );
     } else {
@@ -75,7 +64,7 @@ export function VisualizationError({
           type="serverError"
           title={t`We're experiencing server issues`}
           message={t`Try refreshing the page after waiting a minute or two. If the problem persists we'd recommend you contact an admin.`}
-          action={<EmailAdmin />}
+          action={<AdminEmail />}
         />
       );
     }
@@ -126,9 +115,7 @@ export function VisualizationError({
           </QueryErrorHeader>
           <QueryErrorMessage>{processedError}</QueryErrorMessage>
           {isSql && showMetabaseLinks && (
-            <QueryErrorLink
-              href={MetabaseSettings.learnUrl("debugging-sql/sql-syntax")}
-            >
+            <QueryErrorLink href={getLearnUrl("debugging-sql/sql-syntax")}>
               {t`Learn how to debug SQL errors`}
             </QueryErrorLink>
           )}

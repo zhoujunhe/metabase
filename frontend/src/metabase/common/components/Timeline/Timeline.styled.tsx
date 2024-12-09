@@ -1,12 +1,10 @@
 import styled from "@emotion/styled";
 
 import Button from "metabase/core/components/Button";
-import { color } from "metabase/lib/colors";
 
 export const TimelineContainer = styled.ul`
   position: relative;
   margin-left: 0.5rem;
-  margin-bottom: 0.5rem;
 `;
 
 export const TimelineEvent = styled.li`
@@ -17,6 +15,10 @@ export const TimelineEvent = styled.li`
   white-space: pre-line;
   width: 100%;
   margin-bottom: 1.5rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
 `;
 
 export const EventBody = styled.div`
@@ -36,7 +38,7 @@ export const EventHeader = styled.div`
 `;
 
 export const Timestamp = styled.time`
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
   font-size: 0.875em;
   padding-bottom: 0.5rem;
 `;

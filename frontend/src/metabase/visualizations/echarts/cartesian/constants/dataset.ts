@@ -9,8 +9,16 @@ export const POSITIVE_STACK_TOTAL_DATA_KEY =
 export const NEGATIVE_STACK_TOTAL_DATA_KEY =
   `${NULL_CHAR}_negativeStackTotal` as const;
 
+export const POSITIVE_BAR_DATA_LABEL_KEY_SUFFIX = `${NULL_CHAR}_positive_bar_data_label`;
+export const NEGATIVE_BAR_DATA_LABEL_KEY_SUFFIX = `${NULL_CHAR}_negative_bar_data_label`;
+
+export const IS_WATERFALL_TOTAL_DATA_KEY = `${NULL_CHAR}_is_total` as const;
+
 // Key of x-axis values
 export const X_AXIS_DATA_KEY = `${NULL_CHAR}_x` as const;
+
+// Key for the "other" series created by the `graph.max_categories` setting
+export const OTHER_DATA_KEY = `${NULL_CHAR}_other` as const;
 
 // In some cases a datum in `chartModel.transformedDataset` may include this
 // key, its value is equal to the index of that same datum in the original
@@ -29,3 +37,7 @@ export const TICKS_INTERVAL_THRESHOLD = 3;
 export const ECHARTS_CATEGORY_AXIS_NULL_VALUE = `${NULL_CHAR}_NULL` as const;
 
 export const GOAL_LINE_SERIES_ID = `${NULL_CHAR}_goal_line` as const;
+
+export const TIMELINE_EVENT_SERIES_ID = `${NULL_CHAR}_timeline_events`;
+
+export const TIMELINE_EVENT_DATA_NAME = `${NULL_CHAR}_timeline_event`;

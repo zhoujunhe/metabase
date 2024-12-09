@@ -1,6 +1,12 @@
 import * as ML from "cljs/metabase.lib.js";
 import * as ML_MetadataCalculation from "cljs/metabase.lib.metadata.calculation";
-import type { DatabaseId, DatasetColumn, TableId } from "metabase-types/api";
+import type {
+  CardId,
+  CardType,
+  DatabaseId,
+  DatasetColumn,
+  TableId,
+} from "metabase-types/api";
 
 import type {
   AggregationClause,
@@ -30,17 +36,17 @@ import type {
   JoinConditionOperatorDisplayInfo,
   JoinStrategy,
   JoinStrategyDisplayInfo,
-  LegacyMetricDisplayInfo,
-  LegacyMetricMetadata,
   MetadataProvider,
+  MetricDisplayInfo,
+  MetricMetadata,
   OrderByClause,
   OrderByClauseDisplayInfo,
   Query,
-  SegmentMetadata,
+  QueryDisplayInfo,
   SegmentDisplayInfo,
+  SegmentMetadata,
   TableDisplayInfo,
   TableMetadata,
-  QueryDisplayInfo,
 } from "./types";
 import type Field from "./v1/metadata/Field";
 import type Metadata from "./v1/metadata/Metadata";
@@ -117,8 +123,8 @@ declare function DisplayInfoFn(
 declare function DisplayInfoFn(
   query: Query,
   stageIndex: number,
-  metric: LegacyMetricMetadata,
-): LegacyMetricDisplayInfo;
+  metric: MetricMetadata,
+): MetricDisplayInfo;
 declare function DisplayInfoFn(
   query: Query,
   stageIndex: number,
@@ -211,6 +217,21 @@ export function queryDisplayInfo(query: Query): QueryDisplayInfo {
   return ML.display_info(query, -1, query);
 }
 
-export function dependentMetadata(query: Query): DependentItem[] {
-  return ML.dependent_metadata(query);
+export function dependentMetadata(
+  query: Query,
+  cardId: CardId | undefined,
+  cardType: CardType,
+): DependentItem[] {
+  return ML.dependent_metadata(query, cardId, cardType);
+}
+
+export function tableOrCardDependentMetadata(
+  metadataProvider: MetadataProvider,
+  tableId: TableId,
+): DependentItem[] {
+  return ML.table_or_card_dependent_metadata(metadataProvider, tableId);
+}
+
+export function columnKey(column: ColumnMetadata): string {
+  return ML.column_key(column);
 }

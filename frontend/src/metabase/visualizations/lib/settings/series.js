@@ -1,19 +1,19 @@
 import { getIn } from "icepick";
 import { t } from "ttag";
-import _ from "underscore";
 
 import ChartNestedSettingSeries from "metabase/visualizations/components/settings/ChartNestedSettingSeries";
+import { OTHER_DATA_KEY } from "metabase/visualizations/echarts/cartesian/constants/dataset";
 import {
   SERIES_COLORS_SETTING_KEY,
-  getSeriesDefaultLinearInterpolate,
-  getSeriesDefaultLineMarker,
-  getSeriesDefaultLineMissing,
+  SERIES_SETTING_KEY,
   getSeriesColors,
   getSeriesDefaultDisplay,
-  SERIES_SETTING_KEY,
-  getSeriesDefaultShowSeriesValues,
-  getSeriesDefaultLineStyle,
+  getSeriesDefaultLineMarker,
+  getSeriesDefaultLineMissing,
   getSeriesDefaultLineSize,
+  getSeriesDefaultLineStyle,
+  getSeriesDefaultLinearInterpolate,
+  getSeriesDefaultShowSeriesValues,
 } from "metabase/visualizations/shared/settings/series";
 
 import { getNameForCard } from "../series";
@@ -27,11 +27,7 @@ export function keyForSingleSeries(single) {
 
 const LINE_DISPLAY_TYPES = new Set(["line", "area"]);
 
-export function seriesSetting({
-  readDependencies = [],
-  noPadding,
-  ...def
-} = {}) {
+export function seriesSetting({ readDependencies = [], def } = {}) {
   const COMMON_SETTINGS = {
     // title, and color don't need widgets because they're handled directly in ChartNestedSettingSeries
     title: {
@@ -64,6 +60,10 @@ export function seriesSetting({
       },
 
       getDefault: (single, settings, { series }) => {
+        if (keyForSingleSeries(single) === OTHER_DATA_KEY) {
+          return "bar"; // "other" series is always a bar chart now
+        }
+
         // FIXME: will move to Cartesian series model further, but now this code is used by other legacy charts
         const transformedSeriesIndex = series.findIndex(
           s => keyForSingleSeries(s) === keyForSingleSeries(single),
@@ -105,9 +105,9 @@ export function seriesSetting({
       widget: "segmentedControl",
       props: {
         options: [
-          { name: t`Solid`, value: "solid" },
-          { name: t`Dashed`, value: "dashed" },
-          { name: t`Dotted`, value: "dotted" },
+          { icon: "line_style_solid", value: "solid" },
+          { icon: "line_style_dashed", value: "dashed" },
+          { icon: "line_style_dotted", value: "dotted" },
         ],
       },
       getDefault: (series, settings) => getSeriesDefaultLineStyle(settings),
@@ -184,7 +184,7 @@ export function seriesSetting({
       inline: true,
       getHidden: (single, seriesSettings, { settings, series }) =>
         series.length <= 1 || // no need to show series-level control if there's only one series
-        !Object.prototype.hasOwnProperty.call(settings, "graph.show_values") || // don't show it unless this chart has a global setting
+        !settings["graph.show_values"] || // don't show it unless this chart has a global setting
         settings["stackable.stack_type"], // hide series controls if the chart is stacked
       getDefault: (single, seriesSettings, { settings }) =>
         getSeriesDefaultShowSeriesValues(settings),
@@ -205,6 +205,8 @@ export function seriesSetting({
       objectName: "series",
       getObjects: (series, settings) => series,
       getObjectKey: keyForSingleSeries,
+      getObjectSettings: (settings, object) =>
+        settings[keyForSingleSeries(object)],
       getSettingDefinitionsForObject: getSettingDefinitionsForSingleSeries,
       component: ChartNestedSettingSeries,
       readDependencies: [SERIES_COLORS_SETTING_KEY, ...readDependencies],

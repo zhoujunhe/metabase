@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { t } from "ttag";
 import _ from "underscore";
 
-import Tooltip from "metabase/core/components/Tooltip";
+import styles from "metabase/css/core/animation.module.css";
 import { useSelector } from "metabase/lib/redux";
 import { getUser } from "metabase/selectors/user";
+import { Box, Tooltip } from "metabase/ui";
 
 import { getHasMetabotLogo } from "../../selectors";
 
@@ -22,14 +23,7 @@ export const HomeGreeting = (): JSX.Element => {
 
   return (
     <GreetingRoot>
-      {showLogo && (
-        <Tooltip
-          tooltip={t`Don't tell anyone, but you're my favorite.`}
-          placement="bottom"
-        >
-          <GreetingLogo />
-        </Tooltip>
-      )}
+      {showLogo && <MetabotGreeting />}
       <GreetingMessage data-testid="greeting-message" showLogo={showLogo}>
         {message}
       </GreetingMessage>
@@ -48,4 +42,74 @@ const getMessage = (name: string | null | undefined): string => {
   ];
 
   return _.sample(options) ?? "";
+};
+
+const MetabotGreeting = () => {
+  const [buffer, setBuffer] = useState<string[]>([]);
+  const [isCooling, setIsCooling] = useState(false);
+  const [isCool, setIsCool] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      setBuffer(prevBuffer => {
+        const newBuffer = [...prevBuffer, event.key];
+        if (newBuffer.length > 10) {
+          newBuffer.shift();
+        }
+        return newBuffer;
+      });
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isCoolEnough(buffer)) {
+      setTimeout(() => {
+        setIsCooling(true);
+      }, 1);
+      setTimeout(() => {
+        setIsCool(true);
+      }, 300);
+    }
+  }, [buffer]);
+
+  return (
+    <Tooltip
+      label={t`Don't tell anyone, but you're my favorite.`}
+      position="bottom"
+    >
+      <Box
+        style={{
+          position: "relative",
+          width: "54px",
+          height: "40px",
+          marginInlineEnd: "0.5rem",
+        }}
+      >
+        <GreetingLogo
+          isCool={isCool}
+          className={`${styles.SpinOut} ${isCooling ? styles.SpinOutActive : ""}`}
+          variant="cool"
+        />
+        <GreetingLogo
+          isCool={!isCool}
+          className={`${styles.SpinOut} ${isCooling ? styles.SpinOutActive : ""}`}
+          variant="happy"
+        />
+      </Box>
+    </Tooltip>
+  );
+};
+
+const isCoolEnough = (buffer: string[]) => {
+  const currentBuffer = buffer.join("");
+  return (
+    currentBuffer ===
+    "ArrowUpArrowUpArrowDownArrowDownArrowLeftArrowRightArrowLeftArrowRightba"
+  );
 };

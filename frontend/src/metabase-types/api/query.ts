@@ -1,9 +1,10 @@
+import type { UiParameter } from "metabase-lib/v1/parameters/types";
 import type {
+  CardId,
   DatabaseId,
   FieldId,
-  MetricId,
-  TableId,
   SegmentId,
+  TableId,
   TemplateTags,
 } from "metabase-types/api";
 
@@ -19,6 +20,7 @@ export interface StructuredDatasetQuery {
 
   // Database is null when missing data permissions to the database
   database: DatabaseId | null;
+  parameters?: UiParameter[];
 }
 
 export interface NativeDatasetQuery {
@@ -27,7 +29,7 @@ export interface NativeDatasetQuery {
 
   // Database is null when missing data permissions to the database
   database: DatabaseId | null;
-  parameters?: unknown[];
+  parameters?: UiParameter[];
 }
 
 export type DatasetQuery = StructuredDatasetQuery | NativeDatasetQuery;
@@ -73,8 +75,8 @@ export const dateTimeUnits = [
   ...dateTimeRelativeUnits,
 ] as const;
 
-export type DateTimeAbsoluteUnit = typeof dateTimeAbsoluteUnits[number];
-export type DateTimeRelativeUnit = typeof dateTimeRelativeUnits[number];
+export type DateTimeAbsoluteUnit = (typeof dateTimeAbsoluteUnits)[number];
+export type DateTimeRelativeUnit = (typeof dateTimeRelativeUnits)[number];
 export type DatetimeUnit =
   | "default"
   | DateTimeAbsoluteUnit
@@ -124,6 +126,12 @@ type OrderableValue = NumericLiteral | DatetimeLiteral;
 
 type RelativeDatetimePeriod = "current" | "last" | "next" | number;
 
+type OffsetOptions = {
+  "lib/uuid": string;
+  name: string;
+  "display-name": string;
+};
+
 // "card__4" like syntax meaning a query is using card 4 as a data source
 type NestedQueryTableId = string;
 
@@ -155,6 +163,7 @@ type StdDevAgg = ["stddev", ConcreteFieldReference];
 type SumAgg = ["sum", ConcreteFieldReference];
 type MinAgg = ["min", ConcreteFieldReference];
 type MaxAgg = ["max", ConcreteFieldReference];
+type OffsetAgg = ["offset", OffsetOptions, Aggregation, NumericLiteral];
 
 type CommonAggregation =
   | CountAgg
@@ -166,9 +175,10 @@ type CommonAggregation =
   | StdDevAgg
   | SumAgg
   | MinAgg
-  | MaxAgg;
+  | MaxAgg
+  | OffsetAgg;
 
-type MetricAgg = ["metric", MetricId];
+type MetricAgg = ["metric", CardId];
 
 type InlineExpressionAgg = [
   "aggregation-options",
@@ -187,8 +197,8 @@ export type Breakout = ConcreteFieldReference;
 type FilterClause = Filter;
 export type Filter = FieldFilter | CompoundFilter | NotFilter | SegmentFilter;
 
-type AndFilter = ["and", Filter, Filter];
-type OrFilter = ["or", Filter, Filter];
+type AndFilter = ["and", ...Filter[]];
+type OrFilter = ["or", ...Filter[]];
 type CompoundFilter = AndFilter | OrFilter;
 
 export type FieldFilter =
@@ -357,6 +367,7 @@ export type Expression =
   | boolean
   | [ExpressionOperator, ExpressionOperand]
   | [ExpressionOperator, ExpressionOperand, ExpressionOperand]
+  | ["offset", OffsetOptions, ExpressionOperand, NumericLiteral]
   | [
       ExpressionOperator,
       ExpressionOperand,

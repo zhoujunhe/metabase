@@ -26,7 +26,7 @@ You can join data to combine your current data with another table, or even with 
 
 ## Native query editor
 
-Also known as the SQL editor (we say native because you can also query databases that don't use SQL, like MongoDB and Google Analytics).
+Also known as the SQL editor (we say native because you can also query databases that don't use SQL, like MongoDB).
 
 ### [Introduction to the native query editor](./native-editor/writing-sql.md)
 
@@ -63,3 +63,7 @@ Create links or embeds for the good people of the internet.
 ### [Exporting](./sharing/exporting-results.md)
 
 The different ways you can export the results of questions and dashboards.
+
+### [Tooltips](./sharing/tooltips.md)
+
+Customize tooltips on bar, line, and area charts.

@@ -11,11 +11,11 @@ import type { SettingElement } from "metabase/admin/settings/types";
 import Breadcrumbs from "metabase/components/Breadcrumbs";
 import CS from "metabase/css/core/index.css";
 import {
-  FormSection,
   Form,
   FormErrorMessage,
   FormProvider,
   FormRadioGroup,
+  FormSection,
   FormSubmitButton,
   FormSwitch,
   FormTextInput,
@@ -230,14 +230,23 @@ const getAttributeValues = (
   values: SettingValues,
   defaultableAttrs: Set<string>,
 ): LdapFormValues => {
-  return Object.fromEntries(
+  const attributeValues = Object.fromEntries(
     ldapAttributes.map(key => [
       key,
       defaultableAttrs.has(key)
-        ? values[key] ?? settings[key]?.default
+        ? (values[key] ?? settings[key]?.default)
         : values[key],
     ]),
   );
+
+  return {
+    ...attributeValues,
+    // ldap port is number | null, we need to edit as a string if it is a number
+    "ldap-port":
+      typeof attributeValues["ldap-port"] === "number"
+        ? String(attributeValues["ldap-port"])
+        : attributeValues["ldap-port"],
+  };
 };
 
 const mapDispatchToProps = {

@@ -33,8 +33,8 @@
 
   _Most_ tables and _all_ models (as of this writing) will bottom out at `:entity/GenericTable` and thus, use the
   `resources/automagic_dashboards/table/GenericTable.yaml` template. `:entity_type` for a given table type is made in
-  the `metabase.sync.analyze.classifiers.name/infer-entity-type` function, where the primary logic is table naming
-  based on the `prefix-or-postfix` var in that ns.
+  the [[metabase.analyze/infer-entity-type-by-name]] function, where the primary logic is table naming based on the
+  `prefix-or-postfix` var in that ns.
 
   ProTip: If you want to introduce a new template type, do the following:
 
@@ -140,8 +140,7 @@
    but should provide clarity as to the terminology and how everything fits together.
 
    In practice, we gather the entity data (including fields), the dashboard templates, attempt to bind dimensions to
-   fields specified in the template, then build metrics, filters, and finally cards based on the bound dimensions.
-  "
+   fields specified in the template, then build metrics, filters, and finally cards based on the bound dimensions."
   (:require
    [clojure.set :as set]
    [clojure.string :as str]
@@ -149,7 +148,7 @@
    [kixi.stats.core :as stats]
    [kixi.stats.math :as math]
    [medley.core :as m]
-   [metabase.analyze.classifiers.core :as classifiers]
+   [metabase.analyze :as analyze]
    [metabase.db.query :as mdb.query]
    [metabase.legacy-mbql.normalize :as mbql.normalize]
    [metabase.models.card :refer [Card]]
@@ -272,7 +271,9 @@
 
 (defn- table-like?
   [card-or-question]
-  (nil? (get-in card-or-question [:dataset_query :query :aggregation])))
+  (and
+   (nil? (get-in card-or-question [:dataset_query :query :aggregation]))
+   (nil? (get-in card-or-question [:dataset_query :query :breakout]))))
 
 (defn- table-id
   "Get the Table ID from `card-or-question`, which can be either a Card from the DB (which has a `:table_id` property)
@@ -434,16 +435,18 @@
                  (map #(assoc % :db db))
                  (group-by :table_id))
             u/the-id)
-      (let [source-fields (->> source
-                               :result_metadata
-                               (map (fn [field]
-                                      (as-> field field
-                                        (update field :base_type keyword)
-                                        (update field :semantic_type keyword)
-                                        (mi/instance Field field)
-                                        (classifiers/run-classifiers field {})
-                                        (assoc field :db db)))))]
-        (constantly source-fields)))))
+      (if (table-like? source)
+        (let [source-fields (->> source
+                                 :result_metadata
+                                 (map (fn [field]
+                                        (as-> field field
+                                          (update field :base_type keyword)
+                                          (update field :semantic_type keyword)
+                                          (mi/instance Field field)
+                                          (analyze/run-classifiers field {})
+                                          (assoc field :db db)))))]
+          (constantly source-fields))
+        (constantly [])))))
 
 (defn- make-base-context
   "Create the underlying context to which we will add metrics, dimensions, and filters.
@@ -467,7 +470,7 @@
    (-> dashboard-template
        (select-keys [:title :description :transient_title :groups])
        (cond->
-         (:comparison? root)
+        (:comparison? root)
          (update :groups (partial m/map-vals (fn [{:keys [title comparison_title] :as group}]
                                                (assoc group :title (or comparison_title title))))))
        (instantiate-metadata context available-metrics {}))))
@@ -557,6 +560,7 @@
 
 (def ^:private ^:const ^Long max-related 8)
 (def ^:private ^:const ^Long max-cards 15)
+(def ^:private ^:const ^Long max-cards-total 30)
 
 (defn ->related-entity
   "Turn `entity` into an entry in `:related.`"
@@ -579,7 +583,7 @@
       (update :fields (partial remove magic.util/key-col?))
       (->> (m/map-vals (comp (partial map ->related-entity) u/one-or-many)))))
 
-(mu/defn ^:private indepth
+(mu/defn- indepth
   [{:keys [dashboard-templates-prefix url] :as root}
    {:keys [dashboard-template-name]} :- [:maybe dashboard-templates/DashboardTemplate]]
   (let [base-context (make-base-context root)]
@@ -590,14 +594,14 @@
                      template-filters      :filters
                      :as                   indepth}]
                  (let [grounded-values (interesting/identify
-                                         base-context
-                                         {:dimension-specs template-dimensions
-                                          :metric-specs    template-metrics
-                                          :filter-specs    template-filters})
+                                        base-context
+                                        {:dimension-specs template-dimensions
+                                         :metric-specs    template-metrics
+                                         :filter-specs    template-filters})
                        {:keys [description cards] :as dashboard} (generate-base-dashboard
-                                                                   base-context
-                                                                   indepth
-                                                                   grounded-values)]
+                                                                  base-context
+                                                                  indepth
+                                                                  grounded-values)]
                    (when (and description (seq cards))
                      {:title       ((some-fn :short-title :title) dashboard)
                       :description description
@@ -606,8 +610,7 @@
 
 (defn- drilldown-fields
   [root available-dimensions]
-  (when (and (->> root :source (mi/instance-of? Table))
-             (-> root :entity magic.util/ga-table? not))
+  (when (->> root :source (mi/instance-of? Table))
     (->> available-dimensions
          vals
          (mapcat :matches)
@@ -673,8 +676,8 @@
         num-selected (count-leafs selected)]
     (if (pos? num-selected)
       (merge-with concat
-        selected
-        (fill-related (- available-slots num-selected) selectors related))
+                  selected
+                  (fill-related (- available-slots num-selected) selectors related))
       {})))
 
 (def ^:private related-selectors
@@ -693,13 +696,13 @@
               :related  [sideways sideways]
               :compare  [compare compare]})
    LegacyMetric  (let [down     [[:drilldown-fields]]
-                 sideways [[:metrics :segments]]
-                 up       [[:table]]
-                 compare  [[:compare]]]
-             {:zoom-in  [down down]
-              :zoom-out [up]
-              :related  [sideways sideways sideways]
-              :compare  [compare compare]})
+                       sideways [[:metrics :segments]]
+                       up       [[:table]]
+                       compare  [[:compare]]]
+                   {:zoom-in  [down down]
+                    :zoom-out [up]
+                    :related  [sideways sideways sideways]
+                    :compare  [compare compare]})
    Field   (let [sideways [[:fields]]
                  up       [[:table] [:metrics :segments]]
                  compare  [[:compare]]]
@@ -723,7 +726,7 @@
               :related  [sideways sideways sideways]
               :compare  [compare compare]})})
 
-(mu/defn ^:private related
+(mu/defn- related
   "Build a balanced list of related X-rays. General composition of the list is determined for each
    root type individually via `related-selectors`. That recipe is then filled round-robin style."
   [root
@@ -776,13 +779,13 @@
          :as                 template} (if dashboard-template
                                          (dashboard-templates/get-dashboard-template dashboard-template)
                                          (first (matching-dashboard-templates
-                                                  (dashboard-templates/get-dashboard-templates dashboard-templates-prefix)
-                                                  root)))
+                                                 (dashboard-templates/get-dashboard-templates dashboard-templates-prefix)
+                                                 root)))
         grounded-values (interesting/identify
-                          base-context
-                          {:dimension-specs template-dimensions
-                           :metric-specs    template-metrics
-                           :filter-specs    template-filters})]
+                         base-context
+                         {:dimension-specs template-dimensions
+                          :metric-specs    template-metrics
+                          :filter-specs    template-filters})]
     (generate-dashboard base-context template grounded-values)))
 
 (defmulti automagic-analysis
@@ -809,7 +812,7 @@
   [metric opts]
   (automagic-dashboard (merge (->root metric) opts)))
 
-(mu/defn ^:private collect-metrics :- [:maybe [:sequential (ms/InstanceOf LegacyMetric)]]
+(mu/defn- collect-metrics :- [:maybe [:sequential (ms/InstanceOf LegacyMetric)]]
   [root question]
   (map (fn [aggregation-clause]
          (if (-> aggregation-clause
@@ -819,17 +822,18 @@
            (->> aggregation-clause second (t2/select-one LegacyMetric :id))
            (let [table-id (table-id question)]
              (mi/instance LegacyMetric {:definition {:aggregation  [aggregation-clause]
-                                               :source-table table-id}
-                                  :name       (names/metric->description root aggregation-clause)
-                                  :table_id   table-id}))))
+                                                     :source-table table-id}
+                                        :name       (names/metric->description root aggregation-clause)
+                                        :table_id   table-id}))))
        (get-in question [:dataset_query :query :aggregation])))
 
-(mu/defn ^:private collect-breakout-fields :- [:maybe [:sequential (ms/InstanceOf Field)]]
+(mu/defn- collect-breakout-fields :- [:maybe [:sequential (ms/InstanceOf Field)]]
   [root question]
   (for [breakout     (get-in question [:dataset_query :query :breakout])
         field-clause (take 1 (magic.util/collect-field-references breakout))
         :let         [field (magic.util/->field root field-clause)]
-        :when        field]
+        :when        (and field
+                          (= (:table_id field) (table-id question)))]
     field))
 
 (defn- decompose-question
@@ -872,7 +876,7 @@
                                                :dashboard-templates-prefix ["table"]})
                                             opts)]
                            (automagic-dashboard root'))
-                         (let [opts      (assoc opts :show :all)
+                         (let [opts      (assoc opts :show max-cards-total)
                                root'     (merge root
                                                 (when cell-query
                                                   {:url cell-url})

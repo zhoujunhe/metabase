@@ -1,31 +1,42 @@
-import type { TransitionEventHandler, SyntheticEvent } from "react";
-import { useEffect, useState, forwardRef } from "react";
-import type { ResizeCallbackData, ResizableBoxProps } from "react-resizable";
+import type { SyntheticEvent, TransitionEventHandler } from "react";
+import { forwardRef, useEffect, useState } from "react";
+import type { ResizableBoxProps, ResizeCallbackData } from "react-resizable";
 import { ResizableBox } from "react-resizable";
 import { useWindowSize } from "react-use";
 
-import { color } from "metabase/lib/colors";
-import { useSelector, useDispatch } from "metabase/lib/redux";
+import { useDispatch, useSelector } from "metabase/lib/redux";
 import {
   setNotebookNativePreviewSidebarWidth,
   setUIControls,
 } from "metabase/query_builder/actions";
-import Notebook from "metabase/query_builder/components/notebook/Notebook";
-import { NotebookNativePreview } from "metabase/query_builder/components/notebook/NotebookNativePreview";
 import { getUiControls } from "metabase/query_builder/selectors";
-import { Flex, Box, rem } from "metabase/ui";
+import {
+  Notebook,
+  type NotebookProps,
+} from "metabase/querying/notebook/components/Notebook";
+import { NotebookNativePreview } from "metabase/querying/notebook/components/NotebookNativePreview";
+import { Box, Flex, rem } from "metabase/ui";
 
 // There must exist some transition time, no matter how short,
 // because we need to trigger the 'onTransitionEnd' in the component
 const delayBeforeNotRenderingNotebook = 10;
 
-interface NotebookContainerProps {
+type NotebookContainerProps = {
   isOpen: boolean;
-}
+} & NotebookProps;
 
 export const NotebookContainer = ({
   isOpen,
-  ...props
+  updateQuestion,
+  reportTimezone,
+  readOnly,
+  question,
+  isDirty,
+  isRunnable,
+  isResultDirty,
+  hasVisualizeButton,
+  runQuestionQuery,
+  setQueryBuilderMode,
 }: NotebookContainerProps) => {
   const [shouldShowNotebook, setShouldShowNotebook] = useState(isOpen);
   const { width: windowWidth } = useWindowSize();
@@ -64,37 +75,43 @@ export const NotebookContainer = ({
 
   const transformStyle = isOpen ? "translateY(0)" : "translateY(-100%)";
 
-  const Handle = forwardRef<HTMLDivElement, Partial<ResizableBoxProps>>(
-    function Handle(props, ref) {
-      const handleWidth = 10;
-      const borderWidth = 1;
-      const left = rem(-((handleWidth + borderWidth) / 2));
+  const Handle = forwardRef<
+    HTMLDivElement,
+    Partial<ResizableBoxProps> & {
+      onResize?: any; //Mantine and react-resizable have different opinions on what onResize should be
+      handleAxis?: string; // undocumented prop https://github.com/react-grid-layout/react-resizable/issues/175
+    }
+  >(function Handle(props, ref) {
+    const handleWidth = 10;
+    const borderWidth = 1;
+    const left = rem(-((handleWidth + borderWidth) / 2));
 
-      return (
-        <Box
-          data-testid="notebook-native-preview-resize-handle"
-          ref={ref}
-          {...props}
-          pos="absolute"
-          top={0}
-          bottom={0}
-          m="auto 0"
-          w={rem(handleWidth)}
-          left={left}
-          style={{
-            zIndex: 5,
-            cursor: "ew-resize",
-          }}
-        ></Box>
-      );
-    },
-  );
+    const { handleAxis, ...rest } = props;
+
+    return (
+      <Box
+        data-testid="notebook-native-preview-resize-handle"
+        ref={ref}
+        {...rest}
+        pos="absolute"
+        top={0}
+        bottom={0}
+        m="auto 0"
+        w={rem(handleWidth)}
+        left={left}
+        style={{
+          zIndex: 5,
+          cursor: "ew-resize",
+        }}
+      ></Box>
+    );
+  });
 
   return (
     <Flex
       pos="absolute"
       inset={0}
-      bg={color("white")}
+      bg="bg-white"
       opacity={isOpen ? 1 : 0}
       style={{
         transform: transformStyle,
@@ -109,7 +126,18 @@ export const NotebookContainer = ({
           miw={{ lg: minNotebookWidth }}
           style={{ flex: 1, overflowY: "auto" }}
         >
-          <Notebook {...props} />
+          <Notebook
+            question={question.setType("question")}
+            isDirty={isDirty}
+            isRunnable={isRunnable}
+            isResultDirty={isResultDirty}
+            reportTimezone={reportTimezone}
+            readOnly={readOnly}
+            updateQuestion={updateQuestion}
+            runQuestionQuery={runQuestionQuery}
+            setQueryBuilderMode={setQueryBuilderMode}
+            hasVisualizeButton={hasVisualizeButton}
+          />
         </Box>
       )}
 
@@ -129,7 +157,7 @@ export const NotebookContainer = ({
           handle={<Handle />}
           onResizeStop={handleResizeStop}
           style={{
-            borderLeft: `1px solid ${color("border")}`,
+            borderLeft: "1px solid var(--mb-color-border)",
             marginInlineStart: "0.25rem",
           }}
         >

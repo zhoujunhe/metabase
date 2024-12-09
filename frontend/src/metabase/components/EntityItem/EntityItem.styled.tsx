@@ -12,8 +12,8 @@ function getForeground(model: string, disabled: boolean) {
   return disabled
     ? darken(color("border"), 0.38)
     : model === "dataset"
-    ? color("accent2")
-    : color("brand");
+      ? color("accent2")
+      : color("brand");
 }
 
 const getItemPadding = (variant?: string) => {
@@ -34,7 +34,6 @@ export const EntityIconWrapper = styled(IconButtonWrapper)<{
   background-color: transparent;
   padding: 12px;
   cursor: ${props => (props.disabled ? "default" : "pointer")};
-
   color: ${props =>
     props.isPinned
       ? getPinnedForeground(!!props.disabled)
@@ -60,13 +59,13 @@ export const EntityItemSpinner = styled(LoadingSpinner)`
   display: flex;
   flex-direction: column;
   justify-content: center;
-  color: ${color("brand")};
+  color: var(--mb-color-brand);
 `;
 
 export const EntityMenuContainer = styled.div`
   display: flex;
   align-items: center;
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
 `;
 
 export const EntityItemActions = styled.div`

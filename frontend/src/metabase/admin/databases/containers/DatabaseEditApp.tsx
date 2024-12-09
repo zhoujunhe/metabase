@@ -23,20 +23,20 @@ import { getSetting } from "metabase/selectors/settings";
 import { getUserIsAdmin } from "metabase/selectors/user";
 import Database from "metabase-lib/v1/metadata/Database";
 import type {
-  Database as DatabaseType,
   DatabaseData,
   DatabaseId,
+  Database as DatabaseType,
 } from "metabase-types/api";
 import type { State } from "metabase-types/store";
 
 import {
-  reset,
-  initializeDatabase,
-  saveDatabase,
-  updateDatabase,
-  dismissSyncSpinner,
   deleteDatabase,
+  dismissSyncSpinner,
+  initializeDatabase,
+  reset,
+  saveDatabase,
   selectEngine,
+  updateDatabase,
 } from "../database";
 import { getEditingDatabase, getInitializeError } from "../selectors";
 
@@ -49,7 +49,7 @@ import {
 } from "./DatabaseEditApp.styled";
 
 interface DatabaseEditAppProps {
-  database: Database;
+  database?: Database;
   params: { databaseId: DatabaseId };
   reset: () => void;
   initializeDatabase: (databaseId: DatabaseId) => void;
@@ -58,7 +58,7 @@ interface DatabaseEditAppProps {
     databaseId: DatabaseId,
     isDetailView: boolean,
   ) => Promise<void>;
-  saveDatabase: (database: DatabaseData) => void;
+  saveDatabase: (database: DatabaseData) => Database;
   updateDatabase: (
     database: { id: DatabaseId } & Partial<DatabaseType>,
   ) => Promise<void>;
@@ -141,11 +141,12 @@ function DatabaseEditApp(props: DatabaseEditAppProps) {
   ];
   const handleSubmit = async (database: DatabaseData) => {
     try {
-      await saveDatabase(database);
-
+      const savedDB = await saveDatabase(database);
       if (addingNewDatabase) {
         scheduleCallback(() => {
-          onChangeLocation("/admin/databases?created=true");
+          onChangeLocation(
+            `/admin/databases?created=true&createdDbId=${savedDB.id}`,
+          );
         });
       }
     } catch (error) {
@@ -167,24 +168,28 @@ function DatabaseEditApp(props: DatabaseEditAppProps) {
                 loading={!database}
                 error={initializeError}
               >
-                <DatabaseEditContent>
-                  <DatabaseEditForm>
-                    <DatabaseForm
-                      initialValues={database}
-                      isAdvanced
-                      onSubmit={handleSubmit}
-                      setIsDirty={setIsDirty}
-                      autofocusFieldName={autofocusFieldName}
-                    />
-                  </DatabaseEditForm>
-                  <div>{addingNewDatabase && <DatabaseEditHelp />}</div>
-                </DatabaseEditContent>
+                {editingExistingDatabase && database.is_attached_dwh ? (
+                  <div>{t`This database cannot be modified.`}</div>
+                ) : (
+                  <DatabaseEditContent>
+                    <DatabaseEditForm>
+                      <DatabaseForm
+                        initialValues={database}
+                        isAdvanced
+                        onSubmit={handleSubmit}
+                        setIsDirty={setIsDirty}
+                        autofocusFieldName={autofocusFieldName}
+                      />
+                    </DatabaseEditForm>
+                    <div>{addingNewDatabase && <DatabaseEditHelp />}</div>
+                  </DatabaseEditContent>
+                )}
               </LoadingAndErrorWrapper>
             </div>
           </div>
         </ErrorBoundary>
 
-        {editingExistingDatabase && (
+        {editingExistingDatabase && !database.is_attached_dwh && (
           <Sidebar
             database={database}
             isAdmin={isAdmin}

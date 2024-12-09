@@ -18,7 +18,6 @@
    [metabase.models.dashboard :refer [Dashboard]]
    [metabase.models.database :refer [Database]]
    [metabase.models.field :as field :refer [Field]]
-   [metabase.models.legacy-metric :refer [LegacyMetric]]
    [metabase.models.native-query-snippet :refer [NativeQuerySnippet]]
    [metabase.models.pulse :refer [Pulse]]
    [metabase.models.segment :refer [Segment]]
@@ -27,28 +26,31 @@
    [metabase.models.user :refer [User]]
    [metabase.plugins :as plugins]
    [metabase.public-settings.premium-features :as premium-features]
+   [metabase.setup :as setup]
    [metabase.util :as u]
    [metabase.util.i18n :refer [deferred-trs trs]]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
-   [toucan2.core :as t2]))
+   [toucan2.core :as t2])
+  (:import
+   (clojure.lang ExceptionInfo)))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private Mode
   (mu/with-api-error-message [:enum :skip :update]
-    (deferred-trs "invalid --mode value")))
+                             (deferred-trs "invalid --mode value")))
 
 (def ^:private OnError
   (mu/with-api-error-message [:enum :continue :abort]
-    (deferred-trs "invalid --on-error value")))
+                             (deferred-trs "invalid --on-error value")))
 
 (def ^:private Context
   (mu/with-api-error-message
-    [:map {:closed true}
-     [:on-error {:optional true} OnError]
-     [:mode     {:optional true} Mode]]
-    (deferred-trs "invalid context seed value")))
+   [:map {:closed true}
+    [:on-error {:optional true} OnError]
+    [:mode     {:optional true} Mode]]
+   (deferred-trs "invalid context seed value")))
 
 (defn- check-premium-token! []
   (premium-features/assert-has-feature :serialization (trs "Serialization")))
@@ -86,12 +88,17 @@
   `opts` are passed to [[v2.load/load-metabase]]."
   [path :- :string
    opts :- [:map
-            [:backfill? {:optional true} [:maybe :boolean]]]
+            [:backfill? {:optional true} [:maybe :boolean]]
+            [:continue-on-error {:optional true} [:maybe :boolean]]]
    ;; Deliberately separate from the opts so it can't be set from the CLI.
-   & {:keys [token-check?]
-      :or   {token-check? true}}]
+   & {:keys [token-check?
+             require-initialized-db?]
+      :or   {token-check? true
+             require-initialized-db? true}}]
   (plugins/load-plugins!)
   (mdb/setup-db! :create-sample-content? false)
+  (when (and require-initialized-db? (not (setup/has-user-setup)))
+    (throw (ex-info "You cannot `import` into an empty database. Please set up Metabase normally, then retry." {})))
   (when token-check?
     (check-premium-token!))
   ; TODO This should be restored, but there's no manifest or other meta file written by v2 dumps.
@@ -107,25 +114,36 @@
    opts are passed to load-metabase"
   [path :- :string
    opts :- [:map
-            [:backfill? {:optional true} [:maybe :boolean]]]]
-  (let [start    (System/nanoTime)
+            [:backfill? {:optional true} [:maybe :boolean]]
+            [:continue-on-error {:optional true} [:maybe :boolean]]
+            [:full-stacktrace {:optional true} [:maybe :boolean]]]]
+  (let [timer    (u/start-timer)
         err      (atom nil)
         report   (try
                    (v2-load-internal! path opts :token-check? true)
+                   (catch ExceptionInfo e
+                     (reset! err e))
                    (catch Exception e
                      (reset! err e)))
         imported (into (sorted-set) (map (comp :model last)) (:seen report))]
-    (snowplow/track-event! ::snowplow/serialization-import nil
-                           {:source        "cli"
-                            :duration_ms   (int (/ (- (System/nanoTime) start) 1e6))
+    (snowplow/track-event! ::snowplow/serialization
+                           {:event         :serialization
+                            :direction     "import"
+                            :source        "cli"
+                            :duration_ms   (int (u/since-ms timer))
                             :models        (str/join "," imported)
                             :count         (if (contains? imported "Setting")
                                              (inc (count (remove #(= "Setting" (:model (first %))) (:seen report))))
                                              (count (:seen report)))
+                            :error_count   (count (:errors report))
                             :success       (nil? @err)
-                            :error_message (some-> @err str)})
+                            :error_message (when @err
+                                             (u/strip-error @err nil))})
     (when @err
-      (throw @err))
+      (if (:full-stacktrace opts)
+        (log/error @err "Error during deserialization")
+        (log/error (u/strip-error @err "Error during deserialization")))
+      (throw (ex-info (ex-message @err) {:cmd/exit true})))
     imported))
 
 (defn- select-entities-in-collections
@@ -165,20 +183,19 @@
                             :all nil
                             :active [:= :archived false])
          base-collections (t2/select Collection {:where [:and [:= :location "/"]
-                                                              [:or [:= :personal_owner_id nil]
-                                                                   [:= :personal_owner_id
-                                                                       (some-> users first u/the-id)]]
-                                                              state-filter]})]
+                                                         [:or [:= :personal_owner_id nil]
+                                                          [:= :personal_owner_id
+                                                           (some-> users first u/the-id)]]
+                                                         state-filter]})]
      (if (empty? base-collections)
        []
        (-> (t2/select Collection
-                             {:where [:and
-                                      (reduce (fn [acc coll]
-                                                (conj acc [:like :location (format "/%d/%%" (:id coll))]))
-                                              [:or] base-collections)
-                                      state-filter]})
+                      {:where [:and
+                               (reduce (fn [acc coll]
+                                         (conj acc [:like :location (format "/%d/%%" (:id coll))]))
+                                       [:or] base-collections)
+                               state-filter]})
            (into base-collections))))))
-
 
 (defn v1-dump!
   "Legacy Metabase app data dump"
@@ -203,16 +220,12 @@
         fields      (if (contains? opts :only-db-ids)
                       (t2/select Field :table_id [:in (map :id tables)] {:order-by [[:id :asc]]})
                       (t2/select Field))
-        metrics     (if (contains? opts :only-db-ids)
-                      (t2/select LegacyMetric :table_id [:in (map :id tables)] {:order-by [[:id :asc]]})
-                      (t2/select LegacyMetric))
         collections (select-collections users state)]
     (binding [serialize/*include-entity-id* (boolean include-entity-id)]
       (dump/dump! path
                   databases
                   tables
                   (mapcat field/with-values (u/batches-of 32000 fields))
-                  metrics
                   (select-segments-in-tables tables state)
                   collections
                   (select-entities-in-collections NativeQuerySnippet collections state)
@@ -237,19 +250,22 @@
       (throw (ex-info (format "Destination path is not writeable: %s" path) {:filename path}))))
   (let [start  (System/nanoTime)
         err    (atom nil)
+        opts   (cond-> opts
+                 (seq collection-ids)
+                 (assoc :targets (v2.extract/make-targets-of-type "Collection" collection-ids)))
         report (try
                  (serdes/with-cache
-                   (-> (cond-> opts
-                         (seq collection-ids)
-                         (assoc :targets (v2.extract/make-targets-of-type "Collection" collection-ids)))
-                       v2.extract/extract
+                   (-> (v2.extract/extract opts)
                        (v2.storage/store! path)))
                  (catch Exception e
                    (reset! err e)))]
-    (snowplow/track-event! ::snowplow/serialization-export nil
-                           {:source          "cli"
+    (snowplow/track-event! ::snowplow/serialization
+                           {:event           :serialization
+                            :direction       "export"
+                            :source          "cli"
                             :duration_ms     (int (/ (- (System/nanoTime) start) 1e6))
                             :count           (count (:seen report))
+                            :error_count     (count (:errors report))
                             :collection      (str/join "," collection-ids)
                             :all_collections (and (empty? collection-ids)
                                                   (not (:no-collections opts)))
@@ -258,9 +274,13 @@
                             :field_values    (boolean (:include-field-values opts))
                             :secrets         (boolean (:include-database-secrets opts))
                             :success         (nil? @err)
-                            :error_message   (some-> @err str)})
+                            :error_message   (when @err
+                                               (u/strip-error @err nil))})
     (when @err
-      (throw @err))
+      (if (:full-stacktrace opts)
+        (log/error @err "Error during serialization")
+        (log/error (u/strip-error @err "Error during deserialization")))
+      (throw (ex-info (ex-message @err) {:cmd/exit true})))
     (log/info (format "Export to '%s' complete!" path) (u/emoji "🚛💨 📦"))
     report))
 

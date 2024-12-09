@@ -1,16 +1,22 @@
 import { t } from "ttag";
 import { findWhere } from "underscore";
 
-import type { UpdateTargetId } from "metabase/admin/performance/strategies";
-import {
-  getShortStrategyLabel,
-  rootId,
-} from "metabase/admin/performance/strategies";
-import { color } from "metabase/lib/colors";
+import { rootId } from "metabase/admin/performance/constants/simple";
+import type { UpdateTargetId } from "metabase/admin/performance/types";
+import { getShortStrategyLabel } from "metabase/admin/performance/utils";
 import { FixedSizeIcon, Flex, Title, Tooltip, useHover } from "metabase/ui";
-import type { Config } from "metabase-types/api";
+import type { CacheConfig } from "metabase-types/api";
 
-import { PolicyToken } from "./StrategyFormLauncher.styled";
+import { PolicyToken, StyledLauncher } from "./StrategyFormLauncher.styled";
+
+export type StrategyFormLauncherProps = {
+  forId: number;
+  targetId: number | null;
+  title: string;
+  updateTargetId: UpdateTargetId;
+  configs: CacheConfig[];
+  isFormDirty: boolean;
+};
 
 export const StrategyFormLauncher = ({
   forId,
@@ -19,14 +25,7 @@ export const StrategyFormLauncher = ({
   updateTargetId,
   configs,
   isFormDirty,
-}: {
-  forId: number;
-  targetId: number | null;
-  title: string;
-  updateTargetId: UpdateTargetId;
-  configs: Config[];
-  isFormDirty: boolean;
-}) => {
+}: StrategyFormLauncherProps) => {
   const forRoot = forId === rootId;
 
   const config = findWhere(configs, { model_id: forId });
@@ -35,18 +34,18 @@ export const StrategyFormLauncher = ({
   const rootStrategy = rootConfig?.strategy ?? { type: "nocache" };
   const savedStrategy = config?.strategy;
 
-  const inheritsRootStrategy = savedStrategy === undefined;
+  const inheritsRootStrategy = !forRoot && savedStrategy === undefined;
   const strategy = savedStrategy ?? rootStrategy;
   const isBeingEdited = targetId === forId;
 
-  const { hovered, ref: hoveredRef } = useHover<HTMLButtonElement>();
+  const { hovered, ref: hoveredRef } = useHover<HTMLDivElement>();
 
   const buttonVariant =
     isBeingEdited || hovered
       ? "filled"
       : inheritsRootStrategy || forRoot
-      ? "default"
-      : "outline";
+        ? "default"
+        : "outline";
   const shortStrategyLabel = getShortStrategyLabel(
     inheritsRootStrategy ? rootStrategy : strategy,
   );
@@ -54,22 +53,30 @@ export const StrategyFormLauncher = ({
   const ariaLabel = forRoot
     ? t`Edit default policy (currently: ${shortStrategyLabel})`
     : inheritsRootStrategy
-    ? t`Edit policy for database '${title}' (currently inheriting the default policy, ${getShortStrategyLabel(
-        rootStrategy,
-      )})`
-    : t`Edit policy for database '${title}' (currently: ${shortStrategyLabel})`;
+      ? t`Edit policy for database '${title}' (currently inheriting the default policy, ${getShortStrategyLabel(
+          rootStrategy,
+        )})`
+      : t`Edit policy for database '${title}' (currently: ${shortStrategyLabel})`;
+
+  const launchForm = () => {
+    if (targetId !== forId) {
+      updateTargetId(forId, isFormDirty);
+    }
+  };
+  const shouldDisableTooltip = !inheritsRootStrategy;
+
   return (
-    <Flex
-      w="100%"
-      p="md"
-      bg={color(forRoot ? "bg-medium" : "white")}
+    <StyledLauncher
+      ref={hoveredRef}
+      aria-label={ariaLabel}
+      onClick={launchForm}
+      forRoot={forRoot}
+      inheritsRootStrategy={inheritsRootStrategy}
       justify="space-between"
-      align="center"
       gap="md"
-      style={{
-        border: forRoot ? undefined : `1px solid ${color("border")}`,
-        borderRadius: ".5rem",
-      }}
+      data-testid={`strategy-form-launcher${
+        shouldDisableTooltip ? "" : "-with-tooltip"
+      }`}
     >
       <Flex gap="0.5rem" color="text-medium" align="center">
         <FixedSizeIcon name={forRoot ? "star" : "database"} color="inherit" />
@@ -77,39 +84,25 @@ export const StrategyFormLauncher = ({
           {title}
         </Title>
       </Flex>
-      <Tooltip
-        position="bottom"
-        disabled={!inheritsRootStrategy}
-        label={t`Using default policy`}
-        events={{
-          hover: true,
-          focus: true,
-          touch: true,
-        }}
-      >
-        <PolicyToken
-          onClick={() => {
-            if (targetId !== forId) {
-              updateTargetId(forId, isFormDirty);
-            }
-          }}
-          aria-label={ariaLabel}
-          ref={hoveredRef}
-          variant={buttonVariant}
-          fw={forRoot || inheritsRootStrategy ? "normal" : "bold"}
-          p="0.25rem .75rem"
-          mah="3rem"
-          styles={{
-            root: {
-              borderRadius: "7rem",
-            },
-          }}
+      <Flex wrap="nowrap" lh="1.5rem" gap=".5rem">
+        <Tooltip
+          position="bottom"
+          disabled={shouldDisableTooltip}
+          label={t`Using default policy`}
         >
-          <Flex wrap="nowrap" lh="1.5rem" gap=".5rem">
+          <PolicyToken
+            onClick={launchForm}
+            variant={buttonVariant}
+            fw={forRoot || inheritsRootStrategy ? "normal" : "bold"}
+            lh="1.5rem"
+            p="0.25rem .75rem"
+            mah="3rem"
+            radius="7rem"
+          >
             {shortStrategyLabel}
-          </Flex>
-        </PolicyToken>
-      </Tooltip>
-    </Flex>
+          </PolicyToken>
+        </Tooltip>
+      </Flex>
+    </StyledLauncher>
   );
 };

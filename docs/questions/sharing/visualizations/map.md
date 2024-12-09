@@ -24,7 +24,7 @@ Creating a map of the United States from your data requires your results to cont
 
 ## Pin map
 
-If your results contains [latitude and longitude fields](../../../data-modeling/field-types.md), Metabase will try to display the results as a pin map of the world. Metabase will put one pin on the map for each row in your table, based on the latitude and longitude fields. You can try this with the Sample Database that's included in Metabase: start a new question and select the People table, use `raw data` for your view, and choose the Map option for your visualization. You'll see a map of the world, with each dot representing the latitude and longitude coordinates of a single person from the People table.
+If your results contains [latitude and longitude fields](../../../data-modeling/field-types.md), Metabase will try to display the results as a pin map of the world. Metabase will put one pin on the map for each row in your table, based on the latitude and longitude fields. You can try this with the Sample Database that's included in Metabase: start a new question and select the People table and choose the Map option for your visualization. You'll see a map of the world, with each dot representing the latitude and longitude coordinates of a single person from the People table.
 
 ![Pin map](../../images/pin-map.png)
 
@@ -36,4 +36,4 @@ Metabase also allows administrators to add [custom maps via GeoJSON files](../..
 
 ## Further reading
 
-- [Visualizing data with maps](https://www.metabase.com/learn/basics/visualizing-data/maps).
+- [Visualizing data with maps](https://www.metabase.com/learn/metabase-basics/querying-and-dashboards/visualization/maps).

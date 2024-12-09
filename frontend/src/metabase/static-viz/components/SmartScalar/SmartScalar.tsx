@@ -1,35 +1,33 @@
 import type { CSSProperties } from "react";
 
-import type {
-  StaticVisualizationProps,
-  RenderingContext,
-} from "metabase/visualizations/types";
+import type { RenderingContext } from "metabase/visualizations/types";
 import {
-  computeTrend,
   CHANGE_TYPE_OPTIONS,
+  computeTrend,
 } from "metabase/visualizations/visualizations/SmartScalar/compute";
 import { formatChange } from "metabase/visualizations/visualizations/SmartScalar/utils";
 
-import { computeSmartScalarSettings } from "./settings";
+import type { StaticChartProps } from "../StaticVisualization";
 
 export function SmartScalar({
   rawSeries,
-  dashcardSettings,
+  settings,
   renderingContext,
-}: StaticVisualizationProps) {
-  const { fontFamily, formatValue, getColor } = renderingContext;
+}: StaticChartProps) {
+  const { fontFamily, getColor } = renderingContext;
   const [{ card, data }] = rawSeries;
   const { insights } = data;
 
-  const settings = computeSmartScalarSettings(rawSeries, dashcardSettings);
-
-  const trend = computeTrend(rawSeries, insights, settings, {
-    formatValue,
+  const { trend, error } = computeTrend(rawSeries, insights, settings, {
     getColor,
   });
 
-  if (!trend) {
-    throw new Error(`Failed to compute trend data for ${card.name}`);
+  if (error || !trend) {
+    throw new Error(
+      `Failed to compute trend data for ${card.name}\: ${
+        (error as { message: string }).message
+      }`,
+    );
   }
 
   const comparisons: any[] = trend.comparisons || [];

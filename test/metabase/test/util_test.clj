@@ -16,7 +16,7 @@
 (set! *warn-on-reflection* true)
 
 (deftest with-temp-vals-in-db-test
-  (testing "let's make sure this acutally works right!"
+  (testing "let's make sure this actually works right!"
     (let [position #(t2/select-one-fn :position Field :id (data/id :venues :price))]
       (mt/with-temp-vals-in-db Field (data/id :venues :price) {:position -1}
         (is (= -1
@@ -26,8 +26,8 @@
 
   (testing "if an Exception is thrown, original value should be restored"
     (u/ignore-exceptions
-     (mt/with-temp-vals-in-db Field (data/id :venues :price) {:position -1}
-       (throw (Exception.))))
+      (mt/with-temp-vals-in-db Field (data/id :venues :price) {:position -1}
+        (throw (Exception.))))
     (is (= 5
            (t2/select-one-fn :position Field :id (data/id :venues :price))))))
 
@@ -35,7 +35,8 @@
   "Another internal test setting"
   :visibility :internal
   :default    ["A" "B" "C"]
-  :type       :csv)
+  :type       :csv
+  :encryption :no)
 
 (deftest with-temporary-setting-values-test
   (testing "`with-temporary-setting-values` should do its thing"
@@ -73,7 +74,7 @@
         (is (= "original" (clump "o" "riginal"))))
 
       (future
-       (testing "A thread that minds its own business"
+        (testing "A thread that minds its own business"
           (log/debug "Starting no-op thread, thread-id:" (thread-id))
           (is (= "123" (clump 12 3)))
           (take-latch)
@@ -102,3 +103,33 @@
       (take-latch)
       (testing "The original definition survives"
         (is (= "original" (clump "orig" "inal")))))))
+
+(defn mock-me-inner []
+  :mock/original)
+
+(defn mock-me-outer []
+  (mock-me-inner))
+
+(deftest with-dynamic-redefs-nested-binding-test
+  (defn z []
+    (mt/with-dynamic-redefs [mock-me-outer
+                             (let [orig (mt/dynamic-value mock-me-outer)]
+                               (fn []
+                                 (mt/with-dynamic-redefs [mock-me-inner (constantly :mock/redefined)]
+                                   (orig))))]
+      (mock-me-outer)))
+  (is (= :mock/redefined (z))))
+
+(deftest ^:parallel ordered-subset?-test
+  (is (mt/ordered-subset? [1 2 3] [1 2 3]))
+  (is (mt/ordered-subset? [1 2 3] [1 2 1 3 4 5]))
+  (is (mt/ordered-subset? [1 2 3] [1 2 3 4]))
+  (is (mt/ordered-subset? [1 2 3] [0 1 2 3]))
+  (is (mt/ordered-subset? [1 2 3] [0 1 2 3 4 5]))
+  (is (not (mt/ordered-subset? [1 2 3] [1 2])))
+  (is (mt/ordered-subset? [] []))
+  (is (mt/ordered-subset? [] [1]))
+  (is (not (mt/ordered-subset? [1] [])))
+  (is (mt/ordered-subset? ["foo"   "bar"              "baz"]
+                          ["elephants" "foxes" "badgers" "zebras" "beavers" "platypi"]
+                          (fn [x y] (= (first x) (first y))))))

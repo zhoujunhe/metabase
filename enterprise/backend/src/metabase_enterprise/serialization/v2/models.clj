@@ -1,12 +1,13 @@
-(ns metabase-enterprise.serialization.v2.models)
+(ns metabase-enterprise.serialization.v2.models
+  "See [[metabase.models.serialization]] for documentation.")
 
 (def data-model
   "Schema model types"
   ["Database"
    "Field"
-   "LegacyMetric"
    "Segment"
-   "Table"])
+   "Table"
+   "Channel"])
 
 (def content
   "Content model types"
@@ -43,6 +44,8 @@
    "BookmarkOrdering"
    "CacheConfig"
    "CardBookmark"
+   "ChannelTemplate"
+   "CloudMigration"
    "CollectionBookmark"
    "CollectionPermissionGraphRevision"
    "ConnectionImpersonation"
@@ -52,11 +55,16 @@
    "GroupTableAccessPolicy"
    "HTTPAction"
    "ImplicitAction"
-   "LoginHistory"
+   "LegacyMetric"
    "LegacyMetricImportantField"
+   "LoginHistory"
    "ModelIndex"
    "ModelIndexValue"
    "ModerationReview"
+   "Notification"
+   "NotificationSubscription"
+   "NotificationHandler"
+   "NotificationRecipient"
    "Permissions"
    "PermissionsGroup"
    "PermissionsGroupMembership"
@@ -68,9 +76,11 @@
    "PulseChannelRecipient"
    "Query"
    "QueryAction"
+   "QueryAnalysis"
    "QueryCache"
    "QueryExecution"
    "QueryField"
+   "QueryTable"
    "RecentViews"
    "Revision"
    "Secret"

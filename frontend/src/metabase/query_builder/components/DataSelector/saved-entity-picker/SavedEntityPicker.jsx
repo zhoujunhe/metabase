@@ -1,13 +1,12 @@
 import PropTypes from "prop-types";
-import { useMemo, useState, useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { connect } from "react-redux";
-import { t } from "ttag";
 import _ from "underscore";
 
 import {
+  currentUserPersonalCollections,
   isRootPersonalCollection,
   nonPersonalOrArchivedCollection,
-  currentUserPersonalCollections,
 } from "metabase/collections/utils";
 import { Tree } from "metabase/components/tree";
 import CS from "metabase/css/core/index.css";
@@ -15,26 +14,22 @@ import Collection, {
   PERSONAL_COLLECTIONS,
   buildCollectionTree,
 } from "metabase/entities/collections";
-import { Icon } from "metabase/ui";
+import { Box, Icon } from "metabase/ui";
 
 import SavedEntityList from "./SavedEntityList";
-import {
-  SavedEntityPickerRoot,
-  CollectionsContainer,
-  BackButton,
-  TreeContainer,
-} from "./SavedEntityPicker.styled";
-import { findCollectionByName } from "./utils";
+import SavedEntityPickerS from "./SavedEntityPicker.module.css";
+import { CARD_INFO } from "./constants";
+import { findCollectionById } from "./utils";
 
 const propTypes = {
-  isDatasets: PropTypes.bool,
+  type: PropTypes.string,
   onSelect: PropTypes.func.isRequired,
   onBack: PropTypes.func.isRequired,
   collections: PropTypes.array.isRequired,
   currentUser: PropTypes.object.isRequired,
   databaseId: PropTypes.string,
   tableId: PropTypes.string,
-  collectionName: PropTypes.string,
+  collectionId: PropTypes.number,
   rootCollection: PropTypes.object,
 };
 
@@ -51,20 +46,18 @@ const ALL_PERSONAL_COLLECTIONS_ROOT = {
 };
 
 function SavedEntityPicker({
-  isDatasets,
+  type,
   onBack,
   onSelect,
   collections,
   currentUser,
   databaseId,
   tableId,
-  collectionName,
+  collectionId,
   rootCollection,
 }) {
   const collectionTree = useMemo(() => {
-    const modelFilter = isDatasets
-      ? model => model === "dataset"
-      : model => model === "card";
+    const modelFilter = model => CARD_INFO[type].model === model;
 
     const preparedCollections = [];
     const userPersonalCollections = currentUserPersonalCollections(
@@ -97,11 +90,10 @@ function SavedEntityPicker({
       ...(rootCollection ? [getOurAnalyticsCollection(rootCollection)] : []),
       ...buildCollectionTree(preparedCollections, modelFilter),
     ];
-  }, [collections, rootCollection, currentUser, isDatasets]);
+  }, [collections, rootCollection, currentUser, type]);
 
   const initialCollection = useMemo(
-    () =>
-      findCollectionByName(collectionTree, collectionName) ?? collectionTree[0],
+    () => findCollectionById(collectionTree, collectionId) ?? collectionTree[0],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -117,28 +109,32 @@ function SavedEntityPicker({
   }, []);
 
   return (
-    <SavedEntityPickerRoot>
-      <CollectionsContainer>
-        <BackButton onClick={onBack} data-testid="saved-entity-back-navigation">
+    <Box className={SavedEntityPickerS.SavedEntityPickerRoot}>
+      <Box className={SavedEntityPickerS.CollectionsContainer}>
+        <a
+          className={SavedEntityPickerS.BackButton}
+          onClick={onBack}
+          data-testid="saved-entity-back-navigation"
+        >
           <Icon name="chevronleft" className={CS.mr1} />
-          {isDatasets ? t`Models` : t`Saved Questions`}
-        </BackButton>
-        <TreeContainer data-testid="saved-entity-collection-tree">
+          {CARD_INFO[type].title}
+        </a>
+        <Box m="0.5rem 0" data-testid="saved-entity-collection-tree">
           <Tree
             data={collectionTree}
             onSelect={handleSelect}
             selectedId={selectedCollection?.id}
           />
-        </TreeContainer>
-      </CollectionsContainer>
+        </Box>
+      </Box>
       <SavedEntityList
-        isDatasets={isDatasets}
+        type={type}
         collection={selectedCollection}
         selectedId={tableId}
         databaseId={databaseId}
         onSelect={onSelect}
       />
-    </SavedEntityPickerRoot>
+    </Box>
   );
 }
 

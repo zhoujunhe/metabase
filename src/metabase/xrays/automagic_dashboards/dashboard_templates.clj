@@ -7,8 +7,8 @@
    [clojure.walk :as walk]
    [malli.core :as mc]
    [malli.transform :as mtx]
+   [metabase.models.dashboard.constants :as dashboards.constants]
    [metabase.query-processor.util :as qp.util]
-   [metabase.shared.dashboards.constants :as dashboards.constants]
    [metabase.util :as u]
    [metabase.util.files :as u.files]
    [metabase.util.i18n :as i18n]
@@ -82,26 +82,19 @@
     [:filter MBQL]
     [:score  Score]]])
 
-(defn ga-dimension?
-  "Does string `t` denote a Google Analytics dimension?"
-  [t]
-  (str/starts-with? t "ga:"))
-
 (defn ->type
   "Turn `x` into proper type name."
   [x]
-  (cond
-    (keyword? x)      x
-    (ga-dimension? x) x
-    :else             (keyword "type" x)))
+  (if (keyword? x)
+    x
+    (keyword "type" x)))
 
 (defn ->entity
   "Turn `x` into proper entity name."
   [x]
-  (cond
-    (keyword? x)      x
-    (ga-dimension? x) x
-    :else             (keyword "entity" x)))
+  (if (keyword? x)
+    x
+    (keyword "entity" x)))
 
 (defn- field-type?
   [t]
@@ -120,14 +113,10 @@
    [:fn {:error/message "valid table type"} table-type?]])
 
 (def ^:private FieldType
-  [:or
+  [:and
    {:decode/dashboard-template ->type}
-   [:and
-    :string
-    [:fn {:error/message "Google Analytics dimension"} ga-dimension?]]
-   [:and
-    :keyword
-    [:fn {:error/message "Valid Field type"} field-type?]]])
+   :keyword
+   [:fn {:error/message "Valid Field type"} field-type?]])
 
 (def ^:private AppliesTo
   [:or
@@ -350,10 +339,10 @@
   values based on the template display type if those dimensions aren't already present."
   [card-spec]
   (update-vals
-    card-spec
-    (fn [{:keys [visualization] :as card-spec}]
-      (let [defaults (get-in dashboards.constants/card-size-defaults [(keyword visualization) :default])]
-        (into defaults card-spec)))))
+   card-spec
+   (fn [{:keys [visualization] :as card-spec}]
+     (let [defaults (get-in dashboards.constants/card-size-defaults [(keyword visualization) :default])]
+       (into defaults card-spec)))))
 
 (defn- set-default-card-dimensions
   "Update the card template dimensions to align with the default FE dimensions."

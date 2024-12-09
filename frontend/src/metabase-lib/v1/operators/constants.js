@@ -2,25 +2,25 @@ import { t } from "ttag";
 import _ from "underscore";
 
 import {
-  TYPE,
-  TEMPORAL,
-  LOCATION,
+  BOOLEAN,
   COORDINATE,
   FOREIGN_KEY,
+  LOCATION,
+  NUMBER,
   PRIMARY_KEY,
   STRING,
   STRING_LIKE,
-  NUMBER,
-  BOOLEAN,
+  TEMPORAL,
+  TYPE,
   UNKNOWN,
 } from "metabase-lib/v1/types/constants";
 import {
-  isNumeric,
-  isDate,
   isBoolean,
+  isDate,
+  isLongitude,
+  isNumeric,
   isScope,
   isSummable,
-  isLongitude,
 } from "metabase-lib/v1/types/utils/isa";
 
 function freeformArgument(field, table) {
@@ -169,21 +169,25 @@ export const FIELD_FILTER_OPERATORS = {
     validArgumentsFilters: [comparableArgument, comparableArgument],
   },
   "starts-with": {
+    multi: true,
     validArgumentsFilters: [freeformArgument],
     options: CASE_SENSITIVE_OPTION,
     optionsDefaults: { "case-sensitive": false },
   },
   "ends-with": {
+    multi: true,
     validArgumentsFilters: [freeformArgument],
     options: CASE_SENSITIVE_OPTION,
     optionsDefaults: { "case-sensitive": false },
   },
   contains: {
+    multi: true,
     validArgumentsFilters: [freeformArgument],
     options: CASE_SENSITIVE_OPTION,
     optionsDefaults: { "case-sensitive": false },
   },
   "does-not-contain": {
+    multi: true,
     validArgumentsFilters: [freeformArgument],
     options: CASE_SENSITIVE_OPTION,
     optionsDefaults: { "case-sensitive": false },

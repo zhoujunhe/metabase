@@ -4,18 +4,18 @@ redirect_from:
   - /docs/latest/users-guide/12-data-model-reference
   - /docs/latest/questions/native-editor/data-model-reference
 ---
- 
+
 # Data reference
 
 You can open the data reference from:
 
-- The Metabase sidebar > **Browse data** > **Learn about our data**.
+- The Metabase sidebar > **Browse** > **Databases** > **Learn about our data**.
 - Hovering over a table in the data browser and clicking on the book icon that appears.
 - The native/SQL > **Book** icon.
 
 ## Browse data reference
 
-The data reference is a collection of pages organized by database, then tables in that database (the same structure you use to [pick data](../questions/query-builder/introduction.md#picking-data)). The data reference section is a great place to find information about the [data types](https://www.metabase.com/learn/databases/data-types-overview) of columns in your data.
+The data reference is a collection of pages organized by database, then tables in that database (the same structure you use to [pick data](../questions/query-builder/introduction.md#picking-data)). The data reference section is a great place to find information about the [data types](https://www.metabase.com/learn/grow-your-data-skills/data-fundamentals/data-types-overview) of columns in your data.
 
 ## Data reference in the native editor
 

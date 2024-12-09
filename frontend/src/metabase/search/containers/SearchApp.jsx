@@ -5,7 +5,7 @@ import { jt, t } from "ttag";
 import _ from "underscore";
 
 import EmptyState from "metabase/components/EmptyState";
-import PaginationControls from "metabase/components/PaginationControls";
+import { PaginationControls } from "metabase/components/PaginationControls";
 import { NoObjectError } from "metabase/components/errors/NoObjectError";
 import Search from "metabase/entities/search";
 import { usePagination } from "metabase/hooks/use-pagination";
@@ -16,8 +16,8 @@ import {
   SearchFilterKeys,
 } from "metabase/search/constants";
 import {
-  SearchControls,
   SearchBody,
+  SearchControls,
   SearchMain,
   SearchResultContainer,
 } from "metabase/search/containers/SearchApp.styled";
@@ -27,7 +27,7 @@ import {
   getFiltersFromLocation,
   getSearchTextFromLocation,
 } from "metabase/search/utils";
-import { Box, Text, Group, Paper } from "metabase/ui";
+import { Box, Group, Paper, Text } from "metabase/ui";
 
 function SearchApp({ location }) {
   const dispatch = useDispatch();

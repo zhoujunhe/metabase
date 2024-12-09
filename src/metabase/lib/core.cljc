@@ -23,10 +23,10 @@
    [metabase.lib.filter :as lib.filter]
    [metabase.lib.filter.update :as lib.filter.update]
    [metabase.lib.join :as lib.join]
-   [metabase.lib.legacy-metric :as lib.legacy-metric]
    [metabase.lib.limit :as lib.limit]
    [metabase.lib.metadata.calculation :as lib.metadata.calculation]
    [metabase.lib.metadata.composed-provider :as lib.metadata.composed-provider]
+   [metabase.lib.metric :as lib.metric]
    [metabase.lib.native :as lib.native]
    [metabase.lib.normalize :as lib.normalize]
    [metabase.lib.order-by :as lib.order-by]
@@ -39,7 +39,7 @@
    [metabase.lib.table :as lib.table]
    [metabase.lib.temporal-bucket :as lib.temporal-bucket]
    [metabase.lib.util :as lib.util]
-   [metabase.shared.util.namespaces :as shared.ns]))
+   [metabase.util.namespaces :as shared.ns]))
 
 (comment lib.aggregation/keep-me
          lib.binning/keep-me
@@ -49,25 +49,30 @@
          lib.common/keep-me
          lib.convert/keep-me
          lib.database/keep-me
-         lib.drill-thru/keep-me
+         lib.drill-thru.column-extract/keep-me
          lib.drill-thru.pivot/keep-me
+         lib.drill-thru/keep-me
          lib.equality/keep-me
          lib.expression/keep-me
+         lib.extraction/keep-me
+         lib.fe-util/keep-me
          lib.field/keep-me
-         lib.filter/keep-me
          lib.filter.update/keep-me
+         lib.filter/keep-me
          lib.join/keep-me
-         lib.legacy-metric/keep-me
          lib.limit/keep-me
          lib.metadata.calculation/keep-me
          lib.metadata.composed-provider/keep-me
+         lib.metric/keep-me
          lib.native/keep-me
          lib.normalize/keep-me
          lib.order-by/keep-me
          lib.query/keep-me
          lib.ref/keep-me
+         lib.remove-replace/keep-me
          lib.segment/keep-me
          lib.stage/keep-me
+         lib.swap/keep-me
          lib.table/keep-me
          lib.temporal-bucket/keep-me
          lib.util/keep-me)
@@ -169,7 +174,7 @@
   concat
   substring
   replace
-  regexextract
+  regex-match-first
   length
   trim
   ltrim
@@ -183,8 +188,25 @@
   extraction-expression]
  [lib.fe-util
   dependent-metadata
+  table-or-card-dependent-metadata
   expression-clause
   expression-parts
+  string-filter-clause
+  string-filter-parts
+  number-filter-clause
+  number-filter-parts
+  coordinate-filter-clause
+  coordinate-filter-parts
+  boolean-filter-clause
+  boolean-filter-parts
+  specific-date-filter-clause
+  specific-date-filter-parts
+  relative-date-filter-clause
+  relative-date-filter-parts
+  exclude-date-filter-clause
+  exclude-date-filter-parts
+  time-filter-parts
+  time-filter-clause
   filter-args-display-name]
  [lib.field
   add-field
@@ -215,6 +237,7 @@
   is-empty not-empty
   starts-with ends-with
   contains does-not-contain
+  relative-time-interval
   time-interval
   segment]
  [lib.filter.update
@@ -241,8 +264,8 @@
   with-join-fields
   with-join-strategy
   with-join-conditions]
- [lib.legacy-metric
-  available-legacy-metrics]
+ [lib.metric
+  available-metrics]
  [lib.limit
   current-limit
   limit]
@@ -283,13 +306,17 @@
  [lib.normalize
   normalize]
  [lib.query
+  can-preview
   can-run
   can-save
+  preview-query
   query
   stage-count
-  uses-legacy-metric?
+  uses-metric?
   uses-segment?
-  with-different-table]
+  with-different-table
+  with-wrapped-native-query
+  wrap-native-query-with-mbql]
  [lib.ref
   ref]
  [lib.remove-replace
@@ -304,6 +331,7 @@
   append-stage
   drop-stage
   drop-empty-stages
+  ensure-filter-stage
   has-clauses?]
  [lib.swap
   swap-clauses]
@@ -312,6 +340,7 @@
   describe-temporal-interval
   describe-relative-datetime
   available-temporal-buckets
+  available-temporal-units
   raw-temporal-bucket
   temporal-bucket
   with-temporal-bucket]

@@ -1,16 +1,18 @@
-import { t } from "ttag";
+import type { PropsWithChildren } from "react";
+import { c, t } from "ttag";
 
+import type { ActionMenuProps } from "metabase/collections/components/ActionMenu";
 import ActionMenu from "metabase/collections/components/ActionMenu";
-import type { ActionMenuProps } from "metabase/collections/components/ActionMenu/ActionMenu";
 import DateTime from "metabase/components/DateTime";
 import EntityItem from "metabase/components/EntityItem";
-import type { Edit } from "metabase/components/LastEditInfoLabel/LastEditInfoLabel";
 import CheckBox from "metabase/core/components/CheckBox";
 import { Ellipsified } from "metabase/core/components/Ellipsified";
 import Markdown from "metabase/core/components/Markdown";
 import Tooltip from "metabase/core/components/Tooltip";
-import { getFullName } from "metabase/lib/user";
+import { useSelector } from "metabase/lib/redux";
+import { getUserName } from "metabase/lib/user";
 import { PLUGIN_MODERATION } from "metabase/plugins";
+import { getIsEmbeddingSdk } from "metabase/selectors/embed";
 import type { IconProps } from "metabase/ui";
 import type { CollectionItem, SearchResult } from "metabase-types/api";
 
@@ -21,6 +23,7 @@ import {
   ColumnHeader,
   DescriptionIcon,
   EntityIconCheckBox,
+  ItemButton,
   ItemCell,
   ItemLink,
   ItemNameCell,
@@ -30,6 +33,26 @@ import {
 } from "./BaseItemsTable.styled";
 
 type HeaderProps = Omit<SortableColumnHeaderProps, "name">;
+
+const ItemLinkComponent = ({
+  onClick,
+  item,
+  children,
+}: PropsWithChildren<{
+  item: CollectionItem;
+  onClick?: (item: CollectionItem) => void;
+}>) => {
+  const isEmbeddingSdk = useSelector(getIsEmbeddingSdk);
+
+  if (isEmbeddingSdk) {
+    return <ItemButton onClick={() => onClick?.(item)}>{children}</ItemButton>;
+  }
+  return (
+    <ItemLink to={item.getUrl()} onClick={() => onClick?.(item)}>
+      {children}
+    </ItemLink>
+  );
+};
 
 export const Columns = {
   Select: {
@@ -134,29 +157,31 @@ export const Columns = {
       item: CollectionItem;
       testIdPrefix?: string;
       includeDescription?: boolean;
-      onClick?: () => void;
-    }) => (
-      <ItemNameCell data-testid={`${testIdPrefix}-name`}>
-        <ItemLink to={item.getUrl()} onClick={onClick}>
-          <EntityItem.Name name={item.name} variant="list" />
-          <PLUGIN_MODERATION.ModerationStatusIcon
-            size={16}
-            status={item.moderated_status}
-          />
-          {item.description && includeDescription && (
-            <DescriptionIcon
-              name="info"
+      onClick?: (item: CollectionItem) => void;
+    }) => {
+      return (
+        <ItemNameCell data-testid={`${testIdPrefix}-name`}>
+          <ItemLinkComponent onClick={onClick} item={item}>
+            <EntityItem.Name name={item.name} variant="list" />
+            <PLUGIN_MODERATION.ModerationStatusIcon
               size={16}
-              tooltip={
-                <Markdown dark disallowHeading unstyleLinks lineClamp={8}>
-                  {item.description}
-                </Markdown>
-              }
+              status={item.moderated_status}
             />
-          )}
-        </ItemLink>
-      </ItemNameCell>
-    ),
+            {item.description && includeDescription && (
+              <DescriptionIcon
+                name="info"
+                size={16}
+                tooltip={
+                  <Markdown dark disallowHeading unstyleLinks lineClamp={8}>
+                    {item.description}
+                  </Markdown>
+                }
+              />
+            )}
+          </ItemLinkComponent>
+        </ItemNameCell>
+      );
+    },
   },
   LastEditedBy: {
     Col: () => (
@@ -166,7 +191,13 @@ export const Columns = {
         containerName="ItemsTableContainer"
       />
     ),
-    Header: ({ sortingOptions, onSortingOptionsChange }: HeaderProps) => (
+    Header: ({
+      sortingOptions,
+      onSortingOptionsChange,
+      isTrashed,
+    }: HeaderProps & {
+      isTrashed: boolean;
+    }) => (
       <SortableColumnHeader
         name="last_edited_by"
         sortingOptions={sortingOptions}
@@ -174,7 +205,9 @@ export const Columns = {
         hideAtContainerBreakpoint="sm"
         containerName="ItemsTableContainer"
       >
-        {t`Last edited by`}
+        {isTrashed
+          ? c("Precedes the name of a user").t`Deleted by`
+          : t`Last edited by`}
       </SortableColumnHeader>
     ),
     Cell: ({
@@ -185,7 +218,7 @@ export const Columns = {
       item: CollectionItem;
     }) => {
       const lastEditInfo = item["last-edit-info"];
-      const lastEditedBy = getLastEditedBy(lastEditInfo) ?? "";
+      const lastEditedBy = getUserName(lastEditInfo) ?? "";
 
       return (
         <ItemCell
@@ -206,7 +239,13 @@ export const Columns = {
         containerName="ItemsTableContainer"
       />
     ),
-    Header: ({ sortingOptions, onSortingOptionsChange }: HeaderProps) => (
+    Header: ({
+      sortingOptions,
+      onSortingOptionsChange,
+      isTrashed,
+    }: HeaderProps & {
+      isTrashed: boolean;
+    }) => (
       <SortableColumnHeader
         name="last_edited_at"
         sortingOptions={sortingOptions}
@@ -214,7 +253,9 @@ export const Columns = {
         hideAtContainerBreakpoint="md"
         containerName="ItemsTableContainer"
       >
-        {t`Last edited at`}
+        {isTrashed
+          ? c("Time which the item was deleted").t`Deleted at`
+          : t`Last edited at`}
       </SortableColumnHeader>
     ),
     Cell: ({
@@ -267,7 +308,9 @@ export const Columns = {
               createBookmark={createBookmark}
               deleteBookmark={deleteBookmark}
             />
-            {item.model === "dataset" && <ModelDetailLink model={item} />}
+            {item.model === "dataset" && !item.archived && (
+              <ModelDetailLink model={item} />
+            )}
           </RowActionsContainer>
         </ItemCell>
       );
@@ -282,16 +325,3 @@ export const Columns = {
     Cell: () => <ItemCell />,
   },
 };
-
-const getLastEditedBy = (lastEditInfo?: Edit) => {
-  if (!lastEditInfo) {
-    return "";
-  }
-  const name = getFullName(lastEditInfo);
-  return name || lastEditInfo.email;
-};
-
-export enum SortDirection {
-  Asc = "asc",
-  Desc = "desc",
-}

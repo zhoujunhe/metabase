@@ -1,14 +1,9 @@
+import userEvent from "@testing-library/user-event";
 import fetchMock from "fetch-mock";
 
 import { createMockMetadata } from "__support__/metadata";
-import {
-  fireEvent,
-  getIcon,
-  render,
-  renderWithProviders,
-  screen,
-} from "__support__/ui";
-import { delay } from "metabase/lib/promise";
+import { getIcon, render, renderWithProviders, screen } from "__support__/ui";
+import { delay } from "__support__/utils";
 import { UnconnectedDataSelector as DataSelector } from "metabase/query_builder/components/DataSelector";
 import {
   createMockDatabase,
@@ -110,7 +105,7 @@ describe("DataSelector", () => {
   );
   const SAVED_QUESTIONS_DATABASE = createMockSavedQuestionsDatabase();
 
-  it("should allow selecting db, schema, and table", () => {
+  it("should allow selecting db, schema, and table", async () => {
     const setTable = jest.fn();
     render(
       <DataSelector
@@ -118,6 +113,8 @@ describe("DataSelector", () => {
         combineDatabaseSchemaSteps
         triggerElement={<div />}
         databases={[MULTI_SCHEMA_DATABASE, SAMPLE_DATABASE, ANOTHER_DATABASE]}
+        models={[]}
+        metrics={[]}
         metadata={metadata}
         isOpen={true}
         setSourceTableFn={setTable}
@@ -125,12 +122,14 @@ describe("DataSelector", () => {
     );
 
     // displays dbs
-    expect(screen.getByText("Multi-schema Database")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Multi-schema Database"),
+    ).toBeInTheDocument();
     expect(screen.getByText("Sample Database")).toBeInTheDocument();
     expect(screen.getByText("Sample Empty Database")).toBeInTheDocument();
 
     // clicking reveals schemas
-    fireEvent.click(screen.getByText("Multi-schema Database"));
+    await userEvent.click(screen.getByText("Multi-schema Database"));
     expect(screen.getByText("First Schema")).toBeInTheDocument();
     expect(screen.getByText("Second Schema")).toBeInTheDocument();
 
@@ -140,7 +139,7 @@ describe("DataSelector", () => {
     expect(screen.getByText("Sample Empty Database")).toBeInTheDocument();
 
     // clicking shows the table
-    fireEvent.click(screen.getByText("First Schema"));
+    await userEvent.click(screen.getByText("First Schema"));
     expect(screen.getByText("Table in First Schema")).toBeInTheDocument();
 
     // db and schema are still visible
@@ -151,7 +150,7 @@ describe("DataSelector", () => {
     expect(screen.queryByText("Second Schema")).not.toBeInTheDocument();
 
     // clicking on the table
-    fireEvent.click(screen.getByText("Table in First Schema"));
+    await userEvent.click(screen.getByText("Table in First Schema"));
     const [tableId] = setTable.mock.calls[0];
     expect(tableId).toEqual(MULTI_SCHEMA_TABLE1_ID);
   });
@@ -166,6 +165,8 @@ describe("DataSelector", () => {
       combineDatabaseSchemaSteps: true,
       triggerElement: <div />,
       databases: [],
+      models: [],
+      metrics: [],
       metadata: emptyMetadata,
       isOpen: true,
       fetchDatabases,
@@ -189,8 +190,8 @@ describe("DataSelector", () => {
     // on initial load, we fetch databases
     await delay(1);
     expect(fetchDatabases).toHaveBeenCalled();
-    rerender(<DataSelector {...props} loading />);
-    expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
+    rerender(<DataSelector {...props} allLoading />);
+    expect(screen.getByTestId("loading-indicator")).toBeInTheDocument();
 
     // select a db
     let nextMetadata = createMockMetadata({ databases });
@@ -201,7 +202,7 @@ describe("DataSelector", () => {
 
     expect(screen.getByText("Sample Database")).toBeInTheDocument();
     expect(screen.getByText("Multi-schema Database")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Multi-schema Database"));
+    await userEvent.click(screen.getByText("Multi-schema Database"));
 
     // that triggers fetching schemas
     await delay(1);
@@ -214,7 +215,7 @@ describe("DataSelector", () => {
     rerenderWith(nextMetadata);
     expect(screen.getByText("First Schema")).toBeInTheDocument();
     expect(screen.getByText("Second Schema")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Second Schema"));
+    await userEvent.click(screen.getByText("Second Schema"));
 
     // that triggers fetching tables
     await delay(1);
@@ -232,12 +233,14 @@ describe("DataSelector", () => {
         combineDatabaseSchemaSteps
         triggerElement={<div />}
         databases={[SAMPLE_DATABASE]}
+        models={[]}
+        metrics={[]}
         metadata={metadata}
         isOpen={true}
       />,
     );
     await delay(1); // state isn't updated until the next tick
-    expect(screen.getByText("Orders")).toBeInTheDocument();
+    expect(await screen.findByText("Orders")).toBeInTheDocument();
   });
 
   it("shouldn't fetch databases until it's opened", async () => {
@@ -248,11 +251,13 @@ describe("DataSelector", () => {
         triggerElement={<div>button</div>}
         metadata={emptyMetadata}
         databases={[]}
+        models={[]}
+        metrics={[]}
         fetchDatabases={fetchDatabases}
       />,
     );
     expect(fetchDatabases).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText("button"));
+    await userEvent.click(screen.getByText("button"));
     await delay(1); // fetchDatabases hasn't been called until the next tick
     expect(fetchDatabases).toHaveBeenCalled();
   });
@@ -264,16 +269,18 @@ describe("DataSelector", () => {
         combineDatabaseSchemaSteps
         triggerElement={<div />}
         databases={[MULTI_SCHEMA_DATABASE, SAMPLE_DATABASE]}
+        models={[]}
+        metrics={[]}
         metadata={metadata}
         isOpen={true}
       />,
     );
 
-    fireEvent.click(screen.getByText("Multi-schema Database"));
+    await userEvent.click(screen.getByText("Multi-schema Database"));
     expect(screen.getByText("First Schema")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Sample Database"));
+    await userEvent.click(screen.getByText("Sample Database"));
     await delay(1);
-    expect(screen.getByText("Orders")).toBeInTheDocument();
+    expect(await screen.findByText("Orders")).toBeInTheDocument();
   });
 
   it("should expand multi-schema after clicking into single-schema", async () => {
@@ -283,21 +290,23 @@ describe("DataSelector", () => {
         combineDatabaseSchemaSteps
         triggerElement={<div />}
         databases={[MULTI_SCHEMA_DATABASE, SAMPLE_DATABASE]}
+        models={[]}
+        metrics={[]}
         metadata={metadata}
         isOpen={true}
       />,
     );
 
-    fireEvent.click(screen.getByText("Sample Database"));
+    await userEvent.click(screen.getByText("Sample Database"));
     await delay(1);
     // check that tables are listed
-    expect(screen.getByText("Orders")).toBeInTheDocument();
+    expect(await screen.findByText("Orders")).toBeInTheDocument();
     // click header to return to db list
-    fireEvent.click(screen.getByText("Sample Database"));
+    await userEvent.click(screen.getByText("Sample Database"));
     // click on a multi-schema db
-    fireEvent.click(screen.getByText("Multi-schema Database"));
+    await userEvent.click(screen.getByText("Multi-schema Database"));
     // see schema appear and click to view tables for good measure
-    fireEvent.click(screen.getByText("First Schema"));
+    await userEvent.click(screen.getByText("First Schema"));
     await delay(1);
     expect(screen.getByText("Table in First Schema")).toBeInTheDocument();
   });
@@ -312,44 +321,48 @@ describe("DataSelector", () => {
         combineDatabaseSchemaSteps
         triggerElement={<div />}
         databases={[MULTI_SCHEMA_DATABASE, SAMPLE_DATABASE]}
+        models={[]}
+        metrics={[]}
         metadata={metadata}
         isOpen={true}
       />,
     );
 
     // expand a multi-schema db to make sure it's schemas are loaded
-    fireEvent.click(screen.getByText("Multi-schema Database"));
+    await userEvent.click(screen.getByText("Multi-schema Database"));
     expect(screen.getByText("First Schema")).toBeInTheDocument();
     expect(screen.getByText("Second Schema")).toBeInTheDocument();
 
     // click into a single schema db, check for a table, and then return to db list
-    fireEvent.click(screen.getByText("Sample Database"));
+    await userEvent.click(screen.getByText("Sample Database"));
     await delay(1);
-    expect(screen.getByText("Orders")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Sample Database"));
+    expect(await screen.findByText("Orders")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Sample Database"));
 
     // expand multi-schema db
-    fireEvent.click(screen.getByText("Multi-schema Database"));
+    await userEvent.click(screen.getByText("Multi-schema Database"));
     // see schema appear and click to view tables for good measure
-    fireEvent.click(screen.getByText("First Schema"));
+    await userEvent.click(screen.getByText("First Schema"));
     await delay(1);
     expect(screen.getByText("Table in First Schema")).toBeInTheDocument();
   });
 
-  it("should collapse expanded list of db's schemas", () => {
+  it("should collapse expanded list of db's schemas", async () => {
     render(
       <DataSelector
         steps={["DATABASE", "SCHEMA", "TABLE"]}
         combineDatabaseSchemaSteps
         triggerElement={<div />}
         databases={[MULTI_SCHEMA_DATABASE, SAMPLE_DATABASE]}
+        models={[]}
+        metrics={[]}
         metadata={metadata}
         isOpen={true}
       />,
     );
 
     expect(screen.getByText("Sample Database")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Multi-schema Database"));
+    await userEvent.click(screen.getByText("Multi-schema Database"));
     // check that schemas are listed
     expect(screen.getByText("First Schema")).toBeInTheDocument();
     expect(screen.getByText("Second Schema")).toBeInTheDocument();
@@ -357,7 +370,7 @@ describe("DataSelector", () => {
     expect(getIcon("chevronup")).toBeInTheDocument();
 
     // collapse db
-    fireEvent.click(screen.getByText("Multi-schema Database"));
+    await userEvent.click(screen.getByText("Multi-schema Database"));
     // schemas are hidden, but databases are still shown
     expect(screen.queryByText("First Schema")).not.toBeInTheDocument();
     expect(screen.queryByText("Second Schema")).not.toBeInTheDocument();
@@ -373,6 +386,8 @@ describe("DataSelector", () => {
         steps={["SCHEMA", "TABLE", "FIELD"]}
         selectedDatabaseId={SAMPLE_DATABASE.id}
         databases={[SAMPLE_DATABASE]}
+        models={[]}
+        metrics={[]}
         triggerElement={<div />}
         metadata={metadata}
         isOpen={true}
@@ -380,22 +395,24 @@ describe("DataSelector", () => {
     );
     await delay(1);
 
-    expect(screen.getByText("Orders")).toBeInTheDocument();
+    expect(await screen.findByText("Orders")).toBeInTheDocument();
   });
 
-  it("should select schema in field picker", () => {
+  it("should select schema in field picker", async () => {
     render(
       <DataSelector
         steps={["SCHEMA", "TABLE", "FIELD"]}
         selectedDatabaseId={MULTI_SCHEMA_DATABASE.id}
         databases={[MULTI_SCHEMA_DATABASE]}
+        models={[]}
+        metrics={[]}
         triggerElement={<div />}
         metadata={metadata}
         isOpen={true}
       />,
     );
 
-    fireEvent.click(screen.getByText("First Schema"));
+    await userEvent.click(screen.getByText("First Schema"));
     expect(screen.getByText("Table in First Schema")).toBeInTheDocument();
   });
 
@@ -405,6 +422,8 @@ describe("DataSelector", () => {
         steps={["DATABASE"]}
         databases={[SAMPLE_DATABASE, MULTI_SCHEMA_DATABASE]}
         selectedDatabaseId={SAMPLE_DATABASE.id}
+        models={[]}
+        metrics={[]}
         triggerElement={<div />}
         metadata={metadata}
         isOpen={true}
@@ -418,11 +437,13 @@ describe("DataSelector", () => {
     ).toBeInTheDocument();
   });
 
-  it("should move between selected multi-schema dbs", () => {
+  it("should move between selected multi-schema dbs", async () => {
     render(
       <DataSelector
         steps={["DATABASE", "SCHEMA", "TABLE"]}
         databases={[MULTI_SCHEMA_DATABASE, OTHER_MULTI_SCHEMA_DATABASE]}
+        models={[]}
+        metrics={[]}
         combineDatabaseSchemaSteps
         triggerElement={<div />}
         metadata={metadata}
@@ -430,11 +451,11 @@ describe("DataSelector", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("Multi-schema Database"));
+    await userEvent.click(screen.getByText("Multi-schema Database"));
     expect(screen.getByText("First Schema")).toBeInTheDocument();
     expect(screen.getByText("Second Schema")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Other Multi-schema Database"));
+    await userEvent.click(screen.getByText("Other Multi-schema Database"));
     expect(screen.getByText("Other First Schema")).toBeInTheDocument();
     expect(screen.getByText("Other Second Schema")).toBeInTheDocument();
   });
@@ -444,6 +465,8 @@ describe("DataSelector", () => {
       <DataSelector
         steps={["DATABASE", "SCHEMA", "TABLE"]}
         databases={[SAMPLE_DATABASE, ANOTHER_DATABASE]}
+        models={[]}
+        metrics={[]}
         combineDatabaseSchemaSteps
         triggerElement={<div />}
         metadata={metadata}
@@ -452,25 +475,27 @@ describe("DataSelector", () => {
     );
 
     // click into the first db
-    fireEvent.click(screen.getByText("Sample Database"));
+    await userEvent.click(screen.getByText("Sample Database"));
     await delay(1);
     expect(screen.getByText("Orders")).toBeInTheDocument();
 
     // click to go back
-    fireEvent.click(screen.getByText("Sample Database"));
+    await userEvent.click(screen.getByText("Sample Database"));
     expect(screen.getByText("Sample Empty Database")).toBeInTheDocument();
 
     // click back in
-    fireEvent.click(screen.getByText("Sample Database"));
+    await userEvent.click(screen.getByText("Sample Database"));
     await delay(1);
     expect(screen.getByText("Orders")).toBeInTheDocument();
   });
 
-  it("shows an empty state without any databases", async () => {
+  it("shows an empty state without any databases", () => {
     render(
       <DataSelector
         steps={["DATABASE", "SCHEMA", "TABLE"]}
         databases={[]}
+        models={[]}
+        metrics={[]}
         triggerElement={<div />}
         isOpen={true}
       />,
@@ -487,6 +512,8 @@ describe("DataSelector", () => {
         steps={["BUCKET", "DATABASE", "SCHEMA", "TABLE"]}
         combineDatabaseSchemaSteps
         databases={[SAMPLE_DATABASE, SAVED_QUESTIONS_DATABASE]}
+        models={[]}
+        metrics={[]}
         hasNestedQueriesEnabled
         hasTableSearch
         loaded
@@ -500,12 +527,14 @@ describe("DataSelector", () => {
     expect(screen.getByText("Saved Questions")).toBeInTheDocument();
   });
 
-  it("should not show 'Saved Questions' option when there are no saved questions (metabase#29760)", async () => {
+  it("should not show 'Saved Questions' option when there are no saved questions (metabase#29760)", () => {
     renderWithProviders(
       <DataSelector
         steps={["BUCKET", "DATABASE", "SCHEMA", "TABLE"]}
         combineDatabaseSchemaSteps
         databases={[SAMPLE_DATABASE]}
+        models={[]}
+        metrics={[]}
         hasNestedQueriesEnabled
         hasTableSearch
         loaded

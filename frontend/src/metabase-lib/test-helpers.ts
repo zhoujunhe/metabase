@@ -5,13 +5,14 @@ import * as Lib from "metabase-lib";
 import type Metadata from "metabase-lib/v1/metadata/Metadata";
 import type {
   DatabaseId,
-  DatasetQuery,
   DatasetColumn,
+  DatasetQuery,
   RowValue,
+  TableId,
 } from "metabase-types/api";
 import {
-  createSampleDatabase,
   ORDERS_ID,
+  createSampleDatabase,
 } from "metabase-types/api/mocks/presets";
 
 const SAMPLE_DATABASE = createSampleDatabase();
@@ -55,18 +56,20 @@ export function createQuery({
 
 export const columnFinder =
   (query: Lib.Query, columns: Lib.ColumnMetadata[]) =>
-  (tableName: string, columnName: string): Lib.ColumnMetadata => {
+  (
+    tableName: string | undefined | null,
+    columnName: string,
+  ): Lib.ColumnMetadata => {
     const column = columns.find(column => {
       const displayInfo = Lib.displayInfo(query, 0, column);
 
       // for non-table columns - aggregations, custom columns
-      if (!displayInfo.table) {
-        return displayInfo?.name === columnName;
+      if (!displayInfo.table || tableName == null) {
+        return displayInfo.name === columnName;
       }
 
       return (
-        displayInfo?.table?.name === tableName &&
-        displayInfo?.name === columnName
+        displayInfo.table.name === tableName && displayInfo.name === columnName
       );
     });
 
@@ -156,13 +159,21 @@ function withTemporalBucketAndBinningStrategy(
   );
 }
 
-interface AggregationClauseOpts {
-  operatorName: string;
-}
+type AggregationClauseOpts =
+  | {
+      operatorName: string;
+      tableName?: never;
+      columnName?: never;
+    }
+  | {
+      operatorName: string;
+      tableName: string;
+      columnName: string;
+    };
 
 interface BreakoutClauseOpts {
   columnName: string;
-  tableName: string;
+  tableName?: string;
   temporalBucketName?: string;
   binningStrategyName?: string;
 }
@@ -214,6 +225,12 @@ export function createQueryWithClauses({
       -1,
       Lib.aggregationClause(
         findAggregationOperator(query, aggregation.operatorName),
+        aggregation.columnName && aggregation.tableName
+          ? columnFinder(query, Lib.visibleColumns(query, -1))(
+              aggregation.tableName,
+              aggregation.columnName,
+            )
+          : undefined,
       ),
     );
   }, queryWithExpressions);
@@ -253,6 +270,7 @@ export const queryDrillThru = (
   const drills = Lib.availableDrillThrus(
     query,
     stageIndex,
+    undefined,
     clickObject.column,
     clickObject.value,
     clickObject.data,
@@ -284,6 +302,47 @@ export const findDrillThru = (
 interface ColumnClickObjectOpts {
   column: DatasetColumn;
 }
+
+export const getJoinQueryHelpers = (
+  query: Lib.Query,
+  stageIndex: number,
+  tableId: TableId,
+) => {
+  const table = Lib.tableOrCardMetadata(query, tableId);
+
+  const findLHSColumn = columnFinder(
+    query,
+    Lib.joinConditionLHSColumns(query, stageIndex),
+  );
+  const findRHSColumn = columnFinder(
+    query,
+    Lib.joinConditionRHSColumns(query, stageIndex, table),
+  );
+
+  const defaultStrategy = Lib.availableJoinStrategies(query, stageIndex).find(
+    strategy => Lib.displayInfo(query, stageIndex, strategy).default,
+  );
+
+  if (!defaultStrategy) {
+    throw new Error("No default strategy found");
+  }
+
+  const defaultOperator = Lib.joinConditionOperators(query, stageIndex).find(
+    operator => Lib.displayInfo(query, stageIndex, operator).default,
+  );
+
+  if (!defaultOperator) {
+    throw new Error("No default operator found");
+  }
+
+  return {
+    table,
+    defaultStrategy,
+    defaultOperator,
+    findLHSColumn,
+    findRHSColumn,
+  };
+};
 
 export function createColumnClickObject({
   column,

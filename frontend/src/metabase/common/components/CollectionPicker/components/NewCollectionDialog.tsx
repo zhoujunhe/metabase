@@ -18,8 +18,9 @@ import type { CollectionPickerItem } from "../types";
 interface NewCollectionDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  parentCollectionId: CollectionId;
+  parentCollectionId: CollectionId | null;
   onNewCollection: (item: CollectionPickerItem) => void;
+  namespace?: "snippets";
 }
 
 export const NewCollectionDialog = ({
@@ -27,13 +28,15 @@ export const NewCollectionDialog = ({
   onClose,
   parentCollectionId,
   onNewCollection,
+  namespace,
 }: NewCollectionDialogProps) => {
   const [createCollection] = useCreateCollectionMutation();
 
   const onCreateNewCollection = async ({ name }: { name: string }) => {
     const newCollection = await createCollection({
       name,
-      parent_id: parentCollectionId === "root" ? "root" : parentCollectionId,
+      parent_id: parentCollectionId === "root" ? null : parentCollectionId,
+      namespace,
     }).unwrap();
 
     onNewCollection({ ...newCollection, model: "collection" });

@@ -8,7 +8,7 @@
    [metabase.email :as email]
    [metabase.email.messages :as messages]
    [metabase.models.setting :as setting]
-   [metabase.models.user :as user :refer [User]]
+   [metabase.models.user :refer [User]]
    [metabase.public-settings :as public-settings]
    [metabase.task :as task]
    [metabase.util.date-2 :as u.date]
@@ -73,5 +73,5 @@
                  (triggers/start-now)
                  (triggers/with-schedule
                    ;; run once a day
-                   (cron/cron-schedule "0 0 12 * * ? *")))]
+                  (cron/cron-schedule "0 0 12 * * ? *")))]
     (task/schedule-task! job trigger)))

@@ -36,7 +36,7 @@ export function clearWidgetValue() {
 }
 
 export function setWidgetStringFilter(value) {
-  popover().find("input").first().type(`${value}{enter}`);
+  popover().find("input").not("[type=hidden]").first().type(`${value}{enter}`);
 }
 
 /**
@@ -82,8 +82,8 @@ export function applyFilterByType(
  *
  * @param {string} value
  */
-export function addDefaultStringFilter(value) {
-  enterDefaultValue(value, "Add filter");
+export function addDefaultStringFilter(value, buttonLabel = "Update filter") {
+  enterDefaultValue(value, buttonLabel);
 }
 
 // FIELD FILTER NUMBER FILTERS
@@ -108,10 +108,13 @@ export function addWidgetNumberFilter(
  * @param {array|string} value
  * @return {function}
  */
-export function addDefaultNumberFilter(value) {
-  return isBetweenFilter(value)
-    ? addBetweenFilter(value)
-    : enterDefaultValue(value);
+export function addDefaultNumberFilter(value, buttonLabel = "Add filter") {
+  if (isBetweenFilter(value)) {
+    cy.findByText("Enter a default value…").click();
+    addBetweenFilter(value, buttonLabel);
+  } else {
+    enterDefaultValue(value, buttonLabel);
+  }
 }
 
 // UI PATTERNS
@@ -180,7 +183,9 @@ function addSimpleNumberFilter(value, buttonLabel = "Add filter") {
  */
 function enterDefaultValue(value, buttonLabel = "Add filter") {
   cy.findByText("Enter a default value…").click();
-  cy.findByPlaceholderText("Enter a default value…").type(`${value}{enter}`);
+  cy.findByPlaceholderText("Enter a default value…")
+    .type(`${value}{enter}`)
+    .blur();
   cy.button(buttonLabel).click();
 }
 
@@ -188,7 +193,11 @@ function enterDefaultValue(value, buttonLabel = "Add filter") {
  * @param {string} searchTerm
  * @param {string} result
  */
-export function pickDefaultValue(searchTerm, result) {
+export function pickDefaultValue(
+  searchTerm,
+  result,
+  buttonLabel = "Add filter",
+) {
   cy.findByText("Enter a default value…").click();
   cy.findByPlaceholderText("Enter a default value…").type(searchTerm);
 
@@ -200,9 +209,9 @@ export function pickDefaultValue(searchTerm, result) {
   // is to make sure the string is "visible" before acting on it.
   // This seems to help with the flakiness.
   //
-  cy.findByTestId(`${result}-filter-value`).should("be.visible").click();
+  cy.findByLabelText(result).should("be.visible").click();
 
-  cy.button("Add filter").click();
+  cy.button(buttonLabel).click();
 }
 
 /**

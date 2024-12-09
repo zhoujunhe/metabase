@@ -1,7 +1,6 @@
 import styled from "@emotion/styled";
 
 import _LoadingSpinner from "metabase/components/LoadingSpinner";
-import { color } from "metabase/lib/colors";
 import { isReducedMotionPreferred } from "metabase/lib/dom";
 
 const TRANSITION_DURATION = () => (isReducedMotionPreferred() ? "0" : "0.25s");
@@ -30,7 +29,7 @@ export const LoadingSpinner = styled(_LoadingSpinner)`
   flex-grow: 1;
   align-self: center;
   justify-content: center;
-  color: ${color("brand")};
+  color: var(--mb-color-brand);
 `;
 
 LoadingSpinner.defaultProps = {
@@ -55,7 +54,8 @@ export const Fade = styled.div<{ visible?: boolean }>`
 export const FadeAndSlide = styled.div<{ visible?: boolean }>`
   position: absolute;
   width: 100%;
-  transition: opacity ${TRANSITION_DURATION} linear,
+  transition:
+    opacity ${TRANSITION_DURATION} linear,
     transform ${TRANSITION_DURATION} linear;
   opacity: ${({ visible }) => (visible ? "1" : "0")};
   transform: ${({ visible }) =>
@@ -66,7 +66,7 @@ export const Li = styled.li`
   padding: 0.3em 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-bottom: 1px solid ${color("border")};
+  border-bottom: 1px solid var(--mb-color-border);
 
   &:last-child {
     border-bottom: none;

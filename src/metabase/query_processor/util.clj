@@ -3,15 +3,17 @@
   (:require
    [buddy.core.codecs :as codecs]
    [buddy.core.hash :as buddy-hash]
-   [cheshire.core :as json]
    [clojure.string :as str]
    [clojure.walk :as walk]
    [medley.core :as m]
    [metabase.driver :as driver]
    [metabase.legacy-mbql.normalize :as mbql.normalize]
    [metabase.lib.convert :as lib.convert]
+   [metabase.lib.schema.expression :as lib.schema.expression]
+   [metabase.lib.schema.util :as lib.schema.util]
    [metabase.query-processor.schema :as qp.schema]
    [metabase.util :as u]
+   [metabase.util.json :as json]
    [metabase.util.malli :as mu]))
 
 (set! *warn-on-reflection* true)
@@ -30,7 +32,7 @@
    can access the default value."
   [{{:keys [executed-by query-hash], :as _info} :info, query-type :type}]
   (str "Metabase" (when executed-by
-                    (assert (instance? (Class/forName "[B") query-hash))
+                    (assert (bytes? query-hash) "If info includes executed-by it should also include query-hash")
                     (format ":: userID: %s queryType: %s queryHash: %s"
                             executed-by
                             (case (keyword query-type)
@@ -58,7 +60,6 @@
   [_ query]
   (default-query->remark query))
 
-
 ;;; ------------------------------------------------- Normalization --------------------------------------------------
 
 ;; TODO - this has been moved to `metabase.legacy-mbql.util`; use that implementation instead.
@@ -70,7 +71,6 @@
       u/lower-case-en
       (str/replace #"_" "-")
       keyword))
-
 
 ;;; ---------------------------------------------------- Hashing -----------------------------------------------------
 
@@ -86,18 +86,7 @@
        x))
    x))
 
-(defn- remove-lib-uuids
-  "Two queries should be the same even if they have different :lib/uuids, because they might have both been converted
-  from the same legacy query."
-  [x]
-  (walk/postwalk
-   (fn [x]
-     (if (map? x)
-       (dissoc x :lib/uuid)
-       x))
-   x))
-
-(mu/defn ^:private select-keys-for-hashing
+(mu/defn- select-keys-for-hashing
   "Return `query` with only the keys relevant to hashing kept.
   (This is done so irrelevant info or options that don't affect query results doesn't result in the same query
   producing different hashes.)"
@@ -106,7 +95,7 @@
     (cond-> query
       (empty? constraints) (dissoc :constraints)
       (empty? parameters)  (dissoc :parameters)
-      true                 remove-lib-uuids
+      true                 lib.schema.util/remove-lib-uuids
       true                 walk-query-sort-maps)))
 
 (mu/defn query-hash :- bytes?
@@ -114,15 +103,18 @@
   ^bytes [query :- [:maybe :map]]
   ;; convert to pMBQL first if this is a legacy query.
   (let [query (try
-                (cond-> query
-                  (#{"query" "native"} (:type query)) (#(lib.convert/->pMBQL (mbql.normalize/normalize %)))
-                  (#{:query :native} (:type query))   lib.convert/->pMBQL)
+                ;; Expression type check supression is necessary because coerced fields in `query` may not have
+                ;; `:effective-type` populated. That's the case during call to this function in
+                ;; `process-userland-query-middleware` that occurs before normalization.
+                (binding [lib.schema.expression/*suppress-expression-type-check?* true]
+                  (cond-> query
+                    (#{"query" "native"} (:type query)) (#(lib.convert/->pMBQL (mbql.normalize/normalize %)))
+                    (#{:query :native} (:type query))   lib.convert/->pMBQL))
                 (catch Throwable e
                   (throw (ex-info "Error hashing query. Is this a valid query?"
                                   {:query query}
                                   e))))]
-    (buddy-hash/sha3-256 (json/generate-string (select-keys-for-hashing query)))))
-
+    (buddy-hash/sha3-256 (json/encode (select-keys-for-hashing query)))))
 
 ;;; --------------------------------------------- Query Source Card IDs ----------------------------------------------
 
@@ -149,7 +141,7 @@
 
 (defn- field-normalizer
   [field]
-  (let [[type id-or-name options ] (mbql.normalize/normalize-tokens field)]
+  (let [[type id-or-name options] (mbql.normalize/normalize-tokens field)]
     [type id-or-name (select-keys options field-options-for-identification)]))
 
 (defn field->field-info
@@ -158,19 +150,19 @@
   (let [[_ttype id-or-name options :as field] (field-normalizer field)]
     (or
       ;; try match field_ref first
-      (first (filter (fn [field-info]
-                       (= field
-                          (-> field-info
-                              :field_ref
-                              field-normalizer)))
-                     result-metadata))
+     (first (filter (fn [field-info]
+                      (= field
+                         (-> field-info
+                             :field_ref
+                             field-normalizer)))
+                    result-metadata))
       ;; if not match name and base type for aggregation or field with string id
-      (first (filter (fn [field-info]
-                       (and (= (:name field-info)
-                               id-or-name)
-                            (= (:base-type options)
-                               (:base_type field-info))))
-                     result-metadata)))))
+     (first (filter (fn [field-info]
+                      (and (= (:name field-info)
+                              id-or-name)
+                           (= (:base-type options)
+                              (:base_type field-info))))
+                    result-metadata)))))
 
 (def preserved-keys
   "Keys that can survive merging metadata from the database onto metadata computed from the query. When merging
@@ -188,10 +180,10 @@
   the metadata from a run from the query, and `pre-existing` should be the metadata from the database we wish to
   ensure survives."
   [fresh pre-existing]
-  (let [by-key (m/index-by (comp field-ref->key :field_ref) pre-existing)]
-    (for [{:keys [field_ref source] :as col} fresh]
+  (let [by-name (m/index-by :name pre-existing)]
+    (for [{:keys [source] :as col} fresh]
       (if-let [existing (and (not= :aggregation source)
-                             (get by-key (field-ref->key field_ref)))]
+                             (get by-name (:name col)))]
         (merge col (select-keys existing preserved-keys))
         col))))
 

@@ -23,7 +23,7 @@ If you're just using Metabase for personal use and want to keep your application
 1. Navigate to your Metabase directory.
 2. If your Metabase is running, stop the Metabase process. You can either close the terminal or kill the process with CTRL-C. If you are running the process as a service, then stop the service.
 3. Copy the application database file (called `metabase.db.mv.db`) and keep that copy somewhere safe. That's it.
-4. Restart Metabase: `java -jar metabase.jar` or start the service again.
+4. Restart Metabase: `java --add-opens java.base/java.nio=ALL-UNNAMED -jar metabase.jar` or start the service again.
 
 ### If you're running the Metabase Docker image
 
@@ -43,8 +43,8 @@ Amazon has its own best practices on how to backup and restore RDS databases, so
 
 Instructions can be found in the [Amazon RDS User Guide](http://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.html).
 
-## Self-hosted PostgreSQL or MySQL database
+## Self-hosted PostgreSQL database
 
-If you're hosting your own PostgreSQL or MySQL/MariaDB database, simply follow the same instructions you would use for making any normal database backup. For example, if you're using PostgreSQL for your application database, you should follow PostgreSQL's instructions for [backing up your database](https://www.postgresql.org/docs/current/backup.html).
+If you're hosting your own PostgreSQL database, simply follow PostgreSQL's instructions for [backing up your database](https://www.postgresql.org/docs/current/backup.html).
 
 As long as you have a dump of the Metabase database, you should be good to go.

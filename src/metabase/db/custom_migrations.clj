@@ -8,7 +8,6 @@
 
    If you need to use code from elsewhere, consider copying it into this namespace to minimize risk of the code changing behaviour."
   (:require
-   [cheshire.core :as json]
    [clojure.core.match :refer [match]]
    [clojure.edn :as edn]
    [clojure.java.io :as io]
@@ -22,15 +21,18 @@
    [medley.core :as m]
    [metabase.config :as config]
    [metabase.db.connection :as mdb.connection]
-   [metabase.models.interface :as mi]
+   [metabase.db.custom-migrations.metrics-v2 :as metrics-v2]
    [metabase.plugins.classloader :as classloader]
    [metabase.util.date-2 :as u.date]
+   [metabase.util.encryption :as encryption]
    [metabase.util.honey-sql-2 :as h2x]
+   [metabase.util.json :as json]
    [metabase.util.log :as log]
    [toucan2.core :as t2]
    [toucan2.execute :as t2.execute])
   (:import
    (java.util Locale)
+   (javax.sql DataSource)
    (liquibase Scope)
    (liquibase.change Change)
    (liquibase.change.custom CustomTaskChange CustomTaskRollback)
@@ -104,6 +106,39 @@
   ^String [s]
   (when s
     (.toLowerCase (str s) Locale/US)))
+
+(defn json-in
+  "Default in function for columns given a Toucan type `:json`. Serializes object as JSON."
+  [obj]
+  (if (string? obj)
+    obj
+    (json/encode obj)))
+
+(defn- json-out [s keywordize-keys?]
+  (if (string? s)
+    (try
+      (json/decode s keywordize-keys?)
+      (catch Throwable e
+        (log/error e "Error parsing JSON")
+        s))
+    s))
+
+(def ^:private encrypted-json-in
+  "Should mirror [[metabase.models.interface/encrypted-json-in]]"
+  (comp encryption/maybe-encrypt json-in))
+
+(defn- encrypted-json-out
+  "Should mirror [[metabase.models.interface/encrypted-json-out]]"
+  [v]
+  (let [decrypted (encryption/maybe-decrypt v)]
+    (try
+      (json/decode+kw decrypted)
+      (catch Throwable e
+        (if (or (encryption/possibly-encrypted-string? decrypted)
+                (encryption/possibly-encrypted-bytes? decrypted))
+          (log/error e "Could not decrypt encrypted field! Have you forgot to set MB_ENCRYPTION_SECRET_KEY?")
+          (log/error e "Error parsing JSON"))  ; same message as in `json-out`
+        v))))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                                  MIGRATIONS                                                    |
@@ -197,7 +232,7 @@
                                   ;; so we need to remove databases that have it set to false
                                   (filter (fn [{:keys [details]}]
                                             (when details
-                                              (false? (:json-unfolding (json/parse-string details true))))))
+                                              (false? (:json-unfolding (json/decode+kw details))))))
                                   (map :id))
         field-ids-to-update  (->> (t2/query {:select [:f.id]
                                              :from   [[:metabase_field :f]]
@@ -231,10 +266,10 @@
     (m/update-existing viz-settings "column_settings" update-keys
                        (fn [k]
                          (-> k
-                             json/parse-string
+                             json/decode
                              vec
                              old-to-new
-                             json/generate-string)))))
+                             json/encode)))))
 
 (define-migration MigrateLegacyColumnSettingsFieldRefs
   (let [update! (fn [{:keys [id visualization_settings]}]
@@ -242,11 +277,11 @@
                                  :set    {:visualization_settings visualization_settings}
                                  :where  [:= :id id]}))]
     (run! update! (eduction (keep (fn [{:keys [id visualization_settings]}]
-                                    (let [parsed  (json/parse-string visualization_settings)
+                                    (let [parsed  (json/decode visualization_settings)
                                           updated (update-legacy-field-refs-in-viz-settings parsed)]
                                       (when (not= parsed updated)
                                         {:id                     id
-                                         :visualization_settings (json/generate-string updated)}))))
+                                         :visualization_settings (json/encode updated)}))))
                             (t2/reducible-query {:select [:id :visualization_settings]
                                                  :from   [:report_card]
                                                  :where  [:or
@@ -273,9 +308,9 @@
                                       ["field" y {:source-field x}])
                        _ ref))]
     (->> result-metadata
-         json/parse-string
+         json/decode
          (map #(m/update-existing % "field_ref" old-to-new))
-         json/generate-string)))
+         json/encode)))
 
 (define-migration MigrateLegacyResultMetadataFieldRefs
   (let [update! (fn [{:keys [id result_metadata]}]
@@ -306,33 +341,33 @@
           (fn [column_settings]
             (into {}
                   (map (fn [[k v]]
-                         (match (vec (json/parse-string k))
+                         (match (vec (json/decode k))
                            ["ref" ["field" id opts]]
-                           [(json/generate-string ["ref" (remove-opts ["field" id opts] "join-alias")]) v]
+                           [(json/encode ["ref" (remove-opts ["field" id opts] "join-alias")]) v]
                            _ [k v]))
                        column_settings)))))
 
 (defn- add-join-alias-to-column-settings-refs [{:keys [visualization_settings result_metadata]}]
-  (let [result_metadata        (json/parse-string result_metadata)
-        visualization_settings (json/parse-string visualization_settings)
+  (let [result_metadata        (json/decode result_metadata)
+        visualization_settings (json/decode visualization_settings)
         column-key->metadata   (group-by #(-> (get % "field_ref")
                                               ;; like the FE's `getColumnKey` function, remove "join-alias",
                                               ;; "temporal-unit" and "binning" options from the field_ref
                                               (remove-opts "join-alias" "temporal-unit" "binning"))
                                          result_metadata)]
-    (json/generate-string
+    (json/encode
      (update visualization_settings "column_settings"
              (fn [column_settings]
                (into {}
                      (mapcat (fn [[k v]]
-                               (match (vec (json/parse-string k))
+                               (match (vec (json/decode k))
                                  ["ref" ["field" id opts]]
                                  (for [column-metadata (column-key->metadata ["field" id opts])
                                        ;; remove "temporal-unit" and "binning" options from the matching field refs,
                                        ;; but not "join-alias" as before.
                                        :let [field-ref (-> (get column-metadata "field_ref")
                                                            (remove-opts "temporal-unit" "binning"))]]
-                                   [(json/generate-string ["ref" field-ref]) v])
+                                   [(json/encode ["ref" field-ref]) v])
                                  _ [[k v]]))
                              column_settings)))))))
 
@@ -356,9 +391,9 @@
                                                     [:like :result_metadata "%join-alias%"]]})))
   (let [update! (fn [{:keys [id visualization_settings]}]
                   (let [updated (-> visualization_settings
-                                    json/parse-string
+                                    json/decode
                                     remove-join-alias-from-column-settings-field-refs
-                                    json/generate-string)]
+                                    json/encode)]
                     (when (not= visualization_settings updated)
                       (t2/query-one {:update :report_card
                                      :set    {:visualization_settings updated}
@@ -427,8 +462,8 @@
        (dissoc card :sizeX :sizeY) ;; remove those legacy keys if exists
        {:size_x (- (+ size_x
                       (quot (+ col size_x 1) 3))
-                   (quot (+ col 1) 3))
-        :col    (+ col (quot (+ col 1) 3))
+                   (quot (inc col) 3))
+        :col    (+ col (quot (inc col) 3))
         :size_y size_y
         :row    row})
       (catch Throwable _
@@ -448,8 +483,8 @@
                   (- size_x
                      (-
                       (quot (+ size_x col 1) 4)
-                      (quot (+ col 1) 4))))
-        :col    (- col (quot (+ col 1) 4))
+                      (quot (inc col) 4))))
+        :col    (- col (quot (inc col) 4))
         :size_y size_y
         :row    row})
       (catch Throwable _
@@ -457,19 +492,19 @@
 
 (define-reversible-migration RevisionDashboardMigrateGridFrom18To24
   (let [migrate! (fn [revision]
-                   (let [object (json/parse-string (:object revision) keyword)]
+                   (let [object (json/decode+kw (:object revision))]
                      (when (seq (:cards object))
                        (t2/query {:update :revision
-                                  :set {:object (json/generate-string (update object :cards #(map migrate-dashboard-grid-from-18-to-24 %)))}
+                                  :set {:object (json/encode (update object :cards #(map migrate-dashboard-grid-from-18-to-24 %)))}
                                   :where [:= :id (:id revision)]}))))]
     (run! migrate! (t2/reducible-query {:select [:*]
                                         :from   [:revision]
                                         :where  [:= :model "Dashboard"]})))
   (let [roll-back! (fn [revision]
-                     (let [object (json/parse-string (:object revision) keyword)]
+                     (let [object (json/decode+kw (:object revision))]
                        (when (seq (:cards object))
                          (t2/query {:update :revision
-                                    :set {:object (json/generate-string (update object :cards #(map migrate-dashboard-grid-from-24-to-18 %)))}
+                                    :set {:object (json/encode (update object :cards #(map migrate-dashboard-grid-from-24-to-18 %)))}
                                     :where [:= :id (:id revision)]}))))]
     (run! roll-back! (t2/reducible-query {:select [:*]
                                           :from   [:revision]
@@ -477,11 +512,11 @@
 
 (define-migration RevisionMigrateLegacyColumnSettingsFieldRefs
   (let [update-one! (fn [{:keys [id object]}]
-                      (let [object  (json/parse-string object)
+                      (let [object  (json/decode object)
                             updated (update object "visualization_settings" update-legacy-field-refs-in-viz-settings)]
                         (when (not= updated object)
                           (t2/query-one {:update :revision
-                                         :set    {:object (json/generate-string updated)}
+                                         :set    {:object (json/encode updated)}
                                          :where  [:= :id id]}))))]
     (run! update-one! (t2/reducible-query {:select [:id :object]
                                            :from   [:revision]
@@ -512,10 +547,10 @@
                       (fn [column_settings]
                         (let [copies-with-join-alias (into {}
                                                            (mapcat (fn [[k v]]
-                                                                     (match (vec (json/parse-string k))
+                                                                     (match (vec (json/decode k))
                                                                        ["ref" ["field" id opts]]
                                                                        (for [alias join-aliases]
-                                                                         [(json/generate-string ["ref" ["field" id (assoc opts "join-alias" alias)]]) v])
+                                                                         [(json/encode ["ref" ["field" id (assoc opts "join-alias" alias)]]) v])
                                                                        _ '()))
                                                                    column_settings))]
                           ;; existing column settings should take precedence over the copies in case there is a conflict
@@ -523,12 +558,12 @@
               card)))
         update-one!
         (fn [revision]
-          (let [card (json/parse-string (:object revision))]
+          (let [card (json/decode (:object revision))]
             (when (not= (get card "query_type") "native") ; native queries won't have join aliases, so we can exclude them straight away
               (let [updated (add-join-aliases card)]
                 (when (not= updated (get "visualization_settings" card))
                   (t2/query {:update :revision
-                             :set {:object (json/generate-string (assoc card "visualization_settings" updated))}
+                             :set {:object (json/encode (assoc card "visualization_settings" updated))}
                              :where [:= :id (:id revision)]}))))))]
     (run! update-one! (t2/reducible-query {:select [:*]
                                            :from   [:revision]
@@ -543,13 +578,13 @@
   ;; Reverse migration
   (let [update-one!
         (fn [revision]
-          (let [card (json/parse-string (:object revision))]
+          (let [card (json/decode (:object revision))]
             (when (not= (get card "query_type") "native")
               (let [viz-settings (get card "visualization_settings")
                     updated      (remove-join-alias-from-column-settings-field-refs viz-settings)]
                 (when (not= updated viz-settings)
                   (t2/query {:update :revision
-                             :set {:object (json/generate-string (assoc card "visualization_settings" updated))}
+                             :set {:object (json/encode (assoc card "visualization_settings" updated))}
                              :where [:= :id (:id revision)]}))))))]
     (run! update-one! (t2/reducible-query {:select [:*]
                                            :from   [:revision]
@@ -562,11 +597,11 @@
 
 (define-migration MigrateLegacyDashboardCardColumnSettingsFieldRefs
   (let [update-one! (fn [{:keys [id visualization_settings]}]
-                      (let [parsed  (json/parse-string visualization_settings)
+                      (let [parsed  (json/decode visualization_settings)
                             updated (update-legacy-field-refs-in-viz-settings parsed)]
                         (when (not= parsed updated)
                           (t2/query-one {:update :report_dashboardcard
-                                         :set    {:visualization_settings (json/generate-string updated)}
+                                         :set    {:visualization_settings (json/encode updated)}
                                          :where  [:= :id id]}))))]
     (run! update-one! (t2/reducible-query
                        {:select [:id :visualization_settings]
@@ -604,11 +639,11 @@
                                                      [:like :dc.visualization_settings "%ref\\\\\\\",[\\\\\\\"field%"]]
                                                     [:like :c.result_metadata "%join-alias%"]]})))
   (let [update! (fn [{:keys [id visualization_settings]}]
-                  (let [parsed  (json/parse-string visualization_settings)
+                  (let [parsed  (json/decode visualization_settings)
                         updated (remove-join-alias-from-column-settings-field-refs parsed)]
                     (when (not= parsed updated)
                       (t2/query-one {:update :report_dashboardcard
-                                     :set    {:visualization_settings (json/generate-string updated)}
+                                     :set    {:visualization_settings (json/encode updated)}
                                      :where  [:= :id id]}))))]
     (run! update! (t2/reducible-query {:select [:dc.id :dc.visualization_settings]
                                        :from   [[:report_card :c]]
@@ -624,12 +659,12 @@
 
 (define-migration RevisionMigrateLegacyDashboardCardColumnSettingsFieldRefs
   (let [update-one! (fn [{:keys [id object]}]
-                      (let [object  (json/parse-string object)
+                      (let [object  (json/decode object)
                             updated (update object "cards" (fn [cards]
                                                              (map #(update % "visualization_settings" update-legacy-field-refs-in-viz-settings) cards)))]
                         (when (not= updated object)
                           (t2/query-one {:update :revision
-                                         :set    {:object (json/generate-string updated)}
+                                         :set    {:object (json/encode updated)}
                                          :where  [:= :id id]}))))]
     (run! update-one! (t2/reducible-query {:select [:id :object]
                                            :from   [:revision]
@@ -658,7 +693,7 @@
                                                                    [:= :id (get dashcard "card_id")]
                                                                    ;; only include cards with joins
                                                                    [:like :dataset_query "%joins%"]]})]
-            (if-let [join-aliases (->> (get-in (json/parse-string dataset_query) ["query" "joins"])
+            (if-let [join-aliases (->> (get-in (json/decode dataset_query) ["query" "joins"])
                                        (map #(get % "alias"))
                                        set
                                        seq)]
@@ -666,10 +701,10 @@
                                     (fn [column_settings]
                                       (let [copies-with-join-alias (into {}
                                                                          (mapcat (fn [[k v]]
-                                                                                   (match (vec (json/parse-string k))
+                                                                                   (match (vec (json/decode k))
                                                                                      ["ref" ["field" id opts]]
                                                                                      (for [alias join-aliases]
-                                                                                       [(json/generate-string ["ref" ["field" id (assoc opts "join-alias" alias)]]) v])
+                                                                                       [(json/encode ["ref" ["field" id (assoc opts "join-alias" alias)]]) v])
                                                                                      _ '()))
                                                                                  column_settings))]
                                         ;; existing column settings should take precedence over the copies in case there is a conflict
@@ -678,12 +713,12 @@
             dashcard))
         update-one!
         (fn [revision]
-          (let [dashboard (json/parse-string (:object revision))
+          (let [dashboard (json/decode (:object revision))
                 updated   (update dashboard "cards" (fn [dashcards]
                                                       (map add-join-aliases dashcards)))]
             (when (not= updated dashboard)
               (t2/query {:update :revision
-                         :set    {:object (json/generate-string updated)}
+                         :set    {:object (json/encode updated)}
                          :where  [:= :id (:id revision)]}))))]
     (run! update-one! (t2/reducible-query {:select [:*]
                                            :from   [:revision]
@@ -696,14 +731,14 @@
   ;; Reverse migration
   (let [update-one!
         (fn [revision]
-          (let [dashboard (json/parse-string (:object revision))
+          (let [dashboard (json/decode (:object revision))
                 updated   (update dashboard "cards"
                                   (fn [dashcards]
                                     (map #(update % "visualization_settings" remove-join-alias-from-column-settings-field-refs)
                                          dashcards)))]
             (when (not= updated dashboard)
               (t2/query {:update :revision
-                         :set    {:object (json/generate-string updated)}
+                         :set    {:object (json/encode updated)}
                          :where  [:= :id (:id revision)]}))))]
     (run! update-one! (t2/reducible-query {:select [:*]
                                            :from   [:revision]
@@ -716,9 +751,9 @@
 
 (define-reversible-migration MigrateDatabaseOptionsToSettings
   (let [update-one! (fn [{:keys [id settings options]}]
-                      (let [settings     (mi/encrypted-json-out settings)
-                            options      (mi/json-out-with-keywordization options)
-                            new-settings (mi/encrypted-json-in (merge settings options))]
+                      (let [settings     (encrypted-json-out settings)
+                            options      (json-out options true)
+                            new-settings (encrypted-json-in (merge settings options))]
                         (t2/query {:update :metabase_database
                                    :set    {:settings new-settings}
                                    :where  [:= :id id]})))]
@@ -729,12 +764,12 @@
                                                     [:not= :options "{}"]
                                                     [:not= :options nil]]})))
   (let [rollback-one! (fn [{:keys [id settings options]}]
-                        (let [settings (mi/encrypted-json-out settings)
-                              options  (mi/json-out-with-keywordization options)]
+                        (let [settings (encrypted-json-out settings)
+                              options  (json-out options true)]
                           (when (some? (:persist-models-enabled settings))
                             (t2/query {:update :metabase_database
-                                       :set    {:options (json/generate-string (select-keys settings [:persist-models-enabled]))
-                                                :settings (mi/encrypted-json-in (dissoc settings :persist-models-enabled))}
+                                       :set    {:options (json/encode (select-keys settings [:persist-models-enabled]))
+                                                :settings (encrypted-json-in (dissoc settings :persist-models-enabled))}
                                        :where  [:= :id id]}))))]
     (run! rollback-one! (t2/reducible-query {:select [:id :settings :options]
                                              :from   [:metabase_database]}))))
@@ -828,7 +863,7 @@
 
 (defn- parse-to-json [& ks]
   (fn [x]
-    (reduce #(update %1 %2 json/parse-string)
+    (reduce #(update %1 %2 json/decode)
             x
             ks)))
 
@@ -845,7 +880,7 @@
              (completing
               (fn [_ {:keys [id visualization_settings]}]
                 (t2/update! :report_dashboardcard id
-                            {:visualization_settings (json/generate-string visualization_settings)})))
+                            {:visualization_settings (json/encode visualization_settings)})))
              nil
              ;; flamber wrote a manual postgres migration that this faithfully recreates: see
              ;; https://github.com/metabase/metabase/issues/15014
@@ -880,7 +915,7 @@
   [mapping-setting-key]
   (let [admin-group-id (t2/select-one-pk :permissions_group :name "Administrators")
         mapping        (try
-                         (json/parse-string (raw-setting mapping-setting-key))
+                         (json/decode (raw-setting mapping-setting-key))
                          (catch Exception _e
                            {}))]
     (when-not (empty? mapping)
@@ -889,7 +924,7 @@
                    (->> mapping
                         (map (fn [[k v]] [k (filter #(not= admin-group-id %) v)]))
                         (into {})
-                        json/generate-string)}))))
+                        json/encode)}))))
 
 (defn- migrate-remove-admin-from-group-mapping-if-needed
   {:author "qnkhuat"
@@ -997,8 +1032,23 @@
   (unify-time-column-type! :up)
   (unify-time-column-type! :down))
 
+(defn- mariadb?
+  [ds]
+  (with-open [conn (.getConnection ^DataSource ds)]
+    (= "MariaDB" (.getDatabaseProductName (.getMetaData conn)))))
+
+(defn- db-type*
+  "Like [[metabase.connection/db-type]] but distinguishes between mysql and mariadb."
+  []
+  (let [db-type (mdb.connection/db-type)]
+    (if (= db-type :mysql)
+      (if (mariadb? (mdb.connection/data-source))
+        :mariadb
+        :mysql)
+      db-type)))
+
 (define-reversible-migration CardRevisionAddType
-  (case (mdb.connection/db-type)
+  (case (db-type*)
     :postgres
     ;; postgres doesn't allow `\u0000` in text when converting to jsonb, so we need to remove them before we can
     ;; parse the json. We use negative look behind to avoid matching `\\u0000` (metabase#40835)
@@ -1021,19 +1071,23 @@
                        ELSE 'question'
                    END)
                WHERE model = 'Card' AND JSON_UNQUOTE(JSON_EXTRACT(object, '$.dataset')) IS NOT NULL;;"])
-    :h2
+
+    ;; json_extract on mariadb throws an error if the json is more than 32 levels nested. See #41924
+    ;; So we do this in clojure land for mariadb
+    (:h2 :mariadb)
     (let [migrate! (fn [revision]
-                     (let [object     (json/parse-string (:object revision) keyword)
+                     (let [object     (json/decode+kw (:object revision))
                            new-object (assoc object :type (if (:dataset object)
                                                             "model"
                                                             "question"))]
                        (t2/query {:update :revision
-                                  :set    {:object (json/generate-string new-object)}
+                                  :set    {:object (json/encode new-object)}
                                   :where  [:= :id (:id revision)]})))]
       (run! migrate! (t2/reducible-query {:select [:*]
                                           :from   [:revision]
                                           :where  [:= :model "Card"]}))))
-  (case (mdb.connection/db-type)
+
+  (case (db-type*)
     :postgres
     (t2/query ["UPDATE revision
                 SET object = jsonb_set(
@@ -1061,14 +1115,14 @@
                  SET object = JSON_REMOVE(object, '$.type')
                  WHERE model = 'Card' AND JSON_UNQUOTE(JSON_EXTRACT(object, '$.type')) IS NOT NULL;"]))
 
-    :h2
+    (:h2 :mariadb)
     (let [rollback! (fn [revision]
-                      (let [object     (json/parse-string (:object revision) keyword)
+                      (let [object     (json/decode+kw (:object revision))
                             new-object (-> object
                                            (assoc :dataset (= (:type object) "model"))
                                            (dissoc :type))]
                         (t2/query {:update :revision
-                                   :set    {:object (json/generate-string new-object)}
+                                   :set    {:object (json/encode new-object)}
                                    :where  [:= :id (:id revision)]})))]
       (run! rollback! (t2/reducible-query {:select [:*]
                                            :from   [:revision]
@@ -1080,7 +1134,7 @@
   ;; this migraiton to remove triggers for any existing DB that have this option on.
   ;; See #40715
   (when-let [;; find all dbs which are configured not to scan field values
-             dbs (seq (filter #(and (-> % :details (json/parse-string keyword) :let-user-control-scheduling)
+             dbs (seq (filter #(and (-> % :details encrypted-json-out :let-user-control-scheduling)
                                     (false? (:is_full_sync %)))
                               (t2/select :metabase_database)))]
     (classloader/the-classloader)
@@ -1160,29 +1214,36 @@
   true)
 
 (define-migration CreateSampleContent
+  ;; Does nothing. This is left in so we do not alter the liquibase migration history. See: [[CreateSampleContentV2]].
+  )
+
+(defn- replace-temporals [v]
+  (if (isa? (type v) java.time.temporal.Temporal)
+    :%now
+    v))
+
+(defn- table-name->rows [data table-name]
+  (->> (get data table-name)
+       ;; We sort the rows by id and remove them so that auto-incrementing ids are
+       ;; generated in the same order. We can't insert the ids directly in H2 without
+       ;; creating sequences for all the generated id columns.
+       (sort-by :id)
+       (map (fn [row] (-> row
+                          (update-vals replace-temporals)
+                          (dissoc :id))))))
+
+(define-migration CreateSampleContentV2
   ;; Adds sample content to a fresh install. Adds curate permissions to the collection for the 'All Users' group.
   (when *create-sample-content*
     (when (and (config/load-sample-content?)
                (not (config/config-bool :mb-enable-test-endpoints)) ; skip sample content for e2e tests to avoid coupling the tests to the contents
                (no-user?)
                (no-db?))
-      (let [table-name->raw-rows  (load-edn "sample-content.edn")
+      (let [table-name->raw-rows (load-edn "sample-content.edn")
             example-dashboard-id  1
-            example-collection-id 1
+            example-collection-id 2 ;; trash collection is 1
             expected-sample-db-id 1
-            replace-temporals     (fn [v]
-                                    (if (isa? (type v) java.time.temporal.Temporal)
-                                      :%now
-                                      v))
-            table-name->rows      (fn [table-name]
-                                    (->> (table-name->raw-rows table-name)
-                                         ;; We sort the rows by id and remove them so that auto-incrementing ids are
-                                         ;; generated in the same order. We can't insert the ids directly in H2 without
-                                         ;; creating sequences for all the generated id columns.
-                                         (sort-by :id)
-                                         (map (fn [row]
-                                                (dissoc (update-vals row replace-temporals) :id)))))
-            dbs                   (table-name->rows :metabase_database)
+            dbs                   (table-name->rows table-name->raw-rows :metabase_database)
             _                     (t2/query {:insert-into :metabase_database :values dbs})
             db-ids                (set (map :id (t2/query {:select :id :from :metabase_database})))]
         ;; If that did not succeed in creating the metabase_database rows we could be reusing a database that
@@ -1202,51 +1263,76 @@
                                   :dashboardcard_series
                                   :permissions_group
                                   :data_permissions]]
-                (when-let [values (seq (table-name->rows table-name))]
+                (when-let [values (seq (table-name->rows table-name->raw-rows table-name))]
                   (t2/query {:insert-into table-name :values values})))
               (let [group-id (:id (t2/query-one {:select :id :from :permissions_group :where [:= :name "All Users"]}))]
                 (t2/query {:insert-into :permissions
-                           :values      [{:object   (format "/collection/%s/" example-collection-id)
-                                          :group_id group-id}]}))
+                           :values      [{:object        (format "/collection/%s/" example-collection-id)
+                                          :group_id      group-id
+                                          :perm_type     "perms/collection-access"
+                                          :perm_value    "read-and-write"
+                                          :collection_id example-collection-id}]}))
               (t2/query {:insert-into :setting
                          :values      [{:key   "example-dashboard-id"
                                         :value (str example-dashboard-id)}]})))))))
 
 (comment
   ;; How to create `resources/sample-content.edn` used in `CreateSampleContent`
+  ;; We know this won't work for binning on a computed column, there may be other limitations as well.
   ;; -----------------------------------------------------------------------------
-  ;; Start a fresh metabase instance without the :ee alias so instance analytics stuff is not created.
+  ;; Check out a fresh metabase instance on the branch of the major version you're targeting,
+  ;; and without the :ee alias so instance analytics content is not created.
   ;; 1. create a collection with dashboards, or import one with (metabase.cmd/import "<path>")
   ;; 2. execute the following to spit out the collection to an EDN file:
-  (let [pretty-spit (fn [file-name data]
-                      (with-open [writer (io/writer file-name)]
-                        (binding [*out* writer]
-                          #_{:clj-kondo/ignore [:discouraged-var]}
-                          (pprint/pprint data))))
-        data (into {}
-                   (for [table-name [:collection
-                                     :metabase_database
-                                     :metabase_table
-                                     :metabase_field
-                                     :report_dashboard
-                                     :report_dashboardcard
-                                     :report_card
-                                     :parameter_card
-                                     :dashboard_tab
-                                     :dashboardcard_series
-                                     :data_permissions]
-                         :let [query (cond-> {:select [:*] :from table-name}
-                                       (= table-name :collection) (assoc :where [:and
-                                                                                 [:= :namespace nil] ; excludes the analytics namespace
-                                                                                 [:= :personal_owner_id nil]]))]]
-                     [table-name (sort-by :id (map #(into {} %) (t2/query query)))]))]
-    (pretty-spit "resources/sample-content.edn" data)))
-  ;; (make sure there's no other content in the file)
-  ;; 3. update the EDN file:
-  ;; - replace the database details and dbms_version with placeholders e.g. "{}" to make sure they are replaced
-  ;; - find-replace :creator_id 1, 2, etc with :creator_id 13371338 (the internal user ID)
-  ;; - replace metabase_version "<version>" with metabase_version nil
 
+  (defn- pretty-spit [file-name data]
+    (with-open [writer (io/writer file-name)]
+      (binding [*out* writer]
+        #_{:clj-kondo/ignore [:discouraged-var]}
+        (pprint/pprint data))))
+
+  (defn gather-sample-coll-edn-data []
+    (let [columns-to-remove [:view_count]]
+      (into {}
+            (for [table-name [:collection
+                              :metabase_database
+                              :metabase_table
+                              :metabase_field
+                              :report_dashboard
+                              :report_dashboardcard
+                              :report_card
+                              :parameter_card
+                              :dashboard_tab
+                              :dashboardcard_series
+                              :data_permissions]
+                  :let [query (cond-> {:select [:*] :from table-name}
+                                (= table-name :collection) (assoc :where [:and
+                                                                          ;; exclude the analytics namespace
+                                                                          [:= :namespace nil]
+                                                                          ;; exclude personal collections
+                                                                          [:= :personal_owner_id nil]]))]]
+              [table-name (->> (t2/query query)
+                               (map (fn [x] (into {} (apply dissoc x columns-to-remove))))
+                               (remove (fn [x] (and (= table-name :collection)
+                                                    (= (:type x)
+                                                       ;; avoid requiring `metabase.models.collection` in this
+                                                       ;; namespace to deter others using it in migrations
+                                                       #_{:clj-kondo/ignore [:unresolved-namespace]}
+                                                       metabase.models.collection/trash-collection-type))))
+                               (sort-by :id))]))))
+
+  (pretty-spit (gather-sample-coll-edn-data)
+               "resources/sample-content.edn"))
+;; (make sure there's no other content in the file)
+;; 3. update the EDN file:
+;; - add any columns that need removing to `columns-to-remove` above (use your common sense and list anything that
+;;   shouldn't be carried into new instances), and create the EDN file again
+;; - replace the database details and dbms_version with placeholders e.g. "{}" to make sure they are replaced
+;; - if you have created content manually, find-replace :creator_id <your user-id> with :creator_id 13371338 (the internal user ID)
+;; - replace metabase_version "<version>" with metabase_version nil
+;; - you'll likely need to update the sample collection's :is_sample attribute to be `true`
+
+;; -----------------------------------------------------------------------------
 
 ;; This was renamed to TruncateAuditTables, so we need to delete the old job & trigger
 (define-migration DeleteTruncateAuditLogTask
@@ -1263,6 +1349,454 @@
   (set-jdbc-backend-properties!)
   (let [scheduler (qs/initialize)]
     (qs/start scheduler)
-    (qs/delete-trigger scheduler (triggers/key "metabase.task.send-pulses.job"))
-    (qs/delete-job scheduler (jobs/key "metabase.task.send-pulses.trigger"))
+    (qs/delete-trigger scheduler (triggers/key "metabase.task.send-pulses.trigger"))
+    (qs/delete-job scheduler (jobs/key "metabase.task.send-pulses.job"))
     (qs/shutdown scheduler)))
+
+;; If someone upgraded to 50, then downgrade to 49, the send-pulse triggers will run into an error state due to
+;; jobclass not found. And when they migrate up to 50 again, these triggers will not be triggered because it's in
+;; an error state. See https://www.quartz-scheduler.org/api/1.8.6/org/quartz/Trigger.html#STATE_ERROR
+;; So we need to delete this on migrate down, so when they migrate up, the triggers will be recreated.
+(define-reversible-migration DeleteSendPulseTaskOnDowngrade
+  (log/info "No forward migration for DeleteSendPulseTaskOnDowngrade")
+  (do
+    (classloader/the-classloader)
+    (set-jdbc-backend-properties!)
+    (let [scheduler (qs/initialize)]
+      (qs/start scheduler)
+      (qs/delete-job scheduler (jobs/key "metabase.task.send-pulses.send-pulse.job"))
+      (qs/shutdown scheduler))))
+
+;; The InitSendPulseTriggers is a migration in disguise, it runs once per instance
+;; To make sure when someone migrate up -> migrate down -> migrate up again, this job is re-run
+;; on the second migrate up.
+(define-reversible-migration DeleteInitSendPulseTriggersOnDowngrade
+  (log/info "No forward migration for DeleteInitSendPulseTriggersOnDowngrade")
+  (do
+    (classloader/the-classloader)
+    (set-jdbc-backend-properties!)
+    (let [scheduler (qs/initialize)]
+      (qs/start scheduler)
+     ;; delete the job will also delete all of its triggers
+      (qs/delete-job scheduler (jobs/key "metabase.task.send-pulses.init-send-pulse-triggers.job"))
+      (qs/shutdown scheduler))))
+
+;; when card display is area or bar,
+;; 1. set the display key to :stackable.stack_display value OR leave it the same
+;; 2. when series settings exist, remove the diplay key from each map in the series_settings list
+
+(defn- area-bar-stacked-viz-migration
+  [{display :display viz :visualization_settings :as card}]
+  (if (and (#{:area :bar "area" "bar"} display)
+           (:stackable.stack_type viz))
+    (let [actual-display (or (:stackable.stack_display viz) display)
+          new-viz        (m/update-existing viz :series_settings update-vals (fn [m] (dissoc m :display)))]
+      (assoc card
+             :display actual-display
+             :visualization_settings new-viz))
+    card))
+
+(defn- combo-stacked-viz-migration
+  [{display :display viz :visualization_settings :as card}]
+  (if (#{:combo "combo"} display)
+    (let [{series-settings :series_settings} viz
+          series-displays                    (map :display (vals series-settings))
+          new-display                        (if (and (every? some? series-displays)
+                                                      (= 1 (count (distinct series-displays)))
+                                                      (#{:area :bar "area" "bar"} (first (distinct series-displays))))
+                                               (first series-displays)
+                                               :combo)]
+      (if (not (#{:combo "combo"} new-display))
+        ;; we've effectively converted a :combo chart into :area or :bar since every series is shown the same way
+        (area-bar-stacked-viz-migration (assoc card :display new-display))
+        ;; Not all series are the same, so we keep it combo and remove the :stackable.stack_type
+        (let [new-viz (dissoc viz :stackable.stack_type)]
+          (assoc card :visualization_settings new-viz))))
+    card))
+
+(defn- stack-viz-settings-cleanup-migration
+  [card]
+  (update card :visualization_settings #(dissoc % :stackable.stack_display)))
+
+(defn- update-stacked-viz-cards
+  [partial-card]
+  (-> partial-card
+      area-bar-stacked-viz-migration
+      combo-stacked-viz-migration
+      stack-viz-settings-cleanup-migration))
+
+(define-migration MigrateStackedAreaBarComboDisplaySettings
+  (let [update! (fn [{:keys [id display visualization_settings] :as card}]
+                  (t2/query-one {:update :report_card
+                                 :set    {:visualization_settings visualization_settings
+                                          :display                display}
+                                 :where  [:= :id id]}))]
+    (run! update! (eduction (keep (fn [{:keys [id display visualization_settings]}]
+                                    (let [parsed-viz           (json/decode+kw visualization_settings)
+                                          partial-card         {:display display :visualization_settings parsed-viz}
+                                          updated-partial-card (update-stacked-viz-cards partial-card)]
+                                      (when (not= partial-card updated-partial-card)
+                                        (let [{updated-display :display
+                                               updated-viz     :visualization_settings} updated-partial-card]
+                                          {:id                     id
+                                           :display                (name updated-display)
+                                           :visualization_settings (json/encode updated-viz)})))))
+                            (t2/reducible-query {:select [:id :display :visualization_settings]
+                                                 :from   [:report_card]
+                                                 :where  [:like :visualization_settings "%stackable%"]})))))
+
+(define-reversible-migration MigrateMetricsToV2
+  (metrics-v2/migrate-up!)
+  (metrics-v2/migrate-down!))
+
+(defn- raw-setting-value [key]
+  (some-> (t2/query-one {:select [:value], :from :setting, :where [:= :key key]})
+          :value
+          encryption/maybe-decrypt))
+
+(define-reversible-migration MigrateUploadsSettings
+  (do (when (some-> (raw-setting-value "uploads-enabled") parse-boolean)
+        (when-let [db-id (some-> (raw-setting-value "uploads-database-id") parse-long)]
+          (let [uploads-table-prefix (raw-setting-value "uploads-table-prefix")
+                uploads-schema-name  (raw-setting-value "uploads-schema-name")]
+            (t2/query {:update :metabase_database
+                       :set    {:uploads_enabled      true
+                                :uploads_table_prefix uploads-table-prefix
+                                :uploads_schema_name  uploads-schema-name}
+                       :where  [:= :id db-id]}))))
+      (t2/query {:delete-from :setting
+                 :where       [:in :key ["uploads-enabled"
+                                         "uploads-database-id"
+                                         "uploads-schema-name"
+                                         "uploads-table-prefix"]]}))
+  (when-let [db (t2/query-one {:select [:*], :from :metabase_database, :where :uploads_enabled})]
+    (let [settings [{:key "uploads-database-id",  :value (encryption/maybe-encrypt (str (:id db)))}
+                    {:key "uploads-enabled",      :value (encryption/maybe-encrypt "true")}
+                    {:key "uploads-table-prefix", :value (encryption/maybe-encrypt (:uploads_table_prefix db))}
+                    {:key "uploads-schema-name",  :value (encryption/maybe-encrypt (:uploads_schema_name db))}]]
+      (->> settings
+           (filter :value)
+           (t2/insert! :setting)))))
+
+(define-migration DecryptCacheSettings
+  (let [decrypt! (fn [k]
+                   (t2/update! :setting :key k {:value (raw-setting-value k)}))]
+    (run! decrypt! ["query-caching-ttl-ratio"
+                    "query-caching-min-ttl"
+                    "enable-query-caching"])))
+
+(defn- column->column-key
+  "Computes a modern viz setting column key for a `column`. The modern format is [\"name\",`name`]."
+  [{name "name"}]
+  (when name
+    (json/encode ["name" name])))
+
+(defn- column->legacy-column-key
+  "Computes a legacy viz setting column key for a `column`.
+  If the `field_ref` has a field name and not a field id, or if the `field_ref` is for an aggregation column, returns a
+  column key of the modern format [\"name\",`name`].
+  In other cases returns a legacy column key of the format [\"ref\",`field_ref`] where `:binning` and `:temporal-unit`
+  options are removed from the `field_ref`."
+  [{name "name" field-ref "field_ref" :as column}]
+  (let [field-ref (or field-ref (when name ["field" name nil]))
+        [ref-type field-id-or-name ref-options] field-ref
+        field-ref (if (and (#{"field" "expression" "aggregation"} ref-type) ref-options)
+                    [ref-type field-id-or-name (not-empty (dissoc ref-options "binning" "temporal-unit"))]
+                    field-ref)]
+    (cond
+      (or (and (= ref-type "field") (string? field-id-or-name)) (= ref-type "aggregation"))
+      (column->column-key column)
+
+      field-ref
+      (json/encode ["ref" field-ref]))))
+
+(defn- update-legacy-column-keys-in-viz-settings
+  "Updates `:column_settings` keys. Unmatched keys are retained."
+  [viz-settings result-metadata old-key-fn new-key-fn]
+  (let [key->column (m/index-by old-key-fn result-metadata)]
+    (m/update-existing viz-settings "column_settings" update-keys
+                       (fn [key]
+                         (if-let [column (get key->column key)]
+                           (or (new-key-fn column) key)
+                           key)))))
+
+(defn- migrate-legacy-column-keys-in-viz-settings
+  "Migrates legacy `:column_settings` keys that have serialized field refs to name-based column keys. Unmatched keys are
+  retained."
+  [viz-settings result-metadata]
+  (update-legacy-column-keys-in-viz-settings viz-settings result-metadata column->legacy-column-key column->column-key))
+
+(defn- rollback-legacy-column-keys-in-viz-settings
+  "Rollbacks changes to `:column_settings` keys and brings field ref-based column keys back. Unmatched keys are
+  retained."
+  [viz-settings result-metadata]
+  (update-legacy-column-keys-in-viz-settings viz-settings result-metadata column->column-key column->legacy-column-key))
+
+(defn- json-column-key-like-clause
+  [key column]
+  [:or [:like column (str "%\\\\\"" key "\\\\\"%")]
+       ;; MySQL with NO_BACKSLASH_ESCAPES disabled:
+   [:like column (str "%\\\\\\\"" key "\\\\\\\"%")]])
+
+(defn- update-legacy-column-keys-in-card-viz-settings
+  "Updates `:visualization_settings` of each card that contains `:column_settings` by calling `update-viz-settings`
+  function. Can be used to both migrate and rollback the viz settings changes. `:result_metadata` of each card is used
+  to find the deduplicated column name by the field reference and compute the new column key."
+  [column-key-tag update-viz-settings-fn]
+  (let [update-one! (fn [{id :id viz-settings :visualization_settings result-metadata :result_metadata}]
+                      (let [viz-settings         (json/decode viz-settings)
+                            result-metadata      (json/decode result-metadata)
+                            updated-viz-settings (update-viz-settings-fn viz-settings result-metadata)]
+                        (when (not= viz-settings updated-viz-settings)
+                          (t2/query-one {:update :report_card
+                                         :set    {:visualization_settings (json/encode updated-viz-settings)}
+                                         :where  [:= :id id]}))))]
+    (run! update-one! (t2/reducible-query {:select [:id :visualization_settings :result_metadata]
+                                           :from   [:report_card]
+                                           :where  [:and [:not= :result_metadata nil]
+                                                    [:like :visualization_settings "%column_settings%"]
+                                                    (json-column-key-like-clause column-key-tag :visualization_settings)]}))))
+
+(define-reversible-migration MigrateLegacyColumnKeysInCardVizSettings
+  (update-legacy-column-keys-in-card-viz-settings "ref" migrate-legacy-column-keys-in-viz-settings)
+  (update-legacy-column-keys-in-card-viz-settings "name" rollback-legacy-column-keys-in-viz-settings))
+
+(defn- update-legacy-column-keys-in-dashboard-card-viz-settings
+  "Updates `:visualization_settings` of each dashboard card that contains `:column_settings` by calling
+  `update-viz-settings` function. Can be used to both migrate and rollback the viz settings changes. `:result_metadata`
+  of each referenced card is used to find the deduplicated column name by the field reference and compute the new column
+  key."
+  [column-key-tag update-viz-settings-fn]
+  (let [update-one! (fn [{id :id viz-settings :visualization_settings result-metadata :result_metadata}]
+                      (let [viz-settings         (json/decode viz-settings)
+                            result-metadata      (json/decode result-metadata)
+                            updated-viz-settings (update-viz-settings-fn viz-settings result-metadata)]
+                        (when (not= viz-settings updated-viz-settings)
+                          (t2/query-one {:update :report_dashboardcard
+                                         :set    {:visualization_settings (json/encode updated-viz-settings)}
+                                         :where  [:= :id id]}))))]
+    (run! update-one! (t2/reducible-query {:select [:dc.id :dc.visualization_settings :c.result_metadata]
+                                           :from   [[:report_card :c]]
+                                           :join   [[:report_dashboardcard :dc] [:= :dc.card_id :c.id]]
+                                           :where  [:and [:not= :c.result_metadata nil]
+                                                    [:like :dc.visualization_settings "%column_settings%"]
+                                                    (json-column-key-like-clause column-key-tag :dc.visualization_settings)]}))))
+
+(define-reversible-migration MigrateLegacyColumnKeysInDashboardCardVizSettings
+  (update-legacy-column-keys-in-dashboard-card-viz-settings "ref" migrate-legacy-column-keys-in-viz-settings)
+  (update-legacy-column-keys-in-dashboard-card-viz-settings "name" rollback-legacy-column-keys-in-viz-settings))
+
+(defn- last-stage-number
+  [outer-query]
+  (loop [query (:query outer-query), i 0]
+    (if-let [source-query (:source-query query)]
+      (recur source-query (inc i))
+      i)))
+
+(defn- set-target-stage-number
+  [mapping last-stage]
+  (if-let [target (:target mapping)]
+    (cond-> mapping
+      (and (vector? target) (= (get target 0) "dimension"))
+      (assoc-in [:target 2 :stage-number] last-stage))
+    mapping))
+
+(defn- set-parameter-stage-numbers
+  [record last-stage]
+  (when-let [orig-pmappings (some-> record :parameter_mappings json/decode+kw)]
+    (let [pmappings (map #(set-target-stage-number % last-stage) orig-pmappings)]
+      (when (not= pmappings orig-pmappings)
+        pmappings))))
+
+(defn- card->last-stage
+  [record]
+  (if (= (:c_type record) "model")
+    ;; models are not transparent
+    0
+    ;; questions and metrics are
+    (-> record
+        :dataset_query
+        json/decode+kw
+        last-stage-number)))
+
+(defn- add-stage-numbers-to-parameter-mapping-targets
+  []
+  (let [prev-card-last-stage (volatile! nil)]
+    (run!
+     (fn [record]
+       (let [card-id (:c_id record)
+             [prev-card-id prev-last-stage] @prev-card-last-stage
+             last-stage (if (= card-id prev-card-id)
+                          prev-last-stage
+                          (let [ls (card->last-stage record)]
+                            (vreset! prev-card-last-stage [card-id ls])
+                            ls))]
+         (when-let [new-mappings (set-parameter-stage-numbers record last-stage)]
+           (t2/query {:update :report_dashboardcard
+                      :set    {:parameter_mappings (json/encode new-mappings)}
+                      :where  [:= :id (:dc_id record)]}))))
+     (t2/reducible-query {:select     [[:c.id :c_id] [:c.type :c_type] :c.dataset_query
+                                       [:dc.id :dc_id] :dc.parameter_mappings]
+                          :from       [[:report_card :c]]
+                          :inner-join [[:report_dashboardcard :dc] [:= :dc.card_id :c.id]]
+                          :where      [:!= :dc.parameter_mappings "[]"]
+                          :order-by   [:c.id]}))))
+
+(defn- remove-target-stage-number
+  [mapping]
+  (if-let [target (:target mapping)]
+    (cond-> mapping
+      (and (vector? target) (= (get target 0) "dimension"))
+      (update :target subvec 0 2))
+    mapping))
+
+(defn- remove-parameter-stage-numbers
+  [record]
+  (when-let [orig-pmappings (some-> record :parameter_mappings json/decode+kw)]
+    (let [pmappings (map remove-target-stage-number orig-pmappings)]
+      (when (not= pmappings orig-pmappings)
+        pmappings))))
+
+(defn- remove-stage-numbers-from-parameter-mapping-targets
+  []
+  (run!
+   (fn [record]
+     (when-let [new-mappings (remove-parameter-stage-numbers record)]
+       (t2/query {:update :report_dashboardcard
+                  :set    {:parameter_mappings (json/encode new-mappings)}
+                  :where  [:= :id (:id record)]})))
+   (t2/reducible-query {:select [:id :parameter_mappings]
+                        :from   [:report_dashboardcard]
+                        :where  [:!= :parameter_mappings "[]"]})))
+
+(define-reversible-migration AddStageNumberToParameterMappingTargets
+  (add-stage-numbers-to-parameter-mapping-targets)
+  (remove-stage-numbers-from-parameter-mapping-targets))
+
+(defn- dimension?
+  [x]
+  (and (vector? x)
+       (< 1 (count x) 4)
+       (= (get x 0) "dimension")))
+
+(defn- update-parameter-mapping-target-dimension
+  [parameter-mapping-entry update-fn]
+  (let [parameter-mapping (val parameter-mapping-entry)
+        target (:target parameter-mapping)
+        dimension (:dimension target)
+        new-dimension (cond-> dimension
+                        (and (= (:type target) "dimension")
+                             (dimension? dimension))
+                        update-fn)]
+    (if (not= new-dimension dimension)
+      (let [new-dimension-str (json/encode new-dimension)
+            new-dimension-key (keyword new-dimension-str)]
+        [new-dimension-key (-> parameter-mapping
+                               (assoc :id new-dimension-str)
+                               (update :target assoc :id new-dimension-str :dimension new-dimension))])
+      parameter-mapping-entry)))
+
+(defn- update-column-settings-target-dimensions
+  "This can update any map containing :click_behavior and is called with visualization_settings too."
+  [column-settings click-behavior->update-fn]
+  (let [click-behavior (:click_behavior column-settings)
+        update-fn (click-behavior->update-fn click-behavior)]
+    (cond-> column-settings
+      (and update-fn
+           (= (:linkType click-behavior) "question")
+           (-> click-behavior :parameterMapping map?))
+      (update-in [:click_behavior :parameterMapping]
+                 (fn [mappings]
+                   (into {}
+                         (map #(update-parameter-mapping-target-dimension % update-fn))
+                         mappings))))))
+
+(defn- update-viz-settings-target-dimensions
+  [viz-settings click-behavior->update-fn]
+  (cond-> viz-settings
+    (-> viz-settings :column_settings map?)
+    (update :column_settings
+            update-vals
+            #(update-column-settings-target-dimensions % click-behavior->update-fn))))
+
+(defn- set-viz-settings-parameter-stage-numbers
+  [orig-viz-settings card-id->last-stage]
+  (let [add-stage-number (fn [click-behavior]
+                           (when-let [last-stage (-> click-behavior :targetId card-id->last-stage)]
+                             #(assoc % 2 {:stage-number last-stage})))
+        viz-settings (-> orig-viz-settings
+                         (update-viz-settings-target-dimensions add-stage-number)
+                         (update-column-settings-target-dimensions add-stage-number))]
+    (when (not= viz-settings orig-viz-settings)
+      viz-settings)))
+
+(defn- question-target-card-ids
+  [viz-settings]
+  (keep (fn [viz-or-column-settings]
+          (let [click-behavior (:click_behavior viz-or-column-settings)]
+            (when (= (:linkType click-behavior) "question")
+              (:targetId click-behavior))))
+        (cons viz-settings
+              (-> viz-settings :column_settings vals))))
+
+(defn- add-stage-numbers-to-viz-settings-parameter-mapping-targets
+  []
+  (let [id-viz-settings                 ; based on Hosting Insights, a few hundred records are expected
+        (into []
+              (map (juxt :id (comp json/decode+kw :visualization_settings)))
+              (t2/reducible-query {:select [:id :visualization_settings]
+                                   :from   [:report_dashboardcard]
+                                   :where  [:and
+                                            [:like :visualization_settings "%\"click_behavior\"%"]
+                                            [:like :visualization_settings "%[\"dimension\"%"]]}))
+
+        target-card-ids                 ; this is not expected much more either
+        (into #{}
+              (comp (map second)
+                    (mapcat question-target-card-ids))
+              id-viz-settings)
+
+        card-query-batch-size 1000
+        card-id->last-stage             ; this is expected to make just a few queries (one in known cases)
+        (into {}
+              (comp (partition-all card-query-batch-size)
+                    (mapcat #(t2/reducible-query {:select [:id :dataset_query [:type :c_type]]
+                                                  :from   [:report_card]
+                                                  :where  [:in :id %]}))
+                    (map (juxt :id card->last-stage)))
+              target-card-ids)]
+    (run!
+     (fn [[id viz-settings]]
+       (when-let [new-viz-settings (set-viz-settings-parameter-stage-numbers viz-settings card-id->last-stage)]
+         (t2/query {:update :report_dashboardcard
+                    :set    {:visualization_settings (json/encode new-viz-settings)}
+                    :where  [:= :id id]})))
+     id-viz-settings)))
+
+(defn- remove-viz-settings-parameter-stage-numbers
+  [record]
+  (let [orig-viz-settings (some-> record :visualization_settings json/decode+kw)
+        remove-stage-numbers (constantly #(subvec % 0 2))
+        viz-settings (-> orig-viz-settings
+                         (update-viz-settings-target-dimensions remove-stage-numbers)
+                         (update-column-settings-target-dimensions remove-stage-numbers))]
+    (when (not= viz-settings orig-viz-settings)
+      viz-settings)))
+
+(defn- remove-stage-numbers-from-viz-settings-parameter-mapping-targets
+  []
+  (run!
+   (fn [record]
+     (when-let [new-mappings (remove-viz-settings-parameter-stage-numbers record)]
+       (t2/query {:update :report_dashboardcard
+                  :set    {:visualization_settings (json/encode new-mappings)}
+                  :where  [:= :id (:id record)]})))
+   (t2/reducible-query {:select [:id :visualization_settings]
+                        :from   [:report_dashboardcard]
+                        :where  [:and
+                                 [:like :visualization_settings "%\"click_behavior\"%"]
+                                 [:like :visualization_settings "%[\"dimension\"%"]]})))
+
+(define-reversible-migration AddStageNumberToVizSettingsParameterMappingTargets
+  (add-stage-numbers-to-viz-settings-parameter-mapping-targets)
+  (remove-stage-numbers-from-viz-settings-parameter-mapping-targets))

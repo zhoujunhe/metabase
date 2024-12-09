@@ -8,8 +8,8 @@
    [metabase.util.malli.registry :as mr]))
 
 (#?(:clj p/defprotocol+ :cljs defprotocol) MetadataProvider
-  "Protocol for something that we can get information about Tables and Fields from. This can be provided in various ways
-  various ways:
+  "Protocol for something that we can get information about Tables and Fields
+  from. This can be provided in various ways:
 
   1. By raw metadata attached to the query itself
 
@@ -49,9 +49,12 @@
   internals can be tucked away here in MLv2.")
 
   (metadatas-for-table [metadata-provider metadata-type table-id]
-    "Return active (non-archived) metadatas associated with a particular Table, either Fields, LegacyMetrics, or
-  Segments -- `metadata-type` must be one of either `:metadata/column`, `:metadata/legacy-metric`, or
-  `:metadata/segment`.")
+    "Return active (non-archived) metadatas associated with a particular Table, either Fields, Metrics, or
+  Segments -- `metadata-type` must be one of either `:metadata/column`, `:metadata/metric`, or `:metadata/segment`.")
+
+  (metadatas-for-card [metadata-provider metadata-type card-id]
+    "Return active (non-archived) metadatas associated with a particular Card, currently only Metrics, so
+  `metadata-type` must be `:metadata/metric`.")
 
   (setting [metadata-provider setting-key]
     "Return the value of the given Metabase setting with keyword `setting-name`."))
@@ -59,7 +62,8 @@
 (defn metadata-provider?
   "Whether `x` is a valid [[MetadataProvider]]."
   [x]
-  (satisfies? MetadataProvider x))
+  #?(:clj (extends? MetadataProvider (class x))
+     :cljs (satisfies? MetadataProvider x)))
 
 (mr/def ::metadata-provider
   "Schema for something that satisfies the [[metabase.lib.metadata.protocols/MetadataProvider]] protocol."
@@ -83,14 +87,14 @@
 (mr/def ::metadata-type-excluding-database
   "Database metadata is stored separately/in a special way. These are the types of metadata that are stored with the
   other non-Database methods."
-  [:enum :metadata/table :metadata/column :metadata/card :metadata/legacy-metric :metadata/segment])
+  [:enum :metadata/table :metadata/column :metadata/card :metadata/segment])
 
 (mr/def ::metadata
   [:map
    [:lib/type ::metadata-type-excluding-database]
    [:id       pos-int?]])
 
-(mu/defn ^:private metadata :- [:maybe ::metadata]
+(mu/defn- metadata :- [:maybe ::metadata]
   [metadata-provider :- ::metadata-provider
    metadata-type     :- ::metadata-type-excluding-database
    metadata-id       :- pos-int?]
@@ -118,13 +122,6 @@
    card-id           :- ::lib.schema.id/card]
   (metadata metadata-provider :metadata/card card-id))
 
-(mu/defn legacy-metric :- [:maybe ::lib.schema.metadata/legacy-metric]
-  "Return metadata for a particular capital-M Metric, i.e. something from the `metric` table in the application
-  database. Metadata should match `:metabase.lib.schema.metadata/legacy-metric`."
-  [metadata-provider :- ::metadata-provider
-   legacy-metric-id  :- ::lib.schema.id/legacy-metric]
-  (metadata metadata-provider :metadata/legacy-metric legacy-metric-id))
-
 (mu/defn segment :- [:maybe ::lib.schema.metadata/segment]
   "Return metadata for a particular captial-S Segment, i.e. something from the `segment` table in the application
   database. Metadata should match `:metabase.lib.schema.metadata/segment`."
@@ -138,13 +135,6 @@
   [metadata-provider :- ::metadata-provider
    table-id          :- ::lib.schema.id/table]
   (metadatas-for-table metadata-provider :metadata/column table-id))
-
-(mu/defn legacy-metrics :- [:maybe [:sequential ::lib.schema.metadata/legacy-metric]]
-  "Return a sequence of legacy Metrics associated with a Table with the given `table-id`. Metrics should satisfy
-  the `:metabase.lib.schema.metadata/legacy-metric` schema. If no such Table exists, this should error."
-  [metadata-provider :- ::metadata-provider
-   table-id          :- ::lib.schema.id/table]
-  (metadatas-for-table metadata-provider :metadata/legacy-metric table-id))
 
 (mu/defn segments :- [:maybe [:sequential ::lib.schema.metadata/segment]]
   "Return a sequence of legacy Segments associated with a Table with the given `table-id`. Segments should satisfy
@@ -170,7 +160,8 @@
 (defn cached-metadata-provider?
   "Whether `x` is a valid [[CachedMetadataProvider]]."
   [x]
-  (satisfies? CachedMetadataProvider x))
+  #?(:clj (extends? CachedMetadataProvider (class x))
+     :cljs (satisfies? CachedMetadataProvider x)))
 
 (mr/def ::cached-metadata-provider
   [:fn

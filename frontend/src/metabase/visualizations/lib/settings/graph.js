@@ -1,53 +1,55 @@
 import { t } from "ttag";
 import _ from "underscore";
 
+import { color } from "metabase/lib/colors";
 import {
-  getMaxMetricsSupported,
   getMaxDimensionsSupported,
+  getMaxMetricsSupported,
 } from "metabase/visualizations";
-import { ChartSettingOrderedSimple } from "metabase/visualizations/components/settings/ChartSettingOrderedSimple";
+import { ChartSettingMaxCategories } from "metabase/visualizations/components/settings/ChartSettingMaxCategories";
+import { ChartSettingSeriesOrder } from "metabase/visualizations/components/settings/ChartSettingSeriesOrder";
 import { dimensionIsNumeric } from "metabase/visualizations/lib/numeric";
 import { columnSettings } from "metabase/visualizations/lib/settings/column";
-import {
-  seriesSetting,
-  keyForSingleSeries,
-} from "metabase/visualizations/lib/settings/series";
+import { seriesSetting } from "metabase/visualizations/lib/settings/series";
 import { getOptionFromColumn } from "metabase/visualizations/lib/settings/utils";
 import { dimensionIsTimeseries } from "metabase/visualizations/lib/timeseries";
+import { MAX_SERIES, columnsAreValid } from "metabase/visualizations/lib/utils";
 import {
-  columnsAreValid,
-  preserveExistingColumnsOrder,
-  MAX_SERIES,
-} from "metabase/visualizations/lib/utils";
-import {
+  STACKABLE_SERIES_DISPLAY_TYPES,
+  getAreDimensionsAndMetricsValid,
+  getAvailableAdditionalColumns,
+  getAvailableXAxisScales,
+  getComputedAdditionalColumnsValue,
+  getDefaultColumns,
+  getDefaultDataLabelsFormatting,
+  getDefaultDataLabelsFrequency,
+  getDefaultDimensionFilter,
+  getDefaultDimensions,
+  getDefaultIsAutoSplitEnabled,
   getDefaultIsHistogram,
+  getDefaultLegendIsReversed,
+  getDefaultMetricFilter,
+  getDefaultMetrics,
+  getDefaultShowDataLabels,
+  getDefaultShowStackValues,
   getDefaultStackingValue,
-  getDefaultStackDisplayValue,
   getDefaultXAxisScale,
   getDefaultXAxisTitle,
   getDefaultYAxisTitle,
   getIsXAxisLabelEnabledDefault,
   getIsYAxisLabelEnabledDefault,
+  getSeriesModelsForSettings,
+  getSeriesOrderDimensionSetting,
   getSeriesOrderVisibilitySettings,
   getYAxisAutoRangeDefault,
   getYAxisUnpinFromZeroDefault,
-  isYAxisUnpinFromZeroValid,
+  isShowStackValuesValid,
   isStackingValueValid,
   isXAxisScaleValid,
-  getDefaultLegendIsReversed,
-  getDefaultShowDataLabels,
-  getDefaultDataLabelsFrequency,
-  getDefaultIsAutoSplitEnabled,
-  getDefaultColumns,
-  STACKABLE_DISPLAY_TYPES,
+  isYAxisUnpinFromZeroValid,
 } from "metabase/visualizations/shared/settings/cartesian-chart";
-import {
-  isDate,
-  isDimension,
-  isMetric,
-  isNumeric,
-  isAny,
-} from "metabase-lib/v1/types/utils/isa";
+import { getColumnKey } from "metabase-lib/v1/queries/utils/column-key";
+import { isNumeric } from "metabase-lib/v1/types/utils/isa";
 
 export const getSeriesDisplays = (transformedSeries, settings) => {
   return transformedSeries.map(single => settings.series(single).display);
@@ -55,6 +57,13 @@ export const getSeriesDisplays = (transformedSeries, settings) => {
 
 export function getDefaultDimensionLabel(multipleSeries) {
   return getDefaultXAxisTitle(multipleSeries[0]?.data.cols[0]);
+}
+
+function canHaveDataLabels(series, vizSettings) {
+  const areAllAreas = getSeriesDisplays(series, vizSettings).every(
+    display => display === "area",
+  );
+  return vizSettings["stackable.stack_type"] !== "normalized" || !areAllAreas;
 }
 
 export const GRAPH_DATA_SETTINGS = {
@@ -66,16 +75,6 @@ export const GRAPH_DATA_SETTINGS = {
     ]) => cols,
     hidden: true,
   }),
-  "graph._dimension_filter": {
-    getDefault: ([{ card }]) =>
-      card.display === "scatter" ? isAny : isDimension,
-    useRawSeries: true,
-  },
-  "graph._metric_filter": {
-    getDefault: ([{ card }]) =>
-      card.display === "scatter" ? isNumeric : isMetric,
-    useRawSeries: true,
-  },
   "graph.dimensions": {
     section: t`Data`,
     title: t`X-axis`,
@@ -85,31 +84,23 @@ export const GRAPH_DATA_SETTINGS = {
       series.length <= MAX_SERIES
         ? "0.5rem"
         : "1rem",
-    isValid: (series, vizSettings) =>
-      series.some(
-        ({ card, data }) =>
-          columnsAreValid(
-            card.visualization_settings["graph.dimensions"],
-            data,
-            vizSettings["graph._dimension_filter"],
-          ) &&
-          columnsAreValid(
-            card.visualization_settings["graph.metrics"],
-            data,
-            vizSettings["graph._metric_filter"],
-          ),
-      ),
+    isValid: (series, vizSettings) => {
+      const dimensions = vizSettings["graph.dimensions"] ?? [];
+      if (dimensions.length === 0) {
+        const defaultDimensions = getDefaultDimensions(series, vizSettings);
+        return defaultDimensions.length === 0;
+      } else {
+        return getAreDimensionsAndMetricsValid(series, vizSettings);
+      }
+    },
     getDefault: (series, vizSettings) =>
-      preserveExistingColumnsOrder(
-        vizSettings["graph.dimensions"] ?? [],
-        getDefaultColumns(series).dimensions,
-      ),
+      getDefaultDimensions(series, vizSettings),
     persistDefault: true,
     getProps: ([{ card, data }], vizSettings) => {
       const addedDimensions = vizSettings["graph.dimensions"];
       const maxDimensionsSupported = getMaxDimensionsSupported(card.display);
       const options = data.cols
-        .filter(vizSettings["graph._dimension_filter"])
+        .filter(getDefaultDimensionFilter(card.display))
         .map(getOptionFromColumn);
       return {
         options,
@@ -123,64 +114,83 @@ export const GRAPH_DATA_SETTINGS = {
             ? t`Add series breakout`
             : null,
         columns: data.cols,
-        // When this prop is passed it will only show the
-        // column settings for any index that is included in the array
-        showColumnSettingForIndicies: [0],
+        fieldSettingWidgets: [],
       };
     },
-    readDependencies: ["graph._dimension_filter", "graph._metric_filter"],
     writeDependencies: ["graph.metrics"],
     eraseDependencies: ["graph.series_order_dimension", "graph.series_order"],
     dashboard: false,
     useRawSeries: true,
   },
   "graph.series_order_dimension": {
-    getValue: (_series, settings) => settings["graph.dimensions"][1],
+    getValue: (_series, settings) => getSeriesOrderDimensionSetting(settings),
     // This read dependency is set so that "graph.series_order" is computed *before* this value, ensuring that
     // that it uses the stored value if one exists. This is needed to check if the dimension has actually changed
     readDependencies: ["graph.series_order"],
   },
   "graph.series_order": {
     section: t`Data`,
-    widget: ChartSettingOrderedSimple,
+    widget: ChartSettingSeriesOrder,
     marginBottom: "1rem",
-
-    getValue: (series, settings) => {
-      const seriesKeys = series.map(s => keyForSingleSeries(s));
+    useRawSeries: true,
+    getValue: (rawSeries, settings) => {
+      const seriesModels = getSeriesModelsForSettings(rawSeries, settings);
+      const seriesKeys = seriesModels.map(s => s.vizSettingsKey);
       return getSeriesOrderVisibilitySettings(settings, seriesKeys);
     },
-    getHidden: (series, settings) => {
+    getProps: (rawSeries, settings, _onChange, _extra, onChangeSettings) => {
+      const groupedAfterIndex =
+        settings["graph.max_categories_enabled"] &&
+        settings["graph.max_categories"] !== 0
+          ? settings["graph.max_categories"]
+          : Infinity;
+      const onOtherColorChange = color =>
+        onChangeSettings({ "graph.other_category_color": color });
+      return {
+        rawSeries,
+        settings,
+        groupedAfterIndex,
+        otherColor: settings["graph.other_category_color"],
+        otherSettingWidgetId: "graph.max_categories",
+        onOtherColorChange,
+        truncateAfter: 10,
+      };
+    },
+    getHidden: (_series, settings, extra) => {
+      const seriesCount = extra.transformedSeries?.length ?? 0;
       return (
-        settings["graph.dimensions"]?.length < 2 || series.length > MAX_SERIES
+        settings["graph.dimensions"]?.length < 2 || seriesCount > MAX_SERIES
       );
     },
     dashboard: false,
-    readDependencies: ["series_settings.colors", "series_settings"],
+    readDependencies: [
+      "series_settings.colors",
+      "series_settings",
+      "graph.metrics",
+      "graph.dimensions",
+      "graph.max_categories",
+      "graph.other_category_color",
+    ],
     writeDependencies: ["graph.series_order_dimension"],
   },
   "graph.metrics": {
     section: t`Data`,
     title: t`Y-axis`,
     widget: "fields",
-    isValid: (series, vizSettings) =>
-      series.some(
-        ({ card, data }) =>
-          columnsAreValid(
-            card.visualization_settings["graph.dimensions"],
-            data,
-            vizSettings["graph._dimension_filter"],
-          ) &&
-          columnsAreValid(
-            card.visualization_settings["graph.metrics"],
-            data,
-            vizSettings["graph._metric_filter"],
-          ),
-      ),
-    getDefault: series => getDefaultColumns(series).metrics,
+    isValid: (series, vizSettings) => {
+      const metrics = vizSettings["graph.metrics"] ?? [];
+      if (metrics.length === 0) {
+        const defaultMetrics = getDefaultMetrics(series, vizSettings);
+        return defaultMetrics.length === 0;
+      } else {
+        return getAreDimensionsAndMetricsValid(series, vizSettings);
+      }
+    },
+    getDefault: (series, vizSettings) => getDefaultMetrics(series, vizSettings),
     persistDefault: true,
     getProps: ([{ card, data }], vizSettings, _onChange, extra) => {
       const options = data.cols
-        .filter(vizSettings["graph._metric_filter"])
+        .filter(getDefaultMetricFilter(card.display))
         .map(getOptionFromColumn);
 
       const addedMetrics = vizSettings["graph.metrics"];
@@ -205,11 +215,7 @@ export const GRAPH_DATA_SETTINGS = {
         series: extra.transformedSeries,
       };
     },
-    readDependencies: [
-      "graph._dimension_filter",
-      "graph._metric_filter",
-      "series_settings.colors",
-    ],
+    readDependencies: ["series_settings.colors"],
     writeDependencies: ["graph.dimensions"],
     dashboard: false,
     useRawSeries: true,
@@ -272,11 +278,7 @@ export const STACKABLE_SETTINGS = {
     isValid: (series, settings) => {
       const seriesDisplays = getSeriesDisplays(series, settings);
 
-      return isStackingValueValid(
-        series[0].card.display,
-        settings,
-        seriesDisplays,
-      );
+      return isStackingValueValid(settings, seriesDisplays);
     },
     getDefault: ([{ card, data }], settings) => {
       return getDefaultStackingValue(settings, card);
@@ -284,29 +286,12 @@ export const STACKABLE_SETTINGS = {
     getHidden: (series, settings) => {
       const displays = series.map(single => settings.series(single).display);
       const stackableDisplays = displays.filter(display =>
-        STACKABLE_DISPLAY_TYPES.has(display),
+        STACKABLE_SERIES_DISPLAY_TYPES.has(display),
       );
 
       return stackableDisplays.length <= 1;
     },
     readDependencies: ["graph.metrics", "graph.dimensions", "series"],
-  },
-  "stackable.stack_display": {
-    section: t`Display`,
-    title: t`Stacked chart type`,
-    widget: "segmentedControl",
-    props: {
-      options: [
-        { icon: "area", value: "area" },
-        { icon: "bar", value: "bar" },
-      ],
-    },
-    getDefault: (series, settings) => {
-      const displays = series.map(single => settings.series(single).display);
-      return getDefaultStackDisplayValue(series[0].card.display, displays);
-    },
-    getHidden: (series, settings) => settings["stackable.stack_type"] == null,
-    readDependencies: ["stackable.stack_type", "series"],
   },
 };
 
@@ -314,20 +299,50 @@ export const LEGEND_SETTINGS = {
   "legend.is_reversed": {
     getDefault: (_series, settings) => getDefaultLegendIsReversed(settings),
     hidden: true,
-    readDependencies: ["stackable.stack_display"],
   },
 };
 
 export const TOOLTIP_SETTINGS = {
   "graph.tooltip_type": {
-    getDefault: (_series, settings) => {
-      const shouldShowComparisonTooltip =
-        settings["stackable.stack_display"] != null &&
-        settings["stackable.stack_type"] != null;
+    getDefault: ([{ card }]) => {
+      const shouldShowComparisonTooltip = !["scatter", "waterfall"].includes(
+        card.display,
+      );
       return shouldShowComparisonTooltip ? "series_comparison" : "default";
     },
     hidden: true,
-    readDependencies: ["stackable.stack_display"],
+  },
+  "graph.tooltip_columns": {
+    section: t`Display`,
+
+    title: t`Additional tooltip metrics`,
+    placeholder: t`Enter metric names`,
+    widget: "multiselect",
+    useRawSeries: true,
+    getValue: getComputedAdditionalColumnsValue,
+    getHidden: (rawSeries, vizSettings) => {
+      const isAggregatedChart = rawSeries[0].card.display !== "scatter";
+      return (
+        getAvailableAdditionalColumns(rawSeries, vizSettings, isAggregatedChart)
+          .length === 0
+      );
+    },
+    getProps: (rawSeries, vizSettings) => {
+      const isAggregatedChart = rawSeries[0].card.display !== "scatter";
+      const options = getAvailableAdditionalColumns(
+        rawSeries,
+        vizSettings,
+        isAggregatedChart,
+      ).map(col => ({
+        label: col.display_name,
+        value: getColumnKey(col),
+      }));
+
+      return {
+        options,
+      };
+    },
+    readDependencies: ["graph.metrics", "graph.dimensions"],
   },
 };
 
@@ -352,8 +367,7 @@ export const GRAPH_DISPLAY_VALUES_SETTINGS = {
     section: t`Display`,
     title: t`Show values on data points`,
     widget: "toggle",
-    getHidden: (series, vizSettings) =>
-      vizSettings["stackable.stack_type"] === "normalized",
+    getHidden: (series, vizSettings) => !canHaveDataLabels(series, vizSettings),
     getDefault: getDefaultShowDataLabels,
     inline: true,
     marginBottom: "1rem",
@@ -362,9 +376,27 @@ export const GRAPH_DISPLAY_VALUES_SETTINGS = {
     section: t`Display`,
     title: t`Values to show`,
     widget: "segmentedControl",
-    getHidden: (series, vizSettings) =>
-      vizSettings["graph.show_values"] !== true ||
-      vizSettings["stackable.stack_type"] === "normalized",
+    getHidden: (series, vizSettings) => {
+      if (!vizSettings["graph.show_values"]) {
+        return true;
+      }
+
+      const areAllBars = getSeriesDisplays(series, vizSettings).every(
+        display => display === "bar",
+      );
+      if (areAllBars && vizSettings["graph.show_stack_values"] === "series") {
+        return true;
+      }
+
+      const hasLines = getSeriesDisplays(series, vizSettings).some(
+        display => display === "line",
+      );
+      if (vizSettings["stackable.stack_type"] === "normalized" && !hasLines) {
+        return true;
+      }
+
+      return !canHaveDataLabels(series, vizSettings);
+    },
     props: {
       options: [
         { name: t`Some`, value: "fit" },
@@ -374,13 +406,43 @@ export const GRAPH_DISPLAY_VALUES_SETTINGS = {
     getDefault: getDefaultDataLabelsFrequency,
     readDependencies: ["graph.show_values"],
   },
+  "graph.show_stack_values": {
+    section: t`Display`,
+    title: t`Stack values to show`,
+    widget: "segmentedControl",
+    getHidden: (series, vizSettings) => {
+      const hasBars = getSeriesDisplays(series, vizSettings).some(
+        display => display === "bar",
+      );
+      return (
+        vizSettings["stackable.stack_type"] !== "stacked" ||
+        vizSettings["graph.show_values"] !== true ||
+        !hasBars
+      );
+    },
+    isValid: (series, vizSettings) => {
+      return isShowStackValuesValid(
+        getSeriesDisplays(series, vizSettings),
+        vizSettings,
+      );
+    },
+    props: {
+      options: [
+        { name: t`Total`, value: "total" },
+        { name: t`Segments`, value: "series" },
+        { name: t`Both`, value: "all" },
+      ],
+    },
+    getDefault: (_series, settings) => getDefaultShowStackValues(settings),
+    readDependencies: ["graph.show_values", "stackable.stack_type"],
+  },
   "graph.label_value_formatting": {
     section: t`Display`,
     title: t`Auto formatting`,
     widget: "segmentedControl",
-    getHidden: (series, vizSettings) =>
-      vizSettings["graph.show_values"] !== true ||
-      vizSettings["stackable.stack_type"] === "normalized",
+    getHidden: (series, vizSettings) => {
+      return !canHaveDataLabels(series, vizSettings);
+    },
     props: {
       options: [
         { name: t`Auto`, value: "auto" },
@@ -388,8 +450,44 @@ export const GRAPH_DISPLAY_VALUES_SETTINGS = {
         { name: t`Full`, value: "full" },
       ],
     },
-    default: "auto",
-    readDependencies: ["graph.show_values"],
+    default: getDefaultDataLabelsFormatting(),
+  },
+  "graph.max_categories_enabled": {
+    hidden: true,
+    // temporarily hiding the setting (metabase#50510)
+    default: false,
+    isValid: () => false,
+    readDependencies: ["series_settings"],
+  },
+  "graph.max_categories": {
+    widget: ChartSettingMaxCategories,
+    hidden: true,
+    // temporarily hiding the setting (metabase#50510)
+    default: Number.MAX_SAFE_INTEGER,
+    isValid: () => false,
+    getProps: ([{ card }], settings) => {
+      return {
+        isEnabled: settings["graph.max_categories_enabled"],
+        aggregationFunction: settings["graph.other_category_aggregation_fn"],
+      };
+    },
+    readDependencies: [
+      "graph.max_categories_enabled",
+      "graph.other_category_aggregation_fn",
+      "series_settings",
+    ],
+  },
+  "graph.other_category_color": {
+    default: color("text-light"),
+  },
+  "graph.other_category_aggregation_fn": {
+    hidden: true,
+    getDefault: ([{ data }], settings) => {
+      const [metricName] = settings["graph.metrics"];
+      const metric = data.cols.find(col => col.name === metricName);
+      return metric?.aggregation_type ?? "sum";
+    },
+    readDependencies: ["graph.metrics"],
   },
 };
 
@@ -445,28 +543,9 @@ export const GRAPH_AXIS_SETTINGS = {
     ],
     isValid: isXAxisScaleValid,
     getDefault: (series, vizSettings) => getDefaultXAxisScale(vizSettings),
-    getProps: ([{ data }], vizSettings) => {
-      const dimensionColumn = data.cols.find(
-        col => col != null && col.name === vizSettings["graph.dimensions"][0],
-      );
-      const options = [];
-      if (vizSettings["graph.x_axis._is_timeseries"]) {
-        options.push({ name: t`Timeseries`, value: "timeseries" });
-      }
-      if (vizSettings["graph.x_axis._is_numeric"]) {
-        options.push({ name: t`Linear`, value: "linear" });
-        // For relative date units such as day of week we do not want to show log, pow, histogram scales
-        if (!isDate(dimensionColumn)) {
-          if (!vizSettings["graph.x_axis._is_histogram"]) {
-            options.push({ name: t`Power`, value: "pow" });
-            options.push({ name: t`Log`, value: "log" });
-          }
-          options.push({ name: t`Histogram`, value: "histogram" });
-        }
-      }
-      options.push({ name: t`Ordinal`, value: "ordinal" });
-      return { options };
-    },
+    getProps: (series, vizSettings) => ({
+      options: getAvailableXAxisScales(series, vizSettings),
+    }),
   },
   "graph.y_axis.scale": {
     section: t`Axes`,

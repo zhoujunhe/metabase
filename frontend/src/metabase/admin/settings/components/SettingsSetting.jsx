@@ -5,9 +5,10 @@ import scrollIntoView from "scroll-into-view-if-needed";
 import { jt } from "ttag";
 
 import ExternalLink from "metabase/core/components/ExternalLink";
-import { alpha, color } from "metabase/lib/colors";
+import { alpha } from "metabase/lib/colors";
+import { Box } from "metabase/ui";
 
-import { settingToFormFieldId, getEnvVarDocsUrl } from "../utils";
+import { settingToFormFieldId, useGetEnvVarDocsUrl } from "../utils";
 
 import SettingHeader from "./SettingHeader";
 import {
@@ -22,7 +23,7 @@ import SettingNumber from "./widgets/SettingNumber";
 import SettingPassword from "./widgets/SettingPassword";
 import SettingRadio from "./widgets/SettingRadio";
 import SettingText from "./widgets/SettingText";
-import SettingToggle from "./widgets/SettingToggle";
+import { SettingToggle } from "./widgets/SettingToggle";
 import SettingSelect from "./widgets/deprecated/SettingSelect";
 
 const SETTING_WIDGET_MAP = {
@@ -55,7 +56,7 @@ export const SettingsSetting = props => {
 
       setFancyStyle({
         background: alpha("brand", 0.1),
-        boxShadow: `0 0 0 1px ${color("brand")}`,
+        boxShadow: `0 0 0 1px var(--mb-color-brand)`,
       });
 
       setTimeout(() => {
@@ -95,13 +96,7 @@ export const SettingsSetting = props => {
       {!setting.noHeader && <SettingHeader id={settingId} setting={setting} />}
       <SettingContent>
         {setting.is_env_setting && !setting.forceRenderWidget ? (
-          <SettingEnvVarMessage>
-            {jt`This has been set by the ${(
-              <ExternalLink href={getEnvVarDocsUrl(setting.env_name)}>
-                {setting.env_name}
-              </ExternalLink>
-            )} environment variable.`}
-          </SettingEnvVarMessage>
+          <SetByEnvVar setting={setting} />
         ) : (
           <Widget id={settingId} {...widgetProps} />
         )}
@@ -114,4 +109,30 @@ export const SettingsSetting = props => {
       )}
     </SettingRoot>
   );
+};
+
+export const SetByEnvVar = ({ setting }) => {
+  const { url: docsUrl } = useGetEnvVarDocsUrl(setting.env_name);
+
+  return (
+    <SettingEnvVarMessage data-testid="setting-env-var-message">
+      {jt`This has been set by the ${(
+        <ExternalLink key={docsUrl} href={docsUrl}>
+          {setting.env_name}
+        </ExternalLink>
+      )} environment variable.`}
+    </SettingEnvVarMessage>
+  );
+};
+
+export const SetByEnvVarWrapper = ({ setting, children }) => {
+  if (setting.is_env_setting) {
+    return (
+      <Box mb="lg">
+        <SettingHeader id={setting.key} setting={setting} />
+        <SetByEnvVar setting={setting} />
+      </Box>
+    );
+  }
+  return children;
 };

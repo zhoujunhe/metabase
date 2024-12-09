@@ -13,9 +13,9 @@ import type {
 } from "metabase/visualizations/lib/graph/columns";
 import type { ComputedVisualizationSettings } from "metabase/visualizations/types";
 import {
-  numericScale,
   type RowValue,
   type SingleSeries,
+  numericScale,
 } from "metabase-types/api";
 import {
   createMockCard,
@@ -25,12 +25,12 @@ import {
 } from "metabase-types/api/mocks";
 
 import {
-  sumMetric,
+  NO_X_AXIS_VALUES_ERROR_MESSAGE,
+  applyVisualizationSettingsDataTransformations,
+  getDatasetExtents,
   getDatasetKey,
   getJoinedCardsDataset,
   replaceValues,
-  getDatasetExtents,
-  applyVisualizationSettingsDataTransformations,
   sortDataset,
 } from "./dataset";
 import type {
@@ -62,24 +62,6 @@ describe("dataset transform functions", () => {
     valuesCount: 3,
     formatter: value => String(value),
   };
-
-  describe("sumMetric", () => {
-    it("should return the sum when both arguments are numbers", () => {
-      expect(sumMetric(3, 7)).toBe(10);
-    });
-
-    it("should return the left number when right is not a number", () => {
-      expect(sumMetric(5, null)).toBe(5);
-    });
-
-    it("should return the right number when left is not a number", () => {
-      expect(sumMetric(null, 5)).toBe(5);
-    });
-
-    it("should return null when neither left nor right is a number", () => {
-      expect(sumMetric(null, null)).toBeNull();
-    });
-  });
 
   describe("getDatasetKey", () => {
     const column = createMockColumn({ name: "count" });
@@ -318,8 +300,10 @@ describe("dataset transform functions", () => {
     it("should populate dataset with min numeric values for positive and negative stack totals", () => {
       const result = applyVisualizationSettingsDataTransformations(
         originalDataset,
+        [],
         xAxisModel,
         seriesModels,
+        [],
         yAxisScaleTransforms,
         createMockComputedVisualizationSettings({
           "stackable.stack_type": "stacked",
@@ -349,8 +333,16 @@ describe("dataset transform functions", () => {
     it("should return an array of normalized datasets", () => {
       const result = applyVisualizationSettingsDataTransformations(
         originalDataset,
+        [
+          {
+            seriesKeys: seriesModels.map(seriesModel => seriesModel.dataKey),
+            display: "bar",
+            axis: "left",
+          },
+        ],
         xAxisModel,
         seriesModels,
+        [],
         yAxisScaleTransforms,
         createMockComputedVisualizationSettings({
           "stackable.stack_type": "normalized",
@@ -387,8 +379,10 @@ describe("dataset transform functions", () => {
 
       const result = applyVisualizationSettingsDataTransformations(
         dataset,
+        [],
         xAxisModel,
         seriesModels,
+        [],
         yAxisScaleTransforms,
         createMockComputedVisualizationSettings({
           series: (key: LegacySeriesSettingsObjectKey) => ({
@@ -440,8 +434,10 @@ describe("dataset transform functions", () => {
       it("should replace missing values with zeros based on the x-axis interval", () => {
         const result = applyVisualizationSettingsDataTransformations(
           dataset,
+          [],
           xAxisModel,
           [createMockSeriesModel({ dataKey: "series1" })],
+          [],
           yAxisScaleTransforms,
           createMockComputedVisualizationSettings({
             series: () => ({
@@ -470,8 +466,10 @@ describe("dataset transform functions", () => {
       it("should not replace missing values with zeros when x-axis interval is too big", () => {
         const result = applyVisualizationSettingsDataTransformations(
           dataset,
+          [],
           { ...xAxisModel, intervalsCount: 10001 },
           [createMockSeriesModel({ dataKey: "series1" })],
+          [],
           yAxisScaleTransforms,
           createMockComputedVisualizationSettings({
             series: () => ({
@@ -484,11 +482,75 @@ describe("dataset transform functions", () => {
       });
     });
 
+    describe("null dimension values", () => {
+      const validDatum = {
+        [X_AXIS_DATA_KEY]: dayjs().toISOString(),
+        count: 110,
+        created_at: dayjs().toISOString(),
+      };
+
+      const nullishDatum = {
+        [X_AXIS_DATA_KEY]: null,
+        count: 250,
+        created_at: null,
+      };
+
+      const xAxisModel: XAxisModel = {
+        axisType: "time",
+        intervalsCount: 0,
+        interval: { unit: "year", count: 100 },
+        timezone: "UTC",
+        range: [dayjs(), dayjs()],
+        formatter: value => String(value),
+        fromEChartsAxisValue: () => dayjs(),
+        toEChartsAxisValue: val => String(val),
+      };
+
+      const seriesModels = [createMockSeriesModel({ dataKey: "count" })];
+
+      it("should filter out null dimension values", () => {
+        const dataset = [validDatum, nullishDatum];
+
+        const result = applyVisualizationSettingsDataTransformations(
+          dataset,
+          [],
+          xAxisModel,
+          seriesModels,
+          [],
+          yAxisScaleTransforms,
+          createMockComputedVisualizationSettings(),
+        );
+
+        expect(result).toEqual([
+          {
+            ...validDatum,
+            [ORIGINAL_INDEX_DATA_KEY]: 0,
+          },
+        ]);
+      });
+
+      it("should throw an error if dataset ends up empty after filtering null dimension values", () => {
+        expect(() =>
+          applyVisualizationSettingsDataTransformations(
+            [nullishDatum],
+            [],
+            xAxisModel,
+            seriesModels,
+            [],
+            yAxisScaleTransforms,
+            createMockComputedVisualizationSettings(),
+          ),
+        ).toThrow(NO_X_AXIS_VALUES_ERROR_MESSAGE);
+      });
+    });
+
     it("should work on empty datasets", () => {
       const result = applyVisualizationSettingsDataTransformations(
         [],
+        [],
         xAxisModel,
         seriesModels,
+        [],
         yAxisScaleTransforms,
         createMockVisualizationSettings({
           series: (key: LegacySeriesSettingsObjectKey) => ({
@@ -538,11 +600,8 @@ describe("dataset transform functions", () => {
     });
   });
 
-  describe("getTransformedDataset", () => {
+  describe("sortDataset", () => {
     const seriesKey = "value";
-    const seriesModels = [
-      createMockSeriesModel({ dataKey: "value", columnIndex: 0 }),
-    ];
 
     it("should sort time-series datasets", () => {
       const dataset = [
@@ -570,18 +629,6 @@ describe("dataset transform functions", () => {
       expect(result[0][X_AXIS_DATA_KEY]).toBe(1);
       expect(result[1][X_AXIS_DATA_KEY]).toBe(5);
       expect(result[2][X_AXIS_DATA_KEY]).toBe(1000);
-    });
-
-    it("handles empty datasets without errors", () => {
-      expect(() =>
-        applyVisualizationSettingsDataTransformations(
-          [],
-          xAxisModel,
-          seriesModels,
-          yAxisScaleTransforms,
-          createMockComputedVisualizationSettings(),
-        ),
-      ).not.toThrow();
     });
   });
 });

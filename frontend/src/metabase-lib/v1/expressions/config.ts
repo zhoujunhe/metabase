@@ -64,18 +64,6 @@ export const MBQL_CLAUSES: MBQLClauseMap = {
     args: ["number"],
     requiresFeature: "standard-deviation-aggregations",
   },
-  offset: {
-    displayName: `Offset`,
-    type: "aggregation",
-    args: ["any", "number"],
-    requiresFeature: "window-functions/offset",
-    validator: function (_expr: any, offset: number) {
-      if (offset === 0) {
-        return t`Row offset cannot be zero`;
-      }
-    },
-    hasOptions: true,
-  },
   avg: { displayName: `Average`, type: "aggregation", args: ["number"] },
   median: {
     displayName: `Median`,
@@ -229,24 +217,28 @@ export const MBQL_CLAUSES: MBQLClauseMap = {
     displayName: `contains`,
     type: "boolean",
     args: ["string", "string"],
+    multiple: true,
     hasOptions: true,
   },
   "does-not-contain": {
     displayName: `doesNotContain`,
     type: "boolean",
     args: ["string", "string"],
+    multiple: true,
     hasOptions: true,
   },
   "starts-with": {
     displayName: `startsWith`,
     type: "boolean",
     args: ["string", "string"],
+    multiple: true,
     hasOptions: true,
   },
   "ends-with": {
     displayName: `endsWith`,
     type: "boolean",
     args: ["string", "string"],
+    multiple: true,
     hasOptions: true,
   },
   between: {
@@ -302,6 +294,18 @@ export const MBQL_CLAUSES: MBQLClauseMap = {
     type: "expression",
     args: ["expression", "expression"], // ideally we'd alternate boolean/expression
     multiple: true,
+  },
+  offset: {
+    displayName: `Offset`,
+    type: "any", // ideally we'd dynamically infer it from the first argument
+    args: ["any", "number"],
+    requiresFeature: "window-functions/offset",
+    validator: function (_expr: any, offset: number) {
+      if (offset === 0) {
+        return t`Row offset cannot be zero`;
+      }
+    },
+    hasOptions: true,
   },
   // boolean operators
   and: { displayName: `AND`, type: "boolean", args: ["boolean", "boolean"] },
@@ -399,6 +403,7 @@ export const MBQL_CLAUSES: MBQLClauseMap = {
     displayName: `weekday`,
     type: "number",
     args: ["datetime"],
+    hasOptions: true, // optional mode parameter
   },
   "get-hour": {
     displayName: `hour`,

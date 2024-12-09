@@ -1,13 +1,13 @@
 import { setupFieldsValuesEndpoints } from "__support__/server-mocks";
 import { createMockEntitiesState } from "__support__/store";
-import { render, renderWithProviders, screen } from "__support__/ui";
+import { renderWithProviders, screen } from "__support__/ui";
 import { getMetadata } from "metabase/selectors/metadata";
 import * as Lib from "metabase-lib";
-import { createQuery, columnFinder } from "metabase-lib/test-helpers";
+import { columnFinder, createQuery } from "metabase-lib/test-helpers";
 import {
-  createSampleDatabase,
-  PRODUCT_CATEGORY_VALUES,
   PRODUCTS,
+  PRODUCT_CATEGORY_VALUES,
+  createSampleDatabase,
 } from "metabase-types/api/mocks/presets";
 import { createMockState } from "metabase-types/store/mocks";
 
@@ -34,7 +34,9 @@ function setupMLv2(table, column) {
   const findColumn = columnFinder(query, columns);
   const col = findColumn(table, column);
 
-  return render(<QueryColumnInfo query={query} stageIndex={-1} column={col} />);
+  return renderWithProviders(
+    <QueryColumnInfo query={query} stageIndex={-1} column={col} />,
+  );
 }
 
 describe("FieldInfo", () => {

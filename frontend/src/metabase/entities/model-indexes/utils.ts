@@ -3,10 +3,10 @@ import _ from "underscore";
 import type Question from "metabase-lib/v1/Question";
 import type FieldEntity from "metabase-lib/v1/metadata/Field";
 import {
-  isString,
-  isPK,
-  isInteger,
   isBoolean,
+  isInteger,
+  isPK,
+  isString,
 } from "metabase-lib/v1/types/utils/isa";
 import type { Field } from "metabase-types/api";
 import type { ModelIndex } from "metabase-types/api/modelIndexes";
@@ -25,7 +25,10 @@ export const canIndexField = (field: FieldEntity, model: Question): boolean => {
 
 export const getPkRef = (fields?: Field[]) => fields?.find(isPK)?.field_ref;
 
-export const fieldHasIndex = (modelIndexes: ModelIndex[], field: Field) =>
-  !!modelIndexes.some((index: any) =>
+export const fieldHasIndex = (
+  modelIndexes: ModelIndex[] | undefined,
+  field: Field,
+) =>
+  !!modelIndexes?.some((index: any) =>
     _.isEqual(index.value_ref, field.field_ref),
   );

@@ -3,9 +3,9 @@
    [clojure.test :refer :all]
    [metabase.analyze.classifiers.name :as classifiers.name]
    [metabase.models.interface :as mi]
-   [metabase.models.table :as table :refer [Table]]))
+   [metabase.models.table :refer [Table]]))
 
-(deftest ^:paralell semantic-type-for-name-and-base-type-test
+(deftest ^:parallel semantic-type-for-name-and-base-type-test
   (doseq [[input expected] {["id"      :type/Integer] :type/PK
                             ;; other pattern matches based on type/regex (remember, base_type matters in matching!)
                             ["rating"        :type/Integer] :type/Score
@@ -23,7 +23,7 @@
 (deftest ^:parallel infer-entity-type-test
   (testing "name matches"
     (let [classify (fn [table-name] (-> (mi/instance Table {:name table-name})
-                                        classifiers.name/infer-entity-type
+                                        classifiers.name/infer-entity-type-by-name
                                         :entity_type))]
       (testing "matches simple"
         (is (= :entity/TransactionTable
@@ -44,7 +44,7 @@
       (is (nil? (-> {:semantic_type :type/FK
                      :name          "City"
                      :base_type     :type/Text}
-                    (classifiers.name/infer-and-assoc-semantic-type nil)
+                    (classifiers.name/infer-and-assoc-semantic-type-by-name nil)
                     :semantic_type))))))
 
 (deftest ^:parallel infer-entity-type-test-3
@@ -54,13 +54,13 @@
              (-> {:semantic_type :type/Category
                   :name          "City"
                   :base_type     :type/Text}
-                 (classifiers.name/infer-and-assoc-semantic-type nil)
+                 (classifiers.name/infer-and-assoc-semantic-type-by-name nil)
                  :semantic_type))))))
 
 (deftest ^:parallel infer-semantic-type-test
   (let [infer (fn infer [column-name & [base-type]]
-                (classifiers.name/infer-semantic-type
-                  {:name column-name, :base_type (or base-type :type/Text)}))]
+                (classifiers.name/infer-semantic-type-by-name
+                 {:name column-name, :base_type (or base-type :type/Text)}))]
     (testing "standard checks"
       ;; not exhausting but a place for edge cases in the future
       (are [expected info] (= expected (apply infer info))
@@ -70,7 +70,7 @@
     (testing "name and type matches"
       (testing "matches \"updated at\" style columns"
         (let [classify (fn [table-name table-type] (-> (mi/instance Table {:name table-name :base_type table-type})
-                                                       classifiers.name/infer-semantic-type))]
+                                                       classifiers.name/infer-semantic-type-by-name))]
           (doseq [[col-type expected] [[:type/Date :type/UpdatedDate]
                                        [:type/DateTime :type/UpdatedTimestamp]
                                        [:type/Time :type/UpdatedTime]]]

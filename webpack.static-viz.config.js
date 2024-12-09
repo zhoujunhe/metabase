@@ -1,5 +1,6 @@
 const YAML = require("json-to-pretty-yaml");
 const TerserPlugin = require("terser-webpack-plugin");
+const webpack = require("webpack");
 const { StatsWriterPlugin } = require("webpack-stats-plugin");
 
 const ASSETS_PATH = __dirname + "/resources/frontend_client/app/assets";
@@ -9,17 +10,12 @@ const CLJS_SRC_PATH = __dirname + "/target/cljs_release";
 const CLJS_SRC_PATH_DEV = __dirname + "/target/cljs_dev";
 const LIB_SRC_PATH = __dirname + "/frontend/src/metabase-lib";
 const TYPES_SRC_PATH = __dirname + "/frontend/src/metabase-types";
-
-const BABEL_CONFIG = {
-  cacheDirectory: process.env.BABEL_DISABLE_CACHE ? null : ".babel_cache",
-};
+const SDK_SRC_PATH = __dirname + "/enterprise/frontend/src/embedding-sdk";
 
 const WEBPACK_BUNDLE = process.env.WEBPACK_BUNDLE || "development";
 const devMode = WEBPACK_BUNDLE !== "production";
 
 module.exports = env => {
-  const shouldDisableMinimization = env.WEBPACK_WATCH === true;
-
   return {
     mode: "production",
     context: SRC_PATH,
@@ -53,8 +49,36 @@ module.exports = env => {
         },
         {
           test: /\.(tsx?|jsx?)$/,
-          exclude: /node_modules|cljs/,
-          use: [{ loader: "babel-loader", options: BABEL_CONFIG }],
+          exclude: /node_modules|cljs|css\/core\/fonts\.styled\.ts/,
+          use: [
+            {
+              loader: "swc-loader",
+              options: {
+                jsc: {
+                  loose: true,
+                  transform: {
+                    react: {
+                      runtime: "automatic",
+                      refresh: false,
+                    },
+                  },
+                  parser: {
+                    syntax: "typescript",
+                    tsx: true,
+                  },
+                  experimental: {
+                    plugins: [["@swc/plugin-emotion", { sourceMap: devMode }]],
+                  },
+                },
+
+                sourceMaps: true,
+                minify: false, // produces same bundle size, but cuts 1s locally
+                env: {
+                  targets: ["defaults"],
+                },
+              },
+            },
+          ],
         },
         {
           test: /\.svg/,
@@ -89,6 +113,14 @@ module.exports = env => {
         cljs: devMode ? CLJS_SRC_PATH_DEV : CLJS_SRC_PATH,
         "metabase-lib": LIB_SRC_PATH,
         "metabase-types": TYPES_SRC_PATH,
+        "embedding-sdk": SDK_SRC_PATH,
+        "process/browser": require.resolve("process/browser"),
+      },
+      fallback: {
+        crypto: require.resolve("crypto-browserify"),
+        stream: require.resolve("stream-browserify"),
+        buffer: require.resolve("buffer/"),
+        process: require.resolve("process/browser"),
       },
     },
     optimization: {
@@ -100,6 +132,18 @@ module.exports = env => {
       ],
     },
     plugins: [
+      new webpack.EnvironmentPlugin({
+        EMBEDDING_SDK_VERSION: null,
+        IS_EMBEDDING_SDK_BUILD: false,
+      }),
+      new webpack.NormalModuleReplacementPlugin(
+        /node_modules\/@reduxjs\/toolkit\/.*\/process$/,
+        "process/browser",
+      ),
+      new webpack.ProvidePlugin({
+        process: "process/browser",
+        Buffer: ["buffer", "Buffer"],
+      }),
       new StatsWriterPlugin({
         stats: {
           modules: true,
@@ -115,7 +159,8 @@ module.exports = env => {
               .filter(
                 module =>
                   module.type !== "hidden modules" &&
-                  module.moduleType !== "runtime",
+                  module.moduleType !== "runtime" &&
+                  module.nameForCondition != null,
               )
               .map(module =>
                 module.nameForCondition.replace(`${__dirname}/`, ""),

@@ -25,12 +25,6 @@
 ;;;
 ;;; where keys are a map of String ID => metadata
 
-;; TODO: This is always wrapped with `keyword` in its usage so that may as well be memoized too.
-(def ^:private ^{:arglists '([k])} memoized-kebab-key
-  "Even tho [[u/->kebab-case-en]] has LRU memoization, plain memoization is significantly faster, and since the keys
-  we're parsing here are bounded it's fine to memoize this stuff forever."
-  (memoize u/->kebab-case-en))
-
 (defn- object-get [obj k]
   (when (and obj (js-in k obj))
     (gobject/get obj k)))
@@ -108,7 +102,7 @@
     (comp
      ;; convert keys to kebab-case keywords
      (map (fn [[k v]]
-            [(cond-> (keyword (memoized-kebab-key k))
+            [(cond-> (keyword (u/->kebab-case-en k))
                rename-key (#(or (rename-key %) %)))
              v]))
      ;; remove [[excluded-keys]]
@@ -244,7 +238,7 @@
   [m]
   (obj->clj
    (map (fn [[k v]]
-          (let [k (keyword (memoized-kebab-key k))
+          (let [k (keyword (u/->kebab-case-en k))
                 k (if (= k :binning-strategy)
                     :strategy
                     k)
@@ -265,17 +259,17 @@
   `:internal`."
   [dimensions]
   (when-let [dimension (m/find-first (fn [dimension]
-                                       (#{"external" "internal"} (object-get dimension "type")))
+                                       (#{"external" "internal"} (get dimension "type")))
                                      dimensions)]
-    (let [dimension-type (keyword (object-get dimension "type"))]
+    (let [dimension-type (keyword (get dimension "type"))]
       (merge
-       {:id   (object-get dimension "id")
-        :name (object-get dimension "name")}
+       {:id   (get dimension "id")
+        :name (get dimension "name")}
        (case dimension-type
          ;; external = mapped to a different column
          :external
          {:lib/type :metadata.column.remapping/external
-          :field-id (object-get dimension "human_readable_field_id")}
+          :field-id (get dimension "human_readable_field_id")}
 
          ;; internal = mapped to FieldValues
          :internal
@@ -424,7 +418,7 @@
 
 (defmethod lib-type :metric
   [_object-type]
-  :metadata/legacy-metric)
+  :metadata/metric)
 
 (defmethod excluded-keys :metric
   [_object-type]
@@ -464,13 +458,30 @@
         (log/errorf e "Error parsing %s objects: %s" object-type (ex-message e))
         nil))))
 
+(defn- card->metric-card
+  [card]
+  (-> card
+      (select-keys [:id :table-id :name :description :archived :dataset-query :source-card-id])
+      (assoc :lib/type :metadata/metric)))
+
+(defn- metric-cards
+  [delayed-cards]
+  (when-let [cards @delayed-cards]
+    (into {}
+          (keep (fn [[id card]]
+                  (when (and card (= (:type @card) :metric) (not (:archived @card)))
+                    (let [card @card]
+                      [id (-> card card->metric-card delay)]))))
+          cards)))
+
 (defn- parse-metadata [metadata]
-  {:databases (parse-objects-delay :database metadata)
-   :tables    (parse-objects-delay :table    metadata)
-   :fields    (parse-objects-delay :field    metadata)
-   :cards     (parse-objects-delay :card     metadata)
-   :metrics   (parse-objects-delay :metric   metadata)
-   :segments  (parse-objects-delay :segment  metadata)})
+  (let [delayed-cards (parse-objects-delay :card metadata)]
+    {:databases (parse-objects-delay :database metadata)
+     :tables    (parse-objects-delay :table    metadata)
+     :fields    (parse-objects-delay :field    metadata)
+     :cards     delayed-cards
+     :metrics   (delay (metric-cards delayed-cards))
+     :segments  (parse-objects-delay :segment  metadata)}))
 
 (defn- database [metadata database-id]
   (some-> metadata :databases deref (get database-id) deref))
@@ -480,7 +491,6 @@
                      :metadata/table         :tables
                      :metadata/column        :fields
                      :metadata/card          :cards
-                     :metadata/legacy-metric :metrics
                      :metadata/segment       :segments)
         metadatas* (some-> metadata k deref)]
     (into []
@@ -500,12 +510,25 @@
   [metadata metadata-type table-id]
   (let [k (case metadata-type
             :metadata/column        :fields
-            :metadata/legacy-metric :metrics
+            :metadata/metric        :metrics
             :metadata/segment       :segments)]
     (into []
           (keep (fn [[_id dlay]]
                   (when-let [object (some-> dlay deref)]
-                    (when (= (:table-id object) table-id)
+                    (when (and (= (:table-id object) table-id)
+                               (or (not= metadata-type :metadata/metric)
+                                   (nil? (:source-card-id object))))
+                      object))))
+          (some-> metadata k deref))))
+
+(defn- metadatas-for-card
+  [metadata metadata-type card-id]
+  (let [k (case metadata-type
+            :metadata/metric :metrics)]
+    (into []
+          (keep (fn [[_id dlay]]
+                  (when-let [object (some-> dlay deref)]
+                    (when (= (:source-card-id object) card-id)
                       object))))
           (some-> metadata k deref))))
 
@@ -528,6 +551,8 @@
         (tables metadata database-id))
       (metadatas-for-table [_this metadata-type table-id]
         (metadatas-for-table metadata metadata-type table-id))
+      (metadatas-for-card [_this metadata-type card-id]
+        (metadatas-for-card metadata metadata-type card-id))
       (setting [_this setting-key]
         (setting unparsed-metadata setting-key))
 

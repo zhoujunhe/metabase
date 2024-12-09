@@ -10,10 +10,9 @@
    [metabase.models.task-history :as task-history]
    [metabase.plugins.classloader :as classloader]
    [metabase.public-settings.premium-features
-    :as premium-features
     :refer [defenterprise]]
    [metabase.task :as task]
-   [metabase.util.i18n :as i18n :refer [deferred-tru]]
+   [metabase.util.i18n :refer [deferred-tru]]
    [metabase.util.log :as log]
    [toucan2.core :as t2]))
 
@@ -60,7 +59,15 @@
                       min-retention-days)
 
                     :else
-                    env-var-value))))
+                    env-var-value)))
+  :doc "Sets the maximum number of days Metabase preserves rows for the following application database tables:
+
+- `query_execution`
+- `audit_log`
+- `view_log`
+
+Twice a day, Metabase will delete rows older than this threshold. The minimum value is 30 days (Metabase will treat entered values of 1 to 29 the same as 30).
+If set to 0, Metabase will keep all rows.")
 
 (defn- truncate-table!
   "Given a model, deletes all rows older than the configured threshold"
@@ -108,7 +115,7 @@
                  (triggers/with-identity (triggers/key truncate-audit-tables-trigger-key))
                  (triggers/start-now)
                  (triggers/with-schedule
-                   (cron/schedule
-                    (cron/cron-schedule truncate-audit-tables-cron)
-                    (cron/with-misfire-handling-instruction-do-nothing))))]
+                  (cron/schedule
+                   (cron/cron-schedule truncate-audit-tables-cron)
+                   (cron/with-misfire-handling-instruction-do-nothing))))]
     (task/schedule-task! job trigger)))

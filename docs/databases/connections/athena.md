@@ -66,7 +66,7 @@ You can specify additional options via a string, e.g. `UseResultsetStreaming=0;L
 
 Turn this option **OFF** if people want to click **Run** (the play button) before applying any [Summarize](../../questions/query-builder/introduction.md#grouping-your-metrics) or filter selections.
 
-By default, Metabase will execute a query as soon as you choose an grouping option from the **Summarize** menu or a filter condition from the [drill-through menu](https://www.metabase.com/learn/questions/drill-through). If your database is slow, you may want to disable re-running to avoid loading data on each click.
+By default, Metabase will execute a query as soon as you choose an grouping option from the **Summarize** menu or a filter condition from the [drill-through menu](https://www.metabase.com/learn/metabase-basics/querying-and-dashboards/questions/drill-through). If your database is slow, you may want to disable re-running to avoid loading data on each click.
 
 ### Choose when Metabase syncs and scans
 
@@ -97,19 +97,6 @@ Turn this option **ON** to scan a sample of values every time Metabase runs a [s
 
 A fingerprinting query examines the first 10,000 rows from each column and uses that data to guesstimate how many unique values each column has, what the minimum and maximum values are for numeric and timestamp columns, and so on. If you leave this option **OFF**, Metabase will only fingerprint your columns once during setup.
 
-### Default result cache duration
-
-{% include plans-blockquote.html feature="Database-specific caching" %}
-
-How long to keep question results. By default, Metabase will use the value you supply on the [cache settings page](../../configuring-metabase/caching.md), but if this database has other factors that influence the freshness of data, it could make sense to set a custom duration. You can also choose custom durations on individual questions or dashboards to help improve performance.
-
-Options are:
-
-- **Use instance default (TTL)**. TTL is time to live, meaning how long the cache remains valid before Metabase should run the query again.
-- **Custom**.
-
-If you are on a paid plan, you can also set cache duration per questions. See [Advanced caching controls](../../configuring-metabase/caching.md#advanced-caching-controls).
-
 ## Permissions and IAM Policies
 
 Most issues that we see when people attempt to connect to AWS Athena involve permissions. Querying AWS Athena requires permissions to:
@@ -125,7 +112,6 @@ Most issues that we see when people attempt to connect to AWS Athena involve per
 This policy provides read-only permissions for data in S3. You'll need to specify any S3 buckets that you want Metabase to be able to query from _as well as_ the S3 bucket provided as part of the configuration where results are written to.
 
 There may be additional permissions required for other Athena functionality, like federated queries. For details, check out the [Athena docs](https://docs.aws.amazon.com/athena/latest/ug/security-iam-athena).
-
 
 ```json
 {
@@ -221,14 +207,14 @@ If Metabase also needs to create tables, you'll need additional AWS Glue permiss
         "glue:DeleteTable",
         "glue:CreatePartition",
         "glue:DeletePartition",
-        "glue:UpdatePartition"
+        "glue:UpdatePartition",
+        "glue:GetCatalogImportStatus"
       ],
       "Resource": "*"
     }
   ]
 }
 ```
-
 
 ## Further reading
 

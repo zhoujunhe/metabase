@@ -1,5 +1,5 @@
 import { connect } from "react-redux";
-import { t, jt } from "ttag";
+import { c, t } from "ttag";
 import _ from "underscore";
 
 import { MoveModal } from "metabase/containers/MoveModal";
@@ -8,7 +8,7 @@ import Dashboards from "metabase/entities/dashboards";
 import { color } from "metabase/lib/colors";
 import * as Urls from "metabase/lib/urls";
 import { Icon } from "metabase/ui";
-import type { Dashboard, CollectionId, DashboardId } from "metabase-types/api";
+import type { CollectionId, Dashboard, DashboardId } from "metabase-types/api";
 import type { State } from "metabase-types/store";
 
 import { ToastRoot } from "./DashboardMoveModal.styled";
@@ -57,11 +57,17 @@ const DashboardMoveToast = ({
   collectionId: CollectionId;
 }) => (
   <ToastRoot>
-    <Icon name="collection" className="mr1" color="white" />
-    {jt`Dashboard moved to ${(
+    <Icon
+      name="collection"
+      style={{ marginInlineEnd: "0.25rem" }}
+      color="text-white"
+    />
+    {c("{0} is a location where the dashboard was moved to")
+      .jt`Dashboard moved to ${(
       <Collection.Link
+        key="link"
         id={collectionId}
-        className="ml1"
+        style={{ marginInlineStart: ".25em" }}
         color={color("brand")}
       />
     )}`}

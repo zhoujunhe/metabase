@@ -1,14 +1,16 @@
 import {
-  createMockSingleSeries,
   createMockCard,
+  createMockColumn,
   createMockDataset,
   createMockDatasetData,
-  createMockColumn,
+  createMockSingleSeries,
 } from "metabase-types/api/mocks";
 
 import {
-  STACKABLE_SETTINGS,
   GRAPH_AXIS_SETTINGS,
+  GRAPH_DISPLAY_VALUES_SETTINGS,
+  STACKABLE_SETTINGS,
+  TOOLTIP_SETTINGS,
   getDefaultDimensionLabel,
 } from "./graph";
 
@@ -52,6 +54,48 @@ describe("STACKABLE_SETTINGS", () => {
         });
 
         expect(value).toBe("normalized");
+      });
+    });
+
+    describe("isValid", () => {
+      const isValid = STACKABLE_SETTINGS["stackable.stack_type"].isValid;
+
+      it("should be valid even on cards with display=line when there are stackable series (metabase#45182)", () => {
+        const result = isValid(
+          [
+            { card: { display: "line" }, id: 1 },
+            { card: { display: "line" }, id: 2 },
+            { card: { display: "line" }, id: 3 },
+          ],
+          {
+            series: series => ({
+              display: series.card.id === 1 ? "line" : "bar",
+            }),
+            "stackable.stack_type": "stacked",
+            "graph.show_values": false,
+          },
+        );
+
+        expect(result).toBe(true);
+      });
+
+      it("should not be valid when there is less than two stackable series", () => {
+        const result = isValid(
+          [
+            { card: { display: "bar" }, id: 1 },
+            { card: { display: "bar" }, id: 2 },
+            { card: { display: "bar" }, id: 3 },
+          ],
+          {
+            series: series => ({
+              display: series.card.id === 1 ? "bar" : "line",
+            }),
+            "stackable.stack_type": "stacked",
+            "graph.show_values": false,
+          },
+        );
+
+        expect(result).toBe(false);
       });
     });
   });
@@ -192,5 +236,292 @@ describe("GRAPH_AXIS_SETTINGS", () => {
         expect(isEnabled).toBe(expectedDefault);
       },
     );
+  });
+});
+
+describe("GRAPH_DISPLAY_VALUES_SETTINGS", () => {
+  describe("graph.show_values", () => {
+    const getHidden =
+      GRAPH_DISPLAY_VALUES_SETTINGS["graph.show_values"].getHidden;
+
+    it("should be hidden on normalized area charts", () => {
+      const isHidden = getHidden(
+        [{ card: { display: "area" } }, { card: { display: "area" } }],
+        {
+          series: series => ({ display: series.card.display }),
+          "stackable.stack_type": "normalized",
+        },
+      );
+
+      expect(isHidden).toBe(true);
+    });
+
+    it("should not be hidden on normalized charts with line series", () => {
+      const isHidden = getHidden(
+        [
+          { card: { display: "area" } },
+          { card: { display: "area" } },
+          { card: { display: "line" } },
+        ],
+        {
+          series: series => ({ display: series.card.display }),
+          "stackable.stack_type": "normalized",
+        },
+      );
+
+      expect(isHidden).toBe(false);
+    });
+  });
+
+  describe("graph.label_value_frequency", () => {
+    const getHidden =
+      GRAPH_DISPLAY_VALUES_SETTINGS["graph.label_value_frequency"].getHidden;
+
+    it("should be hidden when data values are hidden", () => {
+      const isHidden = getHidden(
+        [
+          { card: { display: "line" } },
+          { card: { display: "area" } },
+          { card: { display: "bar" } },
+        ],
+        {
+          series: series => ({ display: series.card.display }),
+          "graph.show_values": false,
+        },
+      );
+
+      expect(isHidden).toBe(true);
+    });
+
+    it("should be hidden on normalized charts without line series", () => {
+      const isHidden = getHidden(
+        [
+          { card: { display: "area" } },
+          { card: { display: "area" } },
+          { card: { display: "bar" } },
+        ],
+        {
+          series: series => ({ display: series.card.display }),
+          "stackable.stack_type": "normalized",
+        },
+      );
+
+      expect(isHidden).toBe(true);
+    });
+
+    it("should be hidden on normalized area charts", () => {
+      const isHidden = getHidden(
+        [
+          { card: { display: "area" } },
+          { card: { display: "area" } },
+          { card: { display: "area" } },
+        ],
+        {
+          series: series => ({ display: series.card.display }),
+          "stackable.stack_type": "normalized",
+        },
+      );
+
+      expect(isHidden).toBe(true);
+    });
+
+    it("should be hidden on normalized bar charts", () => {
+      const isHidden = getHidden(
+        [
+          { card: { display: "bar" } },
+          { card: { display: "bar" } },
+          { card: { display: "bar" } },
+        ],
+        {
+          series: series => ({ display: series.card.display }),
+          "stackable.stack_type": "normalized",
+        },
+      );
+
+      expect(isHidden).toBe(true);
+    });
+
+    it("should not be hidden on normalized charts with line series", () => {
+      const isHidden = getHidden(
+        [
+          { card: { display: "area" } },
+          { card: { display: "area" } },
+          { card: { display: "line" } },
+        ],
+        {
+          series: series => ({ display: series.card.display }),
+          "stackable.stack_type": "normalized",
+          "graph.show_values": true,
+        },
+      );
+
+      expect(isHidden).toBe(false);
+    });
+  });
+
+  describe("graph.show_stack_values", () => {
+    const getHidden =
+      GRAPH_DISPLAY_VALUES_SETTINGS["graph.show_stack_values"].getHidden;
+
+    it("should be hidden on non-stacked charts", () => {
+      const isHidden = getHidden(
+        [{ card: { display: "bar" } }, { card: { display: "bar" } }],
+        {
+          series: series => ({ display: series.card.display }),
+          "stackable.stack_type": null,
+          "graph.show_values": true,
+        },
+      );
+
+      expect(isHidden).toBe(true);
+    });
+
+    it("should be hidden on stacked area charts", () => {
+      const isHidden = getHidden(
+        [{ card: { display: "area" } }, { card: { display: "area" } }],
+        {
+          series: series => ({ display: series.card.display }),
+          "stackable.stack_type": "stacked",
+          "graph.show_values": true,
+        },
+      );
+
+      expect(isHidden).toBe(true);
+    });
+
+    it("should not be hidden on mixed stacked area and bar charts", () => {
+      const isHidden = getHidden(
+        [
+          { card: { display: "area" } },
+          { card: { display: "area" } },
+          { card: { display: "bar" } },
+          { card: { display: "bar" } },
+        ],
+        {
+          series: series => ({ display: series.card.display }),
+          "stackable.stack_type": "stacked",
+          "graph.show_values": true,
+        },
+      );
+
+      expect(isHidden).toBe(false);
+    });
+
+    it("should be hidden on normalized charts bar charts", () => {
+      const isHidden = getHidden(
+        [{ card: { display: "bar" } }, { card: { display: "bar" } }],
+        {
+          series: series => ({ display: series.card.display }),
+          "stackable.stack_type": "normalized",
+          "graph.show_values": true,
+        },
+      );
+
+      expect(isHidden).toBe(true);
+    });
+
+    it("should be hidden on stacked bar charts when show values setting is false", () => {
+      const isHidden = getHidden(
+        [{ card: { display: "bar" } }, { card: { display: "bar" } }],
+        {
+          series: series => ({ display: series.card.display }),
+          "stackable.stack_type": "stacked",
+          "graph.show_values": false,
+        },
+      );
+
+      expect(isHidden).toBe(true);
+    });
+  });
+});
+
+describe("graph.tooltip_columns", () => {
+  const tooltipColumnsSetting = TOOLTIP_SETTINGS["graph.tooltip_columns"];
+
+  describe("getHidden", () => {
+    it("should be hidden when there are no available additional columns", () => {
+      const mockSeries = [
+        createMockSingleSeries(
+          createMockCard(),
+          createMockDataset({
+            data: createMockDatasetData({
+              cols: [
+                createMockColumn({ name: "dim", base_type: "type/Text" }),
+                createMockColumn({ name: "metric", base_type: "type/Number" }),
+              ],
+            }),
+          }),
+        ),
+      ];
+
+      const isHidden = tooltipColumnsSetting.getHidden(mockSeries, {
+        "graph.tooltip_type": "series_comparison",
+        "graph.dimensions": ["dim"],
+        "graph.metrics": ["metric"],
+      });
+
+      expect(isHidden).toBe(true);
+    });
+
+    it("should not be hidden when there are available additional columns", () => {
+      const mockSeries = [
+        createMockSingleSeries(
+          createMockCard(),
+          createMockDataset({
+            data: createMockDatasetData({
+              cols: [
+                createMockColumn({ name: "dim", base_type: "type/Text" }),
+                createMockColumn({ name: "metric1", base_type: "type/Number" }),
+                createMockColumn({ name: "metric2", base_type: "type/Number" }),
+              ],
+            }),
+          }),
+        ),
+      ];
+
+      const isHidden = tooltipColumnsSetting.getHidden(mockSeries, {
+        "graph.tooltip_type": "series_comparison",
+        "graph.dimensions": ["dim"],
+        "graph.metrics": ["metric1"],
+      });
+
+      expect(isHidden).toBe(false);
+    });
+  });
+
+  describe("getProps", () => {
+    it("should return options for available additional columns", () => {
+      const mockSeries = [
+        createMockSingleSeries(
+          createMockCard(),
+          createMockDataset({
+            data: createMockDatasetData({
+              cols: [
+                createMockColumn({ name: "dim", base_type: "type/Text" }),
+                createMockColumn({
+                  name: "metric1",
+                  display_name: "Metric 1",
+                  base_type: "type/Number",
+                }),
+                createMockColumn({
+                  name: "metric2",
+                  display_name: "Metric 2",
+                  base_type: "type/Number",
+                }),
+              ],
+            }),
+          }),
+        ),
+      ];
+
+      const props = tooltipColumnsSetting.getProps(mockSeries, {
+        "graph.dimensions": ["dim"],
+        "graph.metrics": ["metric1"],
+      });
+
+      expect(props.options).toEqual([
+        { label: "Metric 2", value: '["name","metric2"]' },
+      ]);
+    });
   });
 });

@@ -11,11 +11,10 @@
    [metabase.models.dashboard :refer [Dashboard]]
    [metabase.models.dashboard-card :refer [DashboardCard]]
    [metabase.models.dashboard-card-series :refer [DashboardCardSeries]]
-   [metabase.models.database :as database :refer [Database]]
+   [metabase.models.database :refer [Database]]
    [metabase.models.dimension :refer [Dimension]]
    [metabase.models.field :as field :refer [Field]]
    [metabase.models.interface :as mi]
-   [metabase.models.legacy-metric :refer [LegacyMetric]]
    [metabase.models.native-query-snippet :refer [NativeQuerySnippet]]
    [metabase.models.pulse :refer [Pulse]]
    [metabase.models.pulse-card :refer [PulseCard]]
@@ -23,7 +22,7 @@
    [metabase.models.segment :refer [Segment]]
    [metabase.models.table :refer [Table]]
    [metabase.models.user :refer [User]]
-   [metabase.shared.models.visualization-settings :as mb.viz]
+   [metabase.models.visualization-settings :as mb.viz]
    [metabase.util :as u]
    [toucan2.core :as t2]))
 
@@ -62,9 +61,6 @@
         ;; example relevant clause - [:field 2 {:source-field 1}]
         {:source-field (id :guard integer?)}
         (assoc &match :source-field (fully-qualified-name Field id))
-
-        [:metric (id :guard integer?)]
-        [:metric (fully-qualified-name LegacyMetric id)]
 
         [:segment (id :guard integer?)]
         [:segment (fully-qualified-name Segment id)])))
@@ -105,11 +101,11 @@
   "Removes unneeded fields that can either be reconstructed from context or are meaningless
    (eg. :created_at)."
   [entity]
-  (cond-> (dissoc entity :id :creator_id :created_at :updated_at :db_id :location
+  (cond-> (dissoc entity :id :creator_id :created_at :updated_at :db_id :location :last_used_at
                   :dashboard_id :fields_hash :personal_owner_id :made_public_by_id :collection_id
                   :pulse_id :result_metadata :action_id)
     (not *include-entity-id*)   (dissoc :entity_id)
-    (some #(instance? % entity) (map type [LegacyMetric Field Segment])) (dissoc :table_id)))
+    (some #(instance? % entity) (map type [Field Segment])) (dissoc :table_id)))
 
 (defmulti ^:private serialize-one
   {:arglists '([instance])}
@@ -166,7 +162,7 @@
     nil
     (reduce-kv (fn [acc k v]
                  (assoc acc (convert-param-mapping-key k)
-                            (convert-param-mapping-val nil v))) {} param-mapping)))
+                        (convert-param-mapping-val nil v))) {} param-mapping)))
 
 (defn- convert-click-behavior [{:keys [::mb.viz/link-type ::mb.viz/link-target-id] :as click}]
   (-> (if-let [new-target-id (case link-type
@@ -198,7 +194,7 @@
   (let [dashboard-cards   (t2/select DashboardCard :dashboard_id (u/the-id dashboard))
         series            (when (not-empty dashboard-cards)
                             (t2/select DashboardCardSeries
-                              :dashboardcard_id [:in (map u/the-id dashboard-cards)]))]
+                                       :dashboardcard_id [:in (map u/the-id dashboard-cards)]))]
     (for [dashboard-card dashboard-cards]
       (-> dashboard-card
           (assoc :series (for [series series
@@ -223,12 +219,12 @@
 (defmethod serialize-one Pulse
   [pulse]
   (assoc pulse
-    :cards    (for [card (t2/select PulseCard :pulse_id (u/the-id pulse))]
-                (-> card
-                    (dissoc :id :pulse_id)
-                    (update :card_id (partial fully-qualified-name Card))))
-    :channels (for [channel (t2/select PulseChannel :pulse_id (u/the-id pulse))]
-                (strip-crud channel))))
+         :cards    (for [card (t2/select PulseCard :pulse_id (u/the-id pulse))]
+                     (-> card
+                         (dissoc :id :pulse_id)
+                         (update :card_id (partial fully-qualified-name Card))))
+         :channels (for [channel (t2/select PulseChannel :pulse_id (u/the-id pulse))]
+                     (strip-crud channel))))
 
 (defmethod serialize-one User
   [user]

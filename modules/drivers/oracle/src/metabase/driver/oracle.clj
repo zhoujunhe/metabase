@@ -14,15 +14,13 @@
    [metabase.driver.sql-jdbc.execute :as sql-jdbc.execute]
    [metabase.driver.sql-jdbc.sync :as sql-jdbc.sync]
    [metabase.driver.sql-jdbc.sync.common :as sql-jdbc.sync.common]
-   [metabase.driver.sql-jdbc.sync.describe-table
-    :as sql-jdbc.describe-table]
+   [metabase.driver.sql-jdbc.sync.describe-table :as sql-jdbc.describe-table]
    [metabase.driver.sql.query-processor :as sql.qp]
-   [metabase.driver.sql.query-processor.empty-string-is-null
-    :as sql.qp.empty-string-is-null]
+   [metabase.driver.sql.query-processor.empty-string-is-null :as sql.qp.empty-string-is-null]
    [metabase.driver.sql.util :as sql.u]
-   [metabase.driver.sql.util.unprepare :as unprepare]
    [metabase.models.secret :as secret]
    [metabase.query-processor.timezone :as qp.timezone]
+   [metabase.util.date-2 :as u.date]
    [metabase.util.honey-sql-2 :as h2x]
    [metabase.util.log :as log]
    [metabase.util.ssh :as ssh])
@@ -39,9 +37,10 @@
 (driver/register! :oracle, :parent #{:sql-jdbc
                                      ::sql.qp.empty-string-is-null/empty-string-is-null})
 
-(doseq [[feature supported?] {:datetime-diff    true
-                              :now              true
-                              :convert-timezone true}]
+(doseq [[feature supported?] {:datetime-diff           true
+                              :now                     true
+                              :identifiers-with-spaces true
+                              :convert-timezone        true}]
   (defmethod driver/database-supports? [:oracle feature] [_driver _feature _db] supported?))
 
 (defmethod driver/prettify-native-form :oracle
@@ -58,8 +57,10 @@
     [#"BLOB"        :type/*]
     [#"RAW"         :type/*]
     [#"CHAR"        :type/Text]
-    [#"CLOB"        :type/Text]
-    [#"DATE"        :type/Date]
+    [#"CLOB"        :type/OracleCLOB]
+    ;; Yes, the DATE is mapped to `:type/DateTime`. Oracle's DATE can store also a time part.
+    ;; See the docs - https://docs.oracle.com/en/database/oracle/oracle-database/19/nlspg/datetime-data-types-and-time-zone-support.html#GUID-3A1B7AC6-2EDB-4DDC-9C9D-223D4C72AC74
+    [#"DATE"        :type/DateTime]
     [#"DOUBLE"      :type/Float]
     ;; Expression filter type
     [#"^EXPRESSION" :type/*]
@@ -77,7 +78,8 @@
     ;; Spatial types -- see http://docs.oracle.com/cd/B28359_01/server.111/b28286/sql_elements001.htm#i107588
     [#"^SDO_"       :type/*]
     [#"STRUCT"      :type/*]
-    [#"TIMESTAMP(\(\d\))? WITH TIME ZONE" :type/DateTimeWithTZ]
+    [#"TIMESTAMP(\(\d\))? WITH TIME ZONE"       :type/DateTimeWithTZ]
+    [#"TIMESTAMP(\(\d\))? WITH LOCAL TIME ZONE" :type/DateTimeWithLocalTZ]
     [#"TIMESTAMP"   :type/DateTime]
     [#"URI"         :type/Text]
     [#"XML"         :type/*]]))
@@ -95,12 +97,11 @@
                               (str "/" service-name)))))
 
 (defn- ssl-spec [details spec host port sid service-name]
-  (-> (assoc spec :subname
-                  (format "@(DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=%s)(PORT=%d))(CONNECT_DATA=%s%s))"
-                          host
-                          port
-                          (if sid (str "(SID=" sid ")") "")
-                          (if service-name (str "(SERVICE_NAME=" service-name ")") "")))
+  (-> (assoc spec :subname (format "@(DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=%s)(PORT=%d))(CONNECT_DATA=%s%s))"
+                                   host
+                                   port
+                                   (if sid (str "(SID=" sid ")") "")
+                                   (if service-name (str "(SERVICE_NAME=" service-name ")") "")))
       (sql-jdbc.common/handle-additional-options details)))
 
 (def ^:private ^:const prog-name-property
@@ -373,8 +374,8 @@
    if `x` is a timestamp with time zone."
   [unit x]
   (let [x (cond-> x
-             (h2x/is-of-type? x #"(?i)timestamp(\(\d\))? with time zone")
-             (h2x/at-time-zone (qp.timezone/results-timezone-id)))]
+            (h2x/is-of-type? x #"(?i)timestamp(\(\d\))? with time zone")
+            (h2x/at-time-zone (qp.timezone/results-timezone-id)))]
     (trunc unit x)))
 
 (defmethod sql.qp/datetime-diff [:oracle :year]
@@ -472,11 +473,14 @@
                  :where  [:<= [:raw "rownum"] [:inline (+ offset items)]]}]
        :where  [:> :__rownum__ offset]})))
 
-
 ;; Oracle doesn't support `TRUE`/`FALSE`; use `1`/`0`, respectively; convert these booleans to numbers.
 (defmethod sql.qp/->honeysql [:oracle Boolean]
   [_ bool]
   [:inline (if bool 1 0)])
+
+(defmethod sql.qp/->honeysql [:sql ::sql.qp/cast-to-text]
+  [driver [_ expr]]
+  (sql.qp/->honeysql driver [::sql.qp/cast expr "varchar"]))
 
 (defmethod driver/humanize-connection-error-message :oracle
   [_ message]
@@ -550,7 +554,7 @@
   (str/replace entity-name "/" "//"))
 
 (defmethod sql-jdbc.describe-table/get-table-pks :oracle
-  [_driver ^Connection conn _ table]
+  [_driver ^Connection conn _db-name-or-nil table]
   (let [^DatabaseMetaData metadata (.getMetaData conn)]
     (into [] (sql-jdbc.sync.common/reducible-results
               #(.getPrimaryKeys metadata nil nil (:name table))
@@ -610,26 +614,30 @@
     (when-let [^TIMESTAMPTZ t (.getObject rs i TIMESTAMPTZ)]
       (let [^C3P0ProxyConnection proxy-conn (.. rs getStatement getConnection)
             conn                            (.unwrap proxy-conn OracleConnection)]
-        ;; TIMEZONE FIXME - we need to warn if the Oracle JDBC driver is `ojdbc7.jar`, which probably won't have this
-        ;; method
-        ;;
-        ;; I think we can call `(oracle.jdbc.OracleDriver/getJDBCVersion)` and check whether it returns 4.2+
         (.offsetDateTimeValue t conn)))))
 
-(defmethod unprepare/unprepare-value [:oracle OffsetDateTime]
+(defmethod sql-jdbc.execute/read-column-thunk [:oracle OracleTypes/TIMESTAMPLTZ]
+  [_driver ^ResultSet rs _rsmeta ^Integer i]
+  ;; `.offsetDateTimeValue` with TIMESTAMPLTZ returns the incorrect value with daylight savings time, so instead of
+  ;; trusting Oracle to get time zones right we assume the string value from `.getNString` is correct and is in a format
+  ;; we can parse.
+  (fn []
+    (u.date/parse (.getNString rs i))))
+
+(defmethod sql.qp/inline-value [:oracle OffsetDateTime]
   [_ t]
   ;; Oracle doesn't like `Z` to mean UTC
   (format "timestamp '%s'" (-> (t/format "yyyy-MM-dd HH:mm:ss.SSS ZZZZZ" t)
                                (str/replace #" Z$" " UTC"))))
 
-(defmethod unprepare/unprepare-value [:oracle ZonedDateTime]
+(defmethod sql.qp/inline-value [:oracle ZonedDateTime]
   [_ t]
   (format "timestamp '%s'" (-> (t/format "yyyy-MM-dd HH:mm:ss.SSS VV" t)
                                (str/replace #" Z$" " UTC"))))
 
-(defmethod unprepare/unprepare-value [:oracle Instant]
+(defmethod sql.qp/inline-value [:oracle Instant]
   [driver t]
-  (unprepare/unprepare-value driver (t/zoned-date-time t (t/zone-id "UTC"))))
+  (sql.qp/inline-value driver (t/zoned-date-time t (t/zone-id "UTC"))))
 
 ;; Oracle doesn't really support boolean types so use bits instead (See #11592, similar issue for SQL Server)
 (defmethod driver.sql/->prepared-substitution [:oracle Boolean]

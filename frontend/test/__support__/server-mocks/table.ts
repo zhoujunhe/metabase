@@ -9,11 +9,15 @@ export function setupTableEndpoints(
   foreignKeys: ForeignKey[] = [],
 ) {
   fetchMock.get(`path:/api/table/${table.id}`, table);
-  fetchMock.get(`path:/api/table/${table.id}/query_metadata`, table);
   fetchMock.get(`path:/api/table/${table.id}/fks`, foreignKeys);
   fetchMock.post(`path:/api/table/${table.id}/rescan_values`, {});
   fetchMock.post(`path:/api/table/${table.id}/discard_values`, {});
-  table.fields?.forEach(field => setupFieldEndpoints(field));
+  setupTableQueryMetadataEndpoint(table);
+  table.fields?.forEach(field => setupFieldEndpoints({ ...field, table }));
+}
+
+export function setupTableQueryMetadataEndpoint(table: Table) {
+  fetchMock.get(`path:/api/table/${table.id}/query_metadata`, table);
 }
 
 export function setupTablesEndpoints(tables: Table[]) {

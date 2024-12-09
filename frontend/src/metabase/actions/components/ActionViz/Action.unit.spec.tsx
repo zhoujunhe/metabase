@@ -19,20 +19,21 @@ import { getActionIsEnabledInDatabase } from "metabase/dashboard/utils";
 import { checkNotNull } from "metabase/lib/types";
 import type {
   ActionDashboardCard,
-  ParameterTarget,
   Database,
+  ParameterTarget,
 } from "metabase-types/api";
 import {
   createMockActionDashboardCard as _createMockActionDashboardCard,
   createMockActionParameter,
-  createMockFieldSettings,
-  createMockQueryAction,
-  createMockImplicitQueryAction,
-  createMockDashboard,
   createMockCard,
-  createMockStructuredDatasetQuery,
+  createMockDashboard,
   createMockDatabase,
+  createMockFieldSettings,
+  createMockImplicitQueryAction,
+  createMockQueryAction,
+  createMockStructuredDatasetQuery,
 } from "metabase-types/api/mocks";
+import { createMockDashboardState } from "metabase-types/store/mocks";
 
 import type { ActionProps } from "./Action";
 import Action from "./Action";
@@ -155,6 +156,9 @@ async function setup({
       storeInitialState: {
         entities: createMockEntitiesState({
           databases: [database],
+        }),
+        dashboard: createMockDashboardState({
+          parameterValues,
         }),
       },
     },
@@ -390,9 +394,8 @@ describe("Actions > ActionViz > Action", () => {
       const editorModal = await screen.findByTestId("action-editor-modal");
 
       // edit action title
-      const actionTitleField = await within(editorModal).findByTestId(
-        "editable-text",
-      );
+      const actionTitleField =
+        await within(editorModal).findByTestId("editable-text");
       await userEvent.type(actionTitleField, updatedTitle);
       await userEvent.tab(); // blur field
 

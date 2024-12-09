@@ -39,16 +39,16 @@
   {:arglists '([instance])}
   mi/model)
 
+(defmethod definition :model/LegacyMetric
+  [metric]
+  (-> metric :definition ((juxt :aggregation :filter))))
+
 (defmethod definition :model/Card
   [card]
   (-> card
       :dataset_query
       :query
       ((juxt :breakout :aggregation :expressions :fields))))
-
-(defmethod definition :model/LegacyMetric
-  [metric]
-  (-> metric :definition ((juxt :aggregation :filter))))
 
 (defmethod definition :model/Segment
   [segment]
@@ -68,9 +68,11 @@
    subset of the more specific one."
   [a b]
   (let [context-a (-> a definition collect-context-bearing-forms)
-        context-b (-> b definition collect-context-bearing-forms)]
-    (/ (count (set/intersection context-a context-b))
-       (max (min (count context-a) (count context-b)) 1))))
+        context-b (-> b definition collect-context-bearing-forms)
+        overlap (set/intersection context-a context-b)
+        min-overlap (min (count context-a) (count context-b))]
+    (/ (count overlap)
+       (max min-overlap 1))))
 
 (defn- rank-by-similarity
   [reference entities]
@@ -98,22 +100,29 @@
 
 (defn- metrics-for-table
   [table]
+  (filter-visible (t2/select :model/Card
+                             :table_id (:id table)
+                             :type :metric
+                             :archived false)))
+
+(defn- legacy-metrics-for-table
+  [table]
   (filter-visible (t2/select :model/LegacyMetric
-                    :table_id (:id table)
-                    :archived false)))
+                             :table_id (:id table)
+                             :archived false)))
 
 (defn- segments-for-table
   [table]
   (filter-visible (t2/select :model/Segment
-                    :table_id (:id table)
-                    :archived false)))
+                             :table_id (:id table)
+                             :archived false)))
 
 (defn- linking-to
   [table]
   (->> (t2/select-fn-set :fk_target_field_id :model/Field
-         :table_id           (:id table)
-         :fk_target_field_id [:not= nil]
-         :active             true)
+                         :table_id           (:id table)
+                         :fk_target_field_id [:not= nil]
+                         :active             true)
        (map (comp (partial t2/select-one :model/Table :id)
                   :table_id
                   (partial t2/select-one :model/Field :id)))
@@ -127,8 +136,8 @@
                                                :table_id (:id table)
                                                :active   true))]
     (->> (t2/select-fn-set :table_id :model/Field
-           :fk_target_field_id [:in fields]
-           :active             true)
+                           :fk_target_field_id [:in fields]
+                           :active             true)
          (map (partial t2/select-one :model/Table :id))
          filter-visible
          (take max-matches))
@@ -149,21 +158,22 @@
 (defn- similar-questions
   [card]
   (->> (t2/select :model/Card
-         :table_id (:table_id card)
-         :archived false)
+                  :table_id (:table_id card)
+                  :type [:in [:model :question]]
+                  :archived false)
        filter-visible
        (rank-by-similarity card)
        (filter (comp pos? :similarity))))
 
-(defn- canonical-metric
+(defn- similar-metrics
   [card]
-  (->> (t2/select :model/LegacyMetric
-         :table_id (:table_id card)
-         :archived false)
+  (->> (t2/select :model/Card
+                  :table_id (:table_id card)
+                  :type :metric
+                  :archived false)
        filter-visible
-       (m/find-first (comp #{(-> card :dataset_query :query :aggregation)}
-                           :aggregation
-                           :definition))))
+       (rank-by-similarity card)
+       (filter (comp pos? :similarity))))
 
 (defn- recently-modified-dashboards
   []
@@ -212,19 +222,15 @@
 (defmethod related :model/Card
   [card]
   (let [table             (t2/select-one :model/Table :id (:table_id card))
-        similar-questions (similar-questions card)]
+        similar-questions (similar-questions card)
+        similar-metrics   (similar-metrics card)]
     {:table             table
-     :metrics           (->> table
-                             metrics-for-table
-                             (rank-by-similarity card)
-                             interesting-mix)
+     :metrics           (interesting-mix similar-metrics)
      :segments          (->> table
                              segments-for-table
                              (rank-by-similarity card)
                              interesting-mix)
      :dashboard-mates   (cards-sharing-dashboard card)
-     :similar-questions (interesting-mix similar-questions)
-     :canonical-metric  (canonical-metric card)
      :dashboards        (recommended-dashboards similar-questions)
      :collections       (recommended-collections similar-questions)}))
 
@@ -237,7 +243,7 @@
   (let [table (t2/select-one :model/Table :id (:table_id metric))]
     {:table    table
      :metrics  (->> table
-                    metrics-for-table
+                    legacy-metrics-for-table
                     (rank-by-similarity metric)
                     interesting-mix)
      :segments (->> table
@@ -249,10 +255,7 @@
   [segment]
   (let [table (t2/select-one :model/Table :id (:table_id segment))]
     {:table       table
-     :metrics     (->> table
-                       metrics-for-table
-                       (rank-by-similarity segment)
-                       interesting-mix)
+     :metrics     (metrics-for-table table)
      :segments    (->> table
                        segments-for-table
                        (rank-by-similarity segment)
@@ -268,11 +271,11 @@
      :linking-to  linking-to
      :linked-from linked-from
      :tables      (->> (t2/select :model/Table
-                         :db_id           (:db_id table)
-                         :schema          (:schema table)
-                         :id              [:not= (:id table)]
-                         :visibility_type nil
-                         :active          true)
+                                  :db_id           (:db_id table)
+                                  :schema          (:schema table)
+                                  :id              [:not= (:id table)]
+                                  :visibility_type nil
+                                  :active          true)
                        (remove (set (concat linking-to linked-from)))
                        filter-visible
                        interesting-mix)}))
@@ -291,10 +294,10 @@
                     (filter (comp pos? :similarity))
                     interesting-mix)
      :fields   (->> (t2/select :model/Field
-                      :table_id        (:id table)
-                      :id              [:not= (:id field)]
-                      :visibility_type "normal"
-                      :active          true)
+                               :table_id        (:id table)
+                               :id              [:not= (:id field)]
+                               :visibility_type "normal"
+                               :active          true)
                     filter-visible
                     interesting-mix)}))
 
@@ -303,7 +306,7 @@
   (let [cards (map (partial t2/select-one :model/Card :id) (t2/select-fn-set :card_id :model/DashboardCard
                                                                              :dashboard_id (:id dashboard)))]
     {:cards (->> cards
-                 (mapcat (comp similar-questions))
+                 (mapcat similar-questions)
                  (remove (set cards))
                  distinct
                  filter-visible

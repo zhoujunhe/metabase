@@ -3,7 +3,8 @@
    [clojure.test :refer :all]
    [metabase-enterprise.advanced-config.file :as advanced-config.file]
    [metabase.models.setting :refer [defsetting]]
-   [metabase.test :as mt]))
+   [metabase.test :as mt]
+   [metabase.util :as u]))
 
 (use-fixtures :each (fn [thunk]
                       (binding [advanced-config.file/*supported-versions* {:min 1, :max 1}]
@@ -12,7 +13,8 @@
 
 (defsetting config-from-file-settings-test-setting
   "Internal test setting."
-  :visibility :internal)
+  :visibility :internal
+  :encryption :no)
 
 (deftest settings-test
   (testing "Should be able to set settings with config-from-file"
@@ -34,11 +36,11 @@
         (testing "value should not have been updated"
           (is (= "wow"
                  (config-from-file-settings-test-setting))))))
-    (testing "Invalid Setting (does not exist)"
+    (testing "Invalid Setting (does not exist) should log a warning and continue."
       (binding [advanced-config.file/*config* {:version 1
                                                :config  {:settings {:config-from-file-settings-test-setting-FAKE 1000}}}]
-
-        (is (thrown-with-msg?
-             clojure.lang.ExceptionInfo
-             #"Unknown setting: :config-from-file-settings-test-setting-FAKE"
-             (advanced-config.file/initialize!)))))))
+        (mt/with-log-messages-for-level [messages [metabase-enterprise.advanced-config.file.settings :warn]]
+          (is (= :ok
+                 (advanced-config.file/initialize!)))
+          (is (=? [{:level :warn, :message (u/colorize :yellow "Ignoring unknown setting in config: config-from-file-settings-test-setting-FAKE.")}]
+                  (messages))))))))

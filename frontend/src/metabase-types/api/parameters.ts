@@ -1,5 +1,5 @@
 import type { CardId } from "./card";
-import type { RowValue } from "./dataset";
+import type { RowValue, TemporalUnit } from "./dataset";
 import type { ConcreteFieldReference, ExpressionReference } from "./query";
 
 export type StringParameterType =
@@ -25,10 +25,13 @@ export type DateParameterType =
   | "date/quarter-year"
   | "date/all-options";
 
+export type TemporalUnitParameterType = "temporal-unit";
+
 export type ParameterType =
   | StringParameterType
   | NumberParameterType
-  | DateParameterType;
+  | DateParameterType
+  | TemporalUnitParameterType;
 
 export type ParameterId = string;
 
@@ -48,6 +51,7 @@ export interface Parameter extends ParameterValuesConfig {
   isMultiSelect?: boolean;
   value?: any;
   target?: ParameterTarget;
+  temporal_units?: TemporalUnit[];
 }
 
 export interface ParameterValuesConfig {
@@ -61,7 +65,7 @@ export type ValuesQueryType = "list" | "search" | "none";
 export type ValuesSourceType = null | "card" | "static-list";
 
 export interface ValuesSourceConfig {
-  values?: string[];
+  values?: string[] | ParameterValue[];
   card_id?: CardId;
   value_field?: unknown[];
 }
@@ -79,15 +83,33 @@ export type ParameterDimensionTarget =
   | NativeParameterDimensionTarget
   | StructuredParameterDimensionTarget;
 
-export type NativeParameterDimensionTarget = ["dimension", VariableTarget];
+export type DimensionTargetOptions = {
+  "stage-number"?: number;
+};
 
-export type StructuredParameterDimensionTarget = [
-  "dimension",
-  ConcreteFieldReference | ExpressionReference,
-];
+export type NativeParameterDimensionTarget =
+  | ["dimension", VariableTarget]
+  | ["dimension", VariableTarget, DimensionTargetOptions];
 
-export type ParameterValueOrArray = string | number | Array<any>;
-export type ParameterValue = [RowValue];
+export type StructuredParameterDimensionTarget =
+  | ["dimension", ConcreteFieldReference | ExpressionReference]
+  | [
+      "dimension",
+      ConcreteFieldReference | ExpressionReference,
+      DimensionTargetOptions,
+    ];
+
+export type ParameterValueOrArray = string | number | boolean | Array<any>;
+
+export type HumanReadableParameterValue = string;
+export type NotRemappedParameterValue = [RowValue];
+export type RemappedParameterValue = [RowValue, HumanReadableParameterValue];
+export type ParameterValue = NotRemappedParameterValue | RemappedParameterValue;
+
+export type ParameterValuesMap = Record<
+  ParameterId,
+  ParameterValueOrArray | null
+>;
 
 export interface ParameterValues {
   values: ParameterValue[];
@@ -110,4 +132,27 @@ export type ParameterQueryObject = {
   type: string;
   target: ParameterTarget;
   value: ParameterValueOrArray;
+};
+
+export type NormalizedParameter = {
+  id: ParameterId;
+  name: string;
+  slug: string;
+  type: string;
+  target?: ParameterTarget;
+  options?: ParameterOptions;
+  values_query_type?: ValuesQueryType;
+  values_source_type?: ValuesSourceType;
+  values_source_config?: ValuesSourceConfig;
+};
+
+export type GetParameterValuesRequest = {
+  parameter: NormalizedParameter;
+  field_ids: number[];
+};
+
+export type SearchParameterValuesRequest = {
+  parameter: Parameter;
+  field_ids: number[];
+  query: string;
 };

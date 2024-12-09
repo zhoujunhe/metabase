@@ -17,6 +17,7 @@ interface ChartCaptionProps {
   icon?: IconProps;
   actionButtons?: ReactNode;
   width?: number;
+  getHref?: () => string | undefined;
   onChangeCardAndRun: OnChangeCardAndRun;
 }
 
@@ -26,6 +27,7 @@ const ChartCaption = ({
   icon,
   actionButtons,
   onChangeCardAndRun,
+  getHref,
   width,
 }: ChartCaptionProps) => {
   const title = settings["card.title"] ?? series[0].card.name;
@@ -45,6 +47,7 @@ const ChartCaption = ({
     <ChartCaptionRoot
       title={title}
       description={description}
+      getHref={getHref}
       icon={icon}
       actionButtons={actionButtons}
       onSelectTitle={canSelectTitle ? handleSelectTitle : undefined}

@@ -1,6 +1,8 @@
 import type { MantineThemeOverride } from "@mantine/core";
 import { rem } from "@mantine/core";
 
+import { DEFAULT_METABASE_COMPONENT_THEME } from "embedding-sdk/lib/theme";
+
 import {
   getAccordionOverrides,
   getActionIconOverrides,
@@ -11,31 +13,34 @@ import {
   getCalendarOverrides,
   getCardOverrides,
   getCheckboxOverrides,
+  getChipOverrides,
   getDateInputOverrides,
   getDatePickerOverrides,
   getDividerOverrides,
   getFileInputOverrides,
   getHoverCardOverrides,
   getInputOverrides,
+  getListOverrides,
   getMenuOverrides,
   getModalOverrides,
-  getNavLinkOverrides,
   getMultiSelectOverrides,
-  getRadioOverrides,
+  getNavLinkOverrides,
   getPaperOverrides,
   getPopoverOverrides,
+  getProgressOverrides,
+  getRadioOverrides,
+  getScrollAreaOverrides,
   getSegmentedControlOverrides,
   getSelectOverrides,
-  getScrollAreaOverrides,
+  getSkeletonOverrides,
   getSwitchOverrides,
   getTabsOverrides,
-  getTextareaOverrides,
   getTextInputOverrides,
   getTextOverrides,
+  getTextareaOverrides,
   getTimeInputOverrides,
   getTitleOverrides,
   getTooltipOverrides,
-  getListOverrides,
 } from "./components";
 import { getThemeColors } from "./utils/colors";
 
@@ -116,6 +121,7 @@ export const getThemeOverrides = (): MantineThemeOverride => ({
     ...getCalendarOverrides(),
     ...getCardOverrides(),
     ...getCheckboxOverrides(),
+    ...getChipOverrides(),
     ...getDateInputOverrides(),
     ...getDatePickerOverrides(),
     ...getDividerOverrides(),
@@ -128,6 +134,8 @@ export const getThemeOverrides = (): MantineThemeOverride => ({
     ...getRadioOverrides(),
     ...getPaperOverrides(),
     ...getPopoverOverrides(),
+    ...getProgressOverrides(),
+    ...getSkeletonOverrides(),
     ...getScrollAreaOverrides(),
     ...getSegmentedControlOverrides(),
     ...getSelectOverrides(),
@@ -142,4 +150,5 @@ export const getThemeOverrides = (): MantineThemeOverride => ({
     ...getHoverCardOverrides(),
     ...getListOverrides(),
   },
+  other: DEFAULT_METABASE_COMPONENT_THEME,
 });

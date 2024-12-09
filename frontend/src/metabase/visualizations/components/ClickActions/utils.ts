@@ -2,8 +2,8 @@ import { t } from "ttag";
 import _ from "underscore";
 
 import type {
-  RegularClickAction,
   ClickActionSection,
+  RegularClickAction,
 } from "metabase/visualizations/types";
 
 type Section = {
@@ -21,6 +21,7 @@ export const SECTIONS: Record<ClickActionSection, Section> = {
   sum: {},
   combine: {},
   "combine-popover": {},
+  "compare-aggregations": {},
   extract: {},
   "extract-popover": {},
   auto: {},
@@ -29,6 +30,7 @@ export const SECTIONS: Record<ClickActionSection, Section> = {
   filter: {},
   details: {},
   custom: {},
+  "new-column": {},
 };
 Object.values(SECTIONS).map((section, index) => {
   section.index = index;
@@ -60,16 +62,13 @@ export const getGroupedAndSortedActions = (
     .value();
 };
 
-export const getGALabelForAction = (action: RegularClickAction) =>
-  action ? `${action.section || ""}:${action.name || ""}` : null;
-
 export const getSectionTitle = (
   sectionKey: string,
   actions: RegularClickAction[],
 ): string | null => {
   switch (sectionKey) {
     case "filter":
-      return actions[0]?.sectionTitle ?? `Filter by this value`;
+      return actions[0]?.sectionTitle ?? t`Filter by this value`;
 
     case "sum":
       return t`Summarize`;
@@ -82,6 +81,9 @@ export const getSectionTitle = (
 
     case "extract-popover":
       return t`Select a part to extract`;
+
+    case "new-column":
+      return t`New column`;
   }
 
   return null;

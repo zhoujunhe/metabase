@@ -24,8 +24,8 @@
    [metabase.lib.schema.metadata :as lib.schema.metadata]
    [metabase.lib.schema.ref :as lib.schema.ref]
    [metabase.lib.util.match :as lib.util.match]
-   [metabase.shared.util.i18n :as i18n]
    [metabase.util :as u]
+   [metabase.util.i18n :as i18n]
    [metabase.util.malli :as mu]))
 
 #?(:clj
@@ -73,10 +73,10 @@
    If the expression has an original-effective-type due to bucketing, check that."
   [expression typ]
   (isa?
-    (or (and (clause? expression)
-             (:metabase.lib.field/original-effective-type (second expression)))
-        (lib.schema.expression/type-of expression))
-    typ))
+   (or (and (clause? expression)
+            (:metabase.lib.field/original-effective-type (second expression)))
+       (lib.schema.expression/type-of expression))
+   typ))
 
 (defn expression-name
   "Returns the :lib/expression-name of `clause`. Returns nil if `clause` is not a clause."
@@ -94,7 +94,8 @@
          clause])
       (lib.options/update-options (fn [opts]
                                     (-> opts
-                                        (assoc :lib/expression-name a-name)
+                                        (assoc :lib/expression-name a-name
+                                               :ident (u/generate-nano-id))
                                         (dissoc :name :display-name))))))
 
 (defmulti custom-name-method
@@ -190,7 +191,7 @@
   [m legacy-key pMBQL-key]
   (cond-> m
     (contains? m legacy-key) (update legacy-key #(if (and (vector? %)
-                                                       (= (first %) :and))
+                                                          (= (first %) :and))
                                                    (vec (drop 1 %))
                                                    [%]))
     (contains? m legacy-key) (set/rename-keys {legacy-key pMBQL-key})))
@@ -344,12 +345,19 @@
         stages'                     (apply update (vec stages) stage-number' f args)]
     (assoc query :stages stages')))
 
+(defn native-stage?
+  "Is this query stage a native stage?"
+  [query stage-number]
+  (-> (query-stage query stage-number)
+      :lib/type
+      (= :mbql.stage/native)))
+
 (mu/defn ensure-mbql-final-stage :- ::lib.schema/query
   "Convert query to a pMBQL (pipeline) query, and make sure the final stage is an `:mbql` one."
   [query]
   (let [query (pipeline query)]
     (cond-> query
-      (= (:lib/type (query-stage query -1)) :mbql.stage/native)
+      (native-stage? query -1)
       (update :stages conj {:lib/type :mbql.stage/mbql}))))
 
 (defn join-strings-with-conjunction
@@ -373,39 +381,6 @@
            conjunction
            (last coll)))))))
 
-(mu/defn ^:private string-byte-count :- [:int {:min 0}]
-  "Number of bytes in a string using UTF-8 encoding."
-  [s :- :string]
-  #?(:clj (count (.getBytes (str s) "UTF-8"))
-     :cljs (.. (js/TextEncoder.) (encode s) -length)))
-
-#?(:clj
-   (mu/defn ^:private string-character-at :- [:string {:min 0, :max 1}]
-     [s :- :string
-      i :-[:int {:min 0}]]
-     (str (.charAt ^String s i))))
-
-(mu/defn ^:private truncate-string-to-byte-count :- :string
-  "Truncate string `s` to `max-length-bytes` UTF-8 bytes (as opposed to truncating to some number of
-  *characters*)."
-  [s                :- :string
-   max-length-bytes :- [:int {:min 1}]]
-  #?(:clj
-     (loop [i 0, cumulative-byte-count 0]
-       (cond
-         (= cumulative-byte-count max-length-bytes) (subs s 0 i)
-         (> cumulative-byte-count max-length-bytes) (subs s 0 (dec i))
-         (>= i (count s))                           s
-         :else                                      (recur (inc i)
-                                                           (long (+
-                                                                  cumulative-byte-count
-                                                                  (string-byte-count (string-character-at s i)))))))
-
-     :cljs
-     (let [buf (js/Uint8Array. max-length-bytes)
-           result (.encodeInto (js/TextEncoder.) s buf)] ;; JS obj {read: chars_converted, write: bytes_written}
-       (subs s 0 (.-read result)))))
-
 (def ^:private truncate-alias-max-length-bytes
   "Length to truncate column and table identifiers to. See [[metabase.driver.impl/default-alias-max-length-bytes]] for
   reasoning."
@@ -416,7 +391,7 @@
   ;; 8 bytes for the CRC32 plus one for the underscore
   9)
 
-(mu/defn ^:private crc32-checksum :- [:string {:min 8, :max 8}]
+(mu/defn- crc32-checksum :- [:string {:min 8, :max 8}]
   "Return a 4-byte CRC-32 checksum of string `s`, encoded as an 8-character hex string."
   [s :- :string]
   (let [s #?(:clj (Long/toHexString (.getValue (doto (java.util.zip.CRC32.)
@@ -444,10 +419,10 @@
 
   ([s         :- ::lib.schema.common/non-blank-string
     max-bytes :- [:int {:min 0}]]
-   (if (<= (string-byte-count s) max-bytes)
+   (if (<= (u/string-byte-count s) max-bytes)
      s
      (let [checksum  (crc32-checksum s)
-           truncated (truncate-string-to-byte-count s (- max-bytes truncated-alias-hash-suffix-length))]
+           truncated (u/truncate-string-to-byte-count s (- max-bytes truncated-alias-hash-suffix-length))]
        (str truncated \_ checksum)))))
 
 (mu/defn legacy-string-table-id->card-id :- [:maybe ::lib.schema.id/card]
@@ -479,7 +454,7 @@
   [query :- :map]
   (= (first-stage-type query) :mbql.stage/native))
 
-(mu/defn ^:private escape-and-truncate :- :string
+(mu/defn- escape-and-truncate :- :string
   [database :- [:maybe ::lib.schema.metadata/database]
    s        :- :string]
   (->> s
@@ -487,7 +462,7 @@
        ;; truncate alias to 60 characters (actually 51 characters plus a hash).
        truncate-alias))
 
-(mu/defn ^:private unique-alias :- :string
+(mu/defn- unique-alias :- :string
   [database :- [:maybe ::lib.schema.metadata/database]
    original :- :string
    suffix   :- :string]
@@ -574,18 +549,21 @@
         stage (query-stage query stage-number)
         new-summary? (not (or (seq (:aggregation stage)) (seq (:breakout stage))))
         new-query (update-query-stage
-                    query stage-number
-                    update location
-                    (fn [summary-clauses]
-                      (conj (vec summary-clauses) (lib.common/->op-arg a-summary-clause))))]
+                   query stage-number
+                   update location
+                   (fn [summary-clauses]
+                     (->> a-summary-clause
+                          lib.common/->op-arg
+                          lib.common/ensure-ident
+                          (conj (vec summary-clauses)))))]
     (if new-summary?
       (-> new-query
           (update-query-stage
-            stage-number
-            (fn [stage]
-              (-> stage
-                  (dissoc :order-by :fields)
-                  (m/update-existing :joins (fn [joins] (mapv #(dissoc % :fields) joins))))))
+           stage-number
+           (fn [stage]
+             (-> stage
+                 (dissoc :order-by :fields)
+                 (m/update-existing :joins (fn [joins] (mapv #(dissoc % :fields) joins))))))
           ;; subvec holds onto references, so create a new vector
           (update :stages (comp #(into [] %) subvec) 0 (inc (canonical-stage-index query stage-number))))
       new-query)))
@@ -593,22 +571,56 @@
 (defn fresh-uuids
   "Recursively replace all the :lib/uuids in `x` with fresh ones. Useful if you need to attach something to a query more
   than once."
-  [x]
-  (cond
-    (sequential? x)
-    (into (empty x) (map fresh-uuids) x)
+  ([x]
+   (fresh-uuids x (constantly nil)))
+  ([x register-fn]
+   (cond
+     (sequential? x)
+     (into (empty x) (map #(fresh-uuids % register-fn)) x)
 
-    (map? x)
-    (into
-     (empty x)
-     (map (fn [[k v]]
-            [k (if (= k :lib/uuid)
-                 (str (random-uuid))
-                 (fresh-uuids v))]))
-     x)
+     (map? x)
+     (into
+      (empty x)
+      (map (fn [[k v]]
+             [k (if (= k :lib/uuid)
+                  (let [new-id (str (random-uuid))]
+                    (register-fn v new-id)
+                    new-id)
+                  (fresh-uuids v register-fn))]))
+      x)
 
-    :else
-    x))
+     :else
+     x)))
+
+(defn- replace-uuid-references
+  [x replacement-map]
+  (let [replacement (find replacement-map x)]
+    (cond
+      replacement
+      (val replacement)
+
+      (sequential? x)
+      (into (empty x) (map #(replace-uuid-references % replacement-map)) x)
+
+      (map? x)
+      (into
+       (empty x)
+       (map (fn [[k v]]
+              [k (cond-> v
+                   (not= k :lib/uuid) (replace-uuid-references replacement-map))]))
+       x)
+
+      :else
+      x)))
+
+(defn fresh-query-instance
+  "Create an copy of `query` with fresh :lib/uuid values making sure that internal
+  uuid references are kept."
+  [query]
+  (let [v-replacement (volatile! (transient {}))
+        almost-query (fresh-uuids query #(vswap! v-replacement assoc! %1 %2))
+        replacement (persistent! @v-replacement)]
+    (replace-uuid-references almost-query replacement)))
 
 (mu/defn normalized-query-type :- [:maybe [:enum #_MLv2 :mbql/query #_legacy :query :native #_audit :internal]]
   "Get the `:lib/type` or `:type` from `query`, even if it is not-yet normalized."
@@ -626,3 +638,12 @@
    (into #{}
          (comp cat (filter some?))
          (lib.util.match/match coll [:field opts (id :guard int?)] [id (:source-field opts)]))))
+
+(defn collect-source-tables
+  "Return sequence of source tables from `query`."
+  [query]
+  (let [from-joins (mapcat collect-source-tables (:joins query))]
+    (if-let [source-query (:source-query query)]
+      (concat (collect-source-tables source-query) from-joins)
+      (cond->> from-joins
+        (:source-table query) (cons (:source-table query))))))

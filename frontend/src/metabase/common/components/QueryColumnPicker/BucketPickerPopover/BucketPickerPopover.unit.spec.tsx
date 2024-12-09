@@ -2,7 +2,7 @@ import userEvent from "@testing-library/user-event";
 
 import { render, screen, waitFor } from "__support__/ui";
 import * as Lib from "metabase-lib";
-import { createQuery, columnFinder } from "metabase-lib/test-helpers";
+import { columnFinder, createQuery } from "metabase-lib/test-helpers";
 
 import {
   BucketPickerPopover,
@@ -98,7 +98,7 @@ describe("BucketPickerPopover", () => {
     // Clicking outside the popover should close it
     await userEvent.click(screen.getByTestId("container"));
 
-    await waitFor(() => expect(screen.getByText("Month")).not.toBeVisible());
+    await waitFor(() => expect(screen.queryByText("Month")).not.toBeVisible());
 
     await userEvent.click(screen.getByLabelText("Temporal bucket"));
     await screen.findByText("Month");

@@ -1,6 +1,6 @@
+import type { Card, CardType } from "./card";
 import type { Database, DatabaseId, InitialSyncStatus } from "./database";
 import type { Field, FieldDimensionOption, FieldId } from "./field";
-import type { Metric } from "./metric";
 import type { Segment } from "./segment";
 
 export type ConcreteTableId = number;
@@ -22,7 +22,7 @@ export type TableFieldOrder = "database" | "alphabetical" | "custom" | "smart";
 
 export type Table = {
   id: TableId;
-
+  type?: CardType;
   name: string;
   display_name: string;
   description: string | null;
@@ -30,12 +30,12 @@ export type Table = {
   db_id: DatabaseId;
   db?: Database;
 
-  schema: string;
+  schema: SchemaName;
 
   fks?: ForeignKey[];
   fields?: Field[];
-  metrics?: Metric[];
   segments?: Segment[];
+  metrics?: Card[];
   dimension_options?: Record<string, FieldDimensionOption>;
   field_order: TableFieldOrder;
 
@@ -90,7 +90,7 @@ export interface GetTableRequest {
   include_editable_data_model?: boolean;
 }
 
-export interface GetTableMetadataRequest {
+export interface GetTableQueryMetadataRequest {
   id: TableId;
   include_sensitive_fields?: boolean;
   include_hidden_fields?: boolean;

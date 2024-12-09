@@ -6,10 +6,10 @@ import { createEntity, entityCompatibleQuery } from "metabase/lib/entities";
 import { SchemaSchema } from "metabase/schema";
 import { getMetadata } from "metabase/selectors/metadata";
 import {
+  SAVED_QUESTIONS_VIRTUAL_DB_ID,
   getCollectionVirtualSchemaId,
   getCollectionVirtualSchemaName,
   getQuestionVirtualTableId,
-  SAVED_QUESTIONS_VIRTUAL_DB_ID,
 } from "metabase-lib/v1/metadata/utils/saved-questions";
 import {
   generateSchemaId,
@@ -79,6 +79,10 @@ export default createEntity({
 
   selectors: {
     getObject: (state, { entityId }) => getMetadata(state).schema(entityId),
+  },
+
+  objectSelectors: {
+    getIcon: () => ({ name: "folder" }),
   },
 
   reducer: (state = {}, { type, payload, error }) => {

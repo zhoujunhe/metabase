@@ -1,37 +1,90 @@
-import type { CollectionId } from "./collection";
-import type { DatabaseId } from "./database";
-import type { UserId } from "./user";
+import type { DatabaseId, InitialSyncStatus } from "./database";
+import type { CardDisplayType } from "./visualization";
+
+import type { Collection } from ".";
 
 export const ACTIVITY_MODELS = [
   "table",
   "card",
   "dataset",
+  "metric",
   "dashboard",
+  "collection",
 ] as const;
-export type ActivityModel = typeof ACTIVITY_MODELS[number];
-export type ActivityModelId = number;
 
-export interface ActivityModelObject {
+export type ActivityModel = (typeof ACTIVITY_MODELS)[number];
+
+export const isActivityModel = (model: string): model is ActivityModel =>
+  (ACTIVITY_MODELS as unknown as string[]).includes(model);
+
+export const isLoggableActivityModel = (item: {
+  id: any;
+  model: string;
+}): item is { id: number; model: ActivityModel } => {
+  return typeof item.id === "number" && isActivityModel(item.model);
+};
+
+export type BaseRecentItem = {
+  id: number;
   name: string;
-  display_name?: string;
-  moderated_status?: string;
-  collection_id?: CollectionId | null;
-  collection_name?: string;
-  database_name?: string;
-  db_id?: DatabaseId;
+  model: ActivityModel;
+  description?: string | null;
+  timestamp: string;
+};
+
+export type RecentTableItem = BaseRecentItem & {
+  model: "table";
+  display_name: string;
+  table_schema: string;
+  database: {
+    id: number;
+    name: string;
+    initial_sync_status: InitialSyncStatus;
+  };
+};
+
+export type RecentCollectionItem = BaseRecentItem & {
+  model: "collection" | "dashboard" | "card" | "dataset" | "metric";
+  can_write: boolean;
+  database_id?: DatabaseId; // for models and questions
+  parent_collection: Pick<Collection, "id" | "name" | "authority_level">;
+  authority_level?: "official" | null; // for collections
+  moderated_status?: "verified" | null; // for cards / models / dashboards
+  display?: CardDisplayType; // for questions
+};
+
+export type RecentItem = RecentTableItem | RecentCollectionItem;
+
+export const isRecentTableItem = (item: RecentItem): item is RecentTableItem =>
+  item.model === "table";
+
+export const isRecentCollectionItem = (
+  item: RecentItem,
+): item is RecentCollectionItem =>
+  ["collection", "dashboard", "card", "dataset", "metric"].includes(item.model);
+
+export interface RecentItemsResponse {
+  recent_views: RecentItem[];
 }
 
-export interface RecentItem {
-  cnt: number;
-  max_ts: string;
-  user_id: UserId;
-  model: ActivityModel;
-  model_id: ActivityModelId;
-  model_object: ActivityModelObject;
+export type RecentContexts = "selections" | "views";
+
+export interface RecentsRequest {
+  context: RecentContexts[];
 }
 
-export interface PopularItem {
+export interface RecentsResponse {
+  recents: RecentItem[];
+}
+
+export type PopularItem = RecentItem;
+
+export interface PopularItemsResponse {
+  popular_items: PopularItem[];
+}
+
+export interface CreateRecentRequest {
+  model_id: number;
   model: ActivityModel;
-  model_id: ActivityModelId;
-  model_object: ActivityModelObject;
+  context: "selection";
 }

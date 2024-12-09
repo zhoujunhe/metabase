@@ -6,7 +6,7 @@ export const trackColumnCombineViaColumnHeader = (
   query: Lib.Query,
   question?: Question,
 ) => {
-  trackSchemaEvent("question", "1-0-4", {
+  trackSchemaEvent("question", {
     event: "column_combine_via_column_header",
     custom_expressions_used: ["concat"],
     database_id: Lib.databaseID(query),
@@ -20,7 +20,7 @@ export const trackColumnExtractViaHeader = (
   extraction: Lib.ColumnExtraction,
   question?: Question,
 ) => {
-  trackSchemaEvent("question", "1-0-4", {
+  trackSchemaEvent("question", {
     event: "column_extract_via_column_header",
     custom_expressions_used: Lib.functionsUsedByExtraction(
       query,
@@ -29,5 +29,53 @@ export const trackColumnExtractViaHeader = (
     ),
     database_id: Lib.databaseID(query),
     question_id: question?.id() ?? 0,
+  });
+};
+
+export const trackColumnCompareViaColumnHeader = (
+  query: Lib.Query,
+  stageIndex: number,
+  expressions: Lib.ExpressionClause[],
+  questionId?: number,
+) => {
+  trackSchemaEvent("question", {
+    event: "column_compare_via_column_header",
+    custom_expressions_used: expressions.flatMap(expression =>
+      Lib.functionsUsedByExpression(query, stageIndex, expression),
+    ),
+    database_id: Lib.databaseID(query),
+    question_id: questionId ?? 0,
+  });
+};
+
+export const trackColumnCompareViaPlusModal = (
+  query: Lib.Query,
+  stageIndex: number,
+  expressions: Lib.ExpressionClause[],
+  questionId?: number,
+) => {
+  trackSchemaEvent("question", {
+    event: "column_compare_via_plus_modal",
+    custom_expressions_used: expressions.flatMap(expression =>
+      Lib.functionsUsedByExpression(query, stageIndex, expression),
+    ),
+    database_id: Lib.databaseID(query),
+    question_id: questionId ?? 0,
+  });
+};
+
+export const trackColumnCompareViaShortcut = (
+  query: Lib.Query,
+  stageIndex: number,
+  expressions: Lib.ExpressionClause[],
+  questionId?: number,
+) => {
+  trackSchemaEvent("question", {
+    event: "column_compare_via_shortcut",
+    custom_expressions_used: expressions.flatMap(expression =>
+      Lib.functionsUsedByExpression(query, stageIndex, expression),
+    ),
+    database_id: Lib.databaseID(query),
+    question_id: questionId ?? 0,
   });
 };

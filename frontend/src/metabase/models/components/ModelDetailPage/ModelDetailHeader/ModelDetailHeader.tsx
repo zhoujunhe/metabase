@@ -12,10 +12,10 @@ import type Question from "metabase-lib/v1/Question";
 import type { CollectionId } from "metabase-types/api";
 
 import {
+  ModelFootnote,
   ModelHeader,
   ModelHeaderButtonsContainer,
   ModelTitle,
-  ModelFootnote,
 } from "./ModelDetailHeader.styled";
 
 interface Props {
@@ -49,8 +49,8 @@ function ModelDetailHeader({
         action: () => setModal("move"),
       },
       {
-        title: t`Archive`,
-        icon: "archive",
+        title: t`Move to trash`,
+        icon: "trash",
         action: () => setModal("archive"),
       },
     ];

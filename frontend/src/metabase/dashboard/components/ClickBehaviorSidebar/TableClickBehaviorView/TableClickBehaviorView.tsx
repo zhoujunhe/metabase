@@ -1,14 +1,14 @@
 import cx from "classnames";
-import { useMemo, useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { t } from "ttag";
 import _ from "underscore";
 
 import CS from "metabase/css/core/index.css";
 import { hasActionsMenu } from "metabase/lib/click-behavior";
 import type {
-  QuestionDashboardCard,
   ClickBehavior,
   ClickBehaviorType,
+  DashboardCard,
   DatasetColumn,
 } from "metabase-types/api";
 
@@ -24,13 +24,13 @@ type ColumnGroup = [
   ClickBehaviorType,
   {
     column: DatasetColumn;
-    clickBehavior: ClickBehavior | undefined;
+    clickBehavior: ClickBehavior;
   }[],
 ];
 
 function explainClickBehaviorType(
   type: ClickBehaviorType,
-  dashcard: QuestionDashboardCard,
+  dashcard: DashboardCard,
 ) {
   return {
     action: t`Execute an action`,
@@ -44,7 +44,7 @@ function explainClickBehaviorType(
 
 interface Props {
   columns: DatasetColumn[];
-  dashcard: QuestionDashboardCard;
+  dashcard: DashboardCard;
   getClickBehaviorForColumn: (
     column: DatasetColumn,
   ) => ClickBehavior | undefined;
@@ -76,7 +76,13 @@ export function TableClickBehaviorView({
   }, [columns, getClickBehaviorForColumn]) as unknown as ColumnGroup[]; // _.groupby swallows the ClickAction type
 
   const renderColumn = useCallback(
-    ({ column, clickBehavior }, index: number) => {
+    (
+      {
+        column,
+        clickBehavior,
+      }: { column: DatasetColumn; clickBehavior: ClickBehavior },
+      index: number,
+    ) => {
       return (
         <Column
           key={index}

@@ -2,11 +2,16 @@ import { useCallback } from "react";
 import { t } from "ttag";
 
 import {
-  isRootPersonalCollection,
-  isRootCollection,
+  isEditableCollection,
+  isInstanceAnalyticsCollection,
+  isRootTrashCollection,
 } from "metabase/collections/utils";
 import { color } from "metabase/lib/colors";
-import { PLUGIN_COLLECTION_COMPONENTS } from "metabase/plugins";
+import {
+  PLUGIN_COLLECTIONS,
+  PLUGIN_COLLECTION_COMPONENTS,
+} from "metabase/plugins";
+import { Icon } from "metabase/ui";
 import type { Collection } from "metabase-types/api";
 
 import {
@@ -25,9 +30,7 @@ export const CollectionCaption = ({
   collection,
   onUpdateCollection,
 }: CollectionCaptionProps): JSX.Element => {
-  const isRoot = isRootCollection(collection);
-  const isPersonal = isRootPersonalCollection(collection);
-  const isEditable = !isRoot && !isPersonal && collection.can_write;
+  const isEditable = isEditableCollection(collection);
   const hasDescription = Boolean(collection.description);
 
   const handleChangeName = useCallback(
@@ -45,7 +48,7 @@ export const CollectionCaption = ({
   );
 
   return (
-    <CaptionRoot>
+    <CaptionRoot data-testid="collection-caption">
       <CaptionTitleContainer>
         <CollectionCaptionIcon collection={collection} />
         <CaptionTitle
@@ -59,15 +62,19 @@ export const CollectionCaption = ({
       </CaptionTitleContainer>
       {(isEditable || hasDescription) && (
         <CaptionDescription
-          key={collection.id}
-          initialValue={collection.description}
+          key={
+            // Including the description in the key prevents a stale value from
+            // being stored in the state of EditableText if the collection's
+            // description is modified in another component
+            `${collection.id}-${collection.description}`
+          }
+          description={collection.description}
           placeholder={t`Add description`}
           isVisible={Boolean(collection.description)}
-          isDisabled={!isEditable}
-          isOptional
-          isMultiline
-          isMarkdown
+          canWrite={isEditable}
           onChange={handleChangeDescription}
+          data-testid="collection-description-in-caption"
+          left={0}
         />
       )}
     </CaptionRoot>
@@ -75,14 +82,7 @@ export const CollectionCaption = ({
 };
 
 const CollectionCaptionIcon = ({ collection }: { collection: Collection }) => {
-  if (!collection.type) {
-    return (
-      <PLUGIN_COLLECTION_COMPONENTS.CollectionAuthorityLevelIcon
-        collection={collection}
-        size={24}
-      />
-    );
-  } else {
+  if (isInstanceAnalyticsCollection(collection)) {
     return (
       <PLUGIN_COLLECTION_COMPONENTS.CollectionInstanceAnalyticsIcon
         size={24}
@@ -92,4 +92,23 @@ const CollectionCaptionIcon = ({ collection }: { collection: Collection }) => {
       />
     );
   }
+
+  if (isRootTrashCollection(collection)) {
+    return <Icon name="trash" size={24} />;
+  }
+
+  if (
+    collection.archived &&
+    PLUGIN_COLLECTIONS.isRegularCollection(collection)
+  ) {
+    return <Icon name="folder" size={24} color="text-light" />;
+  }
+
+  return (
+    <PLUGIN_COLLECTION_COMPONENTS.CollectionAuthorityLevelIcon
+      collection={collection}
+      size={24}
+      archived={collection.archived}
+    />
+  );
 };

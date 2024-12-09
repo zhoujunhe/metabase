@@ -1,80 +1,85 @@
-name: Milestone Reminder
+name: Automatically set milestone
+run-name: Set milestone for ${{ github.event.head_commit.message || inputs.version }}
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches:
-      - "master"
+      - release-x.**
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Major version number  (e.g. 52, 78, 109)'
+        type: number
+        required: true
 
 jobs:
-  milestone-reminder:
-    if: github.event.pull_request.merged == true
-    name: Remind to set milestone
+  set-milestone:
+    name: Automatically set milestone
     runs-on: ubuntu-22.04
-    timeout-minutes: 5
+    timeout-minutes: 30
+    env:
+      isNewReleaseBranch: ${{ github.event_name == 'workflow_dispatch' }}
     permissions:
       pull-requests: write
-      issues: read
+      issues: write
+      contents: read
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: release
+          fetch-depth: ${{ env.isNewReleaseBranch == 'false' && 3 || 0 }} # we need the full history to get all the commit messages
+          ref: master # we want the logic from master, even though we're triggering on a release branch
+      - name: Prepare build scripts
+        run: cd ${{ github.workspace }}/release && yarn && yarn build
       - uses: actions/github-script@v7
+        if: ${{ env.isNewReleaseBranch == 'false' }}
+        name: Set milestone for single commit
         with:
           script: | # js
+            const { setMilestoneForCommits } = require('${{ github.workspace }}/release/dist/index.cjs');
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            const pullNumber = '${{ github.event.pull_request.number }}';
+            const branchName = `${{ github.ref }}`;
+            const commitMessage = context?.payload?.head_commit?.message ?? '';
 
-            // the github API doesn't expose linked issues, so we have to parse the body ourselves
-            function getLinkedIssueId(pull) {
-              // https://regexr.com/7sk94
-              const match = pull.data.body.match(/(close(s|d)?|fixe?(s|d)?|resolve(s|d)?) (#|https?:\/\/github.com\/.+\/issues\/)(\d+)/i);
-              return match && match?.[2];
-            }
-
-            function getMilestone(pullOrIssue) {
-              // pull has pull.data.milestone, issue has issue.milestone
-              return pullOrIssue?.data?.milestone || pullOrIssue?.milestone;
-            }
-
-            const pull = await github.rest.pulls.get({
+            await setMilestoneForCommits({
+              github,
               owner,
               repo,
-              pull_number: pullNumber,
+              branchName,
+              commitMessages: [commitMessage],
             });
+      - name: Get commit messages for release branch
+        if: ${{ env.isNewReleaseBranch == 'true' }}
+        run: |
+          npm i -g tsx
+          tsx release/src/release-branch-commits.ts ${{ inputs.version }} > commit-messages.json
+      - uses: actions/github-script@v7
+        if: ${{ env.isNewReleaseBranch == 'true' }}
+        name: Set milestones for new release branch
+        env:
+          # this token has a higher rate limit than the default token, and
+          # we will need it for this workflow to work
+          GITHUB_TOKEN: ${{ secrets.METABASE_AUTOMATION_USER_TOKEN }}
+        with:
+          script: | # js
+            const { setMilestoneForCommits } = require('${{ github.workspace }}/release/dist/index.cjs');
+            const commitMessages = require('${{ github.workspace }}/commit-messages.json');
 
-            if (getMilestone(pull)) {
-              console.log("Pull request has milestone", pull.data.milestone?.title);
-              process.exit(0);
-            }
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
 
-            const issueId = getLinkedIssueId(pull);
+            const versionNumber = context.payload.inputs.version;
+            const branchName = `release-x.${versionNumber}.x`;
 
-            if (issueId) {
-              console.log('linked issue found', issueId);
+            console.log(`Found ${commitMessages.length} new commits for ${branchName}`);
 
-              const issue = await github.rest.issues.get({
-                owner,
-                repo,
-                issue_number: issueId,
-              });
-
-              const milestone = getMilestone(issue);
-
-              if (milestone) {
-                console.log("Linked issue has milestone", milestone.title);
-                process.exit(0);
-              }
-            }
-
-            console.log("No milestone found");
-
-            const author = pull.data.user.login;
-            const guideLink = "https://www.notion.so/metabase/Metabase-Branching-Strategy-6eb577d5f61142aa960a626d6bbdfeb3?pvs=4#3dea255ffa3b4f74942a227844e889fa";
-            const message = `@${author} Did you forget to add a milestone to the issue for this PR? _[When and where should I add a milestone?](${guideLink})_`;
-
-            await github.rest.issues.createComment({
+            await setMilestoneForCommits({
+              github,
               owner,
               repo,
-              issue_number: pullNumber,
-              body: message,
+              branchName,
+              commitMessages: commitMessages,
+              ignoreExistingMilestones: true,
             });

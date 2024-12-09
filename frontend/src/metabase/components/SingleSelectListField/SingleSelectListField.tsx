@@ -4,27 +4,34 @@ import { t } from "ttag";
 import _ from "underscore";
 
 import EmptyState from "metabase/components/EmptyState";
+import LoadingSpinner from "metabase/components/LoadingSpinner";
 import type { InputProps } from "metabase/core/components/Input";
 import Input from "metabase/core/components/Input";
 import { useDebouncedValue } from "metabase/hooks/use-debounced-value";
-import { SEARCH_DEBOUNCE_DURATION } from "metabase/lib/constants";
+import { delay } from "metabase/lib/delay";
+import { Flex } from "metabase/ui";
+import type { RowValue } from "metabase-types/api";
 
 import {
-  OptionContainer,
-  OptionsList,
   EmptyStateContainer,
-  OptionItem,
   FilterInputContainer,
+  OptionContainer,
+  OptionItem,
+  OptionsList,
 } from "./SingleSelectListField.styled";
-import type { SingleSelectListFieldProps, Option } from "./types";
+import type { Option, SingleSelectListFieldProps } from "./types";
 import { isValidOptionItem } from "./utils";
 
+const DEBOUNCE_FILTER_TIME = delay(100);
+
 function createOptionsFromValuesWithoutOptions(
-  values: string[],
+  values: RowValue[],
   options: Option[],
 ): Option {
   const optionsMap = _.indexBy(options, "0");
-  return values.filter(value => !optionsMap[value]).map(value => [value]);
+  return values
+    .filter(value => typeof value !== "string" || !optionsMap[value])
+    .map(value => [value]);
 }
 
 const SingleSelectListField = ({
@@ -33,7 +40,10 @@ const SingleSelectListField = ({
   options,
   optionRenderer,
   placeholder = t`Find...`,
+  onSearchChange,
+  alwaysShowOptions = false,
   isDashboardFilter,
+  isLoading,
   checkedColor,
 }: SingleSelectListFieldProps) => {
   const [selectedValue, setSelectedValue] = useState(value?.[0]);
@@ -60,12 +70,19 @@ const SingleSelectListField = ({
   }, [augmentedOptions.length]);
 
   const [filter, setFilter] = useState("");
-  const debouncedFilter = useDebouncedValue(filter, SEARCH_DEBOUNCE_DURATION);
+  const debouncedFilter = useDebouncedValue(filter, DEBOUNCE_FILTER_TIME);
+
+  const isFilterInValues = value[0] === filter;
 
   const filteredOptions = useMemo(() => {
     const formattedFilter = debouncedFilter.trim().toLowerCase();
     if (formattedFilter.length === 0) {
       return sortedOptions;
+    }
+
+    // Allow picking of different values in the list
+    if (isFilterInValues) {
+      return augmentedOptions;
     }
 
     return augmentedOptions.filter(option => {
@@ -85,14 +102,15 @@ const SingleSelectListField = ({
       // option as: [id]
       return isValidOptionItem(option[0], formattedFilter);
     });
-  }, [augmentedOptions, debouncedFilter, sortedOptions]);
+  }, [augmentedOptions, debouncedFilter, sortedOptions, isFilterInValues]);
 
   const shouldShowEmptyState =
-    augmentedOptions.length > 0 && filteredOptions.length === 0;
+    filter.length > 0 && !isLoading && filteredOptions.length === 0;
 
   const onClickOption = (option: any) => {
     if (selectedValue !== option) {
       setSelectedValue(option);
+      setFilter(option);
       onChange?.([option]);
     }
   };
@@ -106,8 +124,20 @@ const SingleSelectListField = ({
     }
   };
 
-  const handleFilterChange: InputProps["onChange"] = e =>
-    setFilter(e.target.value);
+  const handleFilterChange: InputProps["onChange"] = evt => {
+    const value = evt.target.value;
+    setFilter(value);
+    onChange([]);
+    setSelectedValue(null);
+    onSearchChange(value);
+  };
+
+  const handleResetClick = () => {
+    setFilter("");
+    onChange([]);
+    setSelectedValue(null);
+    onSearchChange("");
+  };
 
   return (
     <>
@@ -119,7 +149,7 @@ const SingleSelectListField = ({
           value={filter}
           onChange={handleFilterChange}
           onKeyDown={handleKeyDown}
-          onResetClick={() => setFilter("")}
+          onResetClick={handleResetClick}
         />
       </FilterInputContainer>
 
@@ -129,23 +159,34 @@ const SingleSelectListField = ({
         </EmptyStateContainer>
       )}
 
-      <OptionsList isDashboardFilter={isDashboardFilter}>
-        {filteredOptions.map(option => (
-          <OptionContainer key={option[0]}>
-            <OptionItem
-              data-testid={`${option[0]}-filter-value`}
-              selectedColor={
-                checkedColor ?? isDashboardFilter ? "brand" : "filter"
-              }
-              selected={selectedValue === option[0]}
-              onClick={() => onClickOption(option[0])}
-              onMouseDown={e => e.preventDefault()}
-            >
-              {optionRenderer(option)}
-            </OptionItem>
-          </OptionContainer>
-        ))}
-      </OptionsList>
+      {isLoading && (
+        <Flex p="md" align="center" justify="center">
+          <LoadingSpinner size={24} />
+        </Flex>
+      )}
+
+      {!isLoading && (
+        <OptionsList isDashboardFilter={isDashboardFilter}>
+          {(alwaysShowOptions || debouncedFilter.length > 0) &&
+            filteredOptions.map(option => (
+              <OptionContainer key={option[0]}>
+                <OptionItem
+                  data-testid={`${option[0]}-filter-value`}
+                  selectedColor={
+                    (checkedColor ?? isDashboardFilter)
+                      ? "var(--mb-color-background-selected)"
+                      : "var(--mb-color-filter)"
+                  }
+                  selected={selectedValue === option[0]}
+                  onClick={() => onClickOption(option[0])}
+                  onMouseDown={e => e.preventDefault()}
+                >
+                  {optionRenderer(option)}
+                </OptionItem>
+              </OptionContainer>
+            ))}
+        </OptionsList>
+      )}
     </>
   );
 };

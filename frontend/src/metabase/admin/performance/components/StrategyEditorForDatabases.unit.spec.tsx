@@ -1,52 +1,62 @@
-import { act, screen } from "__support__/ui";
+import userEvent from "@testing-library/user-event";
 
-import { changeInput, getSaveButton, setup } from "./test-utils";
+import { screen } from "__support__/ui";
+
+import {
+  changeInput,
+  getSaveButton,
+  setupStrategyEditorForDatabases as setup,
+} from "./test-utils";
 
 describe("StrategyEditorForDatabases", () => {
-  it("lets user change the default policy from 'Hours' to 'Query duration multiplier' to 'No caching'", async () => {
+  beforeEach(() => {
     setup();
+  });
+
+  it("lets user change the default policy to 'Adaptive', then 'No caching'", async () => {
     expect(
       screen.queryByRole("button", { name: "Save changes" }),
     ).not.toBeInTheDocument();
 
     const ttlStrategyRadioButton = await screen.findByRole("radio", {
-      name: /Query duration multiplier/i,
+      name: /Adaptive/i,
     });
-    ttlStrategyRadioButton.click();
+
+    await userEvent.click(ttlStrategyRadioButton);
 
     expect((await screen.findAllByRole("spinbutton")).length).toBe(2);
 
     expect(await getSaveButton()).toBeInTheDocument();
 
-    await act(async () => {
-      await changeInput(/minimum query duration/i, 1, 5);
-      await changeInput(/multiplier/i, 10, 3);
-    });
+    await changeInput(/minimum query duration/i, 1, 5);
+    await changeInput(/multiplier/i, 10, 3);
 
-    (await screen.findByTestId("strategy-form-submit-button")).click();
+    await userEvent.click(
+      await screen.findByTestId("strategy-form-submit-button"),
+    );
 
     // NOTE: There is no need to check that the submission of the form was successful.
     // It doesn't meaningfully change the state of the component on OSS
 
-    await act(async () => {
-      const durationStrategyRadioButton = await screen.findByRole("radio", {
-        name: /after a specific number of hours/i,
-      });
-      durationStrategyRadioButton.click();
-      expect((await screen.findAllByRole("spinbutton")).length).toBe(1);
-      await changeInput(/Cache results for this many hours/, 24, 48);
+    const noCacheStrategyRadioButton = await screen.findByRole("radio", {
+      name: /Don.t cache/i,
     });
-
-    (await screen.findByTestId("strategy-form-submit-button")).click();
-
-    await act(async () => {
-      const noCacheStrategyRadioButton = await screen.findByRole("radio", {
-        name: /Don.t cache/i,
-      });
-      noCacheStrategyRadioButton.click();
-    });
+    noCacheStrategyRadioButton.click();
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
 
     (await screen.findByTestId("strategy-form-submit-button")).click();
+  });
+
+  it("does not regard form as dirty when a default value is entered into an input (metabase#42974)", async () => {
+    const adaptiveStrategyRadioButton = await screen.findByRole("radio", {
+      name: /Adaptive/i,
+    });
+    await userEvent.click(adaptiveStrategyRadioButton);
+    await userEvent.click(await getSaveButton());
+    await changeInput(/multiplier/i, 10, 10);
+    // The form is not considered dirty, so the save button is not present
+    expect(
+      screen.queryByTestId("strategy-form-submit-button"),
+    ).not.toBeInTheDocument();
   });
 });

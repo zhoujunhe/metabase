@@ -1,11 +1,11 @@
 import type { KeyboardEvent } from "react";
-import { forwardRef, useEffect, useCallback, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useRef } from "react";
 import { usePrevious } from "react-use";
 
 import { TreeNode } from "metabase/components/tree/TreeNode";
 import type { TreeNodeProps } from "metabase/components/tree/types";
 import CollectionDropTarget from "metabase/containers/dnd/CollectionDropTarget";
-import { getCollectionIcon } from "metabase/entities/collections";
+import { getCollectionIcon } from "metabase/entities/collections/utils";
 import * as Urls from "metabase/lib/urls";
 import { PLUGIN_COLLECTIONS } from "metabase/plugins";
 import type { Collection } from "metabase-types/api";
@@ -45,13 +45,13 @@ const SidebarCollectionLink = forwardRef<HTMLLIElement, Props>(
     ref,
   ) {
     const wasHovered = usePrevious(isHovered);
-    const timeoutId = useRef<any>(null);
+    const timeoutId = useRef<number>();
 
     useEffect(() => {
       const justHovered = !wasHovered && isHovered;
 
       if (justHovered && !isExpanded) {
-        timeoutId.current = setTimeout(() => {
+        timeoutId.current = window.setTimeout(() => {
           if (isHovered) {
             onToggleExpand();
           }

@@ -7,7 +7,9 @@ import remarkGfm from "remark-gfm";
 import { t } from "ttag";
 
 import CS from "metabase/css/core/index.css";
+import { getParameterValues } from "metabase/dashboard/selectors";
 import { useToggle } from "metabase/hooks/use-toggle";
+import { useSelector } from "metabase/lib/redux";
 import { isEmpty } from "metabase/lib/validate";
 import { fillParametersInText } from "metabase/visualizations/shared/utils/parameter-substitution";
 
@@ -20,7 +22,7 @@ import {
 
 const getSettingsStyle = settings => ({
   [CS.alignCenter]: settings["text.align_horizontal"] === "center",
-  [CS.alignStart]: settings["text.align_horizontal"] === "right",
+  [CS.alignEnd]: settings["text.align_horizontal"] === "right",
   [CS.justifyCenter]: settings["text.align_vertical"] === "middle",
   [CS.justifyEnd]: settings["text.align_vertical"] === "bottom",
 });
@@ -38,9 +40,9 @@ export function Text({
   gridSize,
   settings,
   isEditing,
-  parameterValues,
   isMobile,
 }) {
+  const parameterValues = useSelector(getParameterValues);
   const justAdded = useMemo(() => dashcard?.justAdded || false, [dashcard]);
   const [textValue, setTextValue] = useState(settings.text);
 

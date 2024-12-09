@@ -1,7 +1,7 @@
 import Tooltip from "metabase/core/components/Tooltip";
-import { color } from "metabase/lib/colors";
+import { useDispatch } from "metabase/lib/redux";
 import type { IconName } from "metabase/ui";
-import { Icon } from "metabase/ui";
+import { Button, Icon } from "metabase/ui";
 import {
   type ClickAction,
   type CustomClickAction,
@@ -10,16 +10,16 @@ import {
 } from "metabase/visualizations/types";
 import { isRegularClickAction } from "metabase/visualizations/types";
 
+import styles from "./ClickActionControl.module.css";
 import {
   ClickActionButtonIcon,
   ClickActionButtonTextIcon,
   FormattingControl,
-  HorizontalClickActionButton,
   InfoControl,
   SortControl,
+  Subtitle,
   TokenActionButton,
   TokenFilterActionButton,
-  Subtitle,
 } from "./ClickActionControl.styled";
 
 interface Props {
@@ -33,6 +33,8 @@ export const ClickActionControl = ({
   close,
   onClick,
 }: Props): JSX.Element | null => {
+  const dispatch = useDispatch();
+
   if (
     !isRegularClickAction(action) &&
     !isCustomClickAction(action) &&
@@ -43,11 +45,15 @@ export const ClickActionControl = ({
 
   const handleClick =
     isCustomClickAction(action) && action.onClick
-      ? () => (action as CustomClickAction).onClick?.({ closePopover: close })
+      ? () =>
+          (action as CustomClickAction).onClick?.({
+            dispatch,
+            closePopover: close,
+          })
       : () => onClick(action);
 
   if (isCustomClickActionWithView(action)) {
-    return action.view({ closePopover: close });
+    return action.view({ dispatch, closePopover: close });
   }
 
   const { buttonType } = action;
@@ -80,7 +86,11 @@ export const ClickActionControl = ({
     case "sort":
       return (
         <Tooltip tooltip={action.tooltip}>
-          <SortControl onlyIcon onClick={handleClick}>
+          <SortControl
+            onlyIcon
+            onClick={handleClick}
+            data-testid={`click-actions-sort-control-${action.name}`}
+          >
             {typeof action.icon === "string" && (
               <Icon size={14} name={action.icon as unknown as IconName} />
             )}
@@ -101,23 +111,31 @@ export const ClickActionControl = ({
 
     case "horizontal":
       return (
-        <HorizontalClickActionButton
-          small
-          icon={
+        <Button
+          classNames={{
+            root: styles.horizontalButton,
+            label: styles.label,
+            inner: styles.inner,
+          }}
+          leftIcon={
             action.iconText ? (
-              <ClickActionButtonTextIcon>
+              <ClickActionButtonTextIcon className={styles.nested}>
                 {action.iconText}
               </ClickActionButtonTextIcon>
             ) : action.icon ? (
-              <ClickActionButtonIcon name={action.icon} />
+              <ClickActionButtonIcon
+                name={action.icon}
+                className={styles.nested}
+              />
             ) : null
           }
-          iconColor={color("brand")}
           onClick={handleClick}
         >
           {action.title}
-          {action.subTitle && <Subtitle>{action.subTitle}</Subtitle>}
-        </HorizontalClickActionButton>
+          {action.subTitle && (
+            <Subtitle className={styles.nested}>{action.subTitle}</Subtitle>
+          )}
+        </Button>
       );
 
     case "info":

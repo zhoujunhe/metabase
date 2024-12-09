@@ -3,9 +3,9 @@
    [metabase.lib.dispatch :as lib.dispatch]
    [metabase.lib.hierarchy :as lib.hierarchy]
    [metabase.lib.schema.common :as common]
-   [metabase.shared.util.i18n :as i18n]
    [metabase.types :as types]
    [metabase.util :as u]
+   [metabase.util.i18n :as i18n]
    [metabase.util.malli :as mu]
    [metabase.util.malli.registry :as mr]))
 
@@ -84,7 +84,13 @@
   with `:Coercion/UNIXSeconds->DateTime`, it will have `:base-type :type/Integer` and `:effective-type :type/Instant`.
   But when converting from legacy, the `:field` refs in eg. a filter will only have `:base-type :type/Integer`, and then
   the filter fails Malli validation. See #41122."
-  false)
+  true)
+
+(defn- non-expression-clause?
+  "True if this MBQL clause is never valid in (sub)expressions."
+  [expr]
+  (boolean (and (vector? expr)
+                (#{:asc :desc} (first expr)))))
 
 (defn- expression-schema
   "Schema that matches the following rules:
@@ -104,8 +110,9 @@
     [false [:ref :metabase.lib.schema.literal/literal]]]
    [:fn
     {:error/message description}
-    #(or *suppress-expression-type-check?*
-         (type-of? % base-type))]])
+    #(and (not (non-expression-clause? %))
+          (or *suppress-expression-type-check?*
+              (type-of? % base-type)))]])
 
 (mr/def ::boolean
   (expression-schema :type/Boolean "expression returning a boolean"))
@@ -136,7 +143,7 @@
 
 (def orderable-types
   "Set of base types that are orderable."
-  #{:type/Text :type/Number :type/Temporal :type/Boolean})
+  #{:type/Text :type/Number :type/Temporal :type/Boolean :type/MongoBSONID})
 
 (mr/def ::orderable
   (expression-schema orderable-types
@@ -161,7 +168,7 @@
 (def equality-comparable-types
   "Set of base types that can be compared with equality."
   ;; TODO: Adding :type/* here was necessary to prevent type errors for queries where a field's type in the DB could not
-  ;; be determined better than :type/*. See #36841, where a MySQL enum field gets `:base-type :type/*`, and this check
+  ;; be determined better than :type/*. See #36841, where a MySQL enum field used to get `:base-type :type/*`, and this check
   ;; would fail on `[:= {} [:field ...] "enum-str"]` without `:type/*` here.
   ;; This typing of each input should be replaced with an alternative scheme that checks that it's plausible to compare
   ;; all the args to an `:=` clause. Eg. comparing `:type/*` and `:type/String` is cool. Comparing `:type/IPAddress` to
@@ -189,7 +196,8 @@
    [:cat
     #_tag :any
     #_opts [:map
-            [:lib/expression-name [:string {:decode/normalize common/normalize-string-key}]]]
+            [:lib/expression-name [:string {:decode/normalize common/normalize-string-key}]]
+            [:ident               [:string {:decode/normalize common/normalize-string-key}]]]
     #_args [:* :any]]])
 
 ;;; the `:expressions` definition map as found as a top-level key in an MBQL stage

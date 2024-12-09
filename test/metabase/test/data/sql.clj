@@ -2,14 +2,18 @@
   "Common test extension functionality for all SQL drivers."
   (:require
    [clojure.string :as str]
+   [honey.sql :as sql]
    [metabase.driver :as driver]
    [metabase.driver.ddl.interface :as ddl.i]
    [metabase.driver.sql]
+   [metabase.driver.sql.query-processor :as sql.qp]
    [metabase.driver.sql.util :as sql.u]
    [metabase.query-processor.compile :as qp.compile]
    [metabase.test.data :as data]
    [metabase.test.data.interface :as tx]
-   [metabase.util.log :as log]))
+   [metabase.util :as u]
+   [metabase.util.log :as log]
+   [metabase.util.random :as u.random]))
 
 (comment metabase.driver.sql/keep-me)
 
@@ -20,7 +24,6 @@
 (defn add-test-extensions! [driver]
   (driver/add-parent! driver :sql/test-extensions)
   (log/infof "Added SQL test extensions for %s ✏️" driver))
-
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                          Interface (Identifier Names)                                          |
@@ -62,7 +65,7 @@
 
   You should only use this function in places where you are working directly with SQL. For HoneySQL forms, use
   [[metabase.util.honey-sql-2/identifier]] instead."
-  {:arglists '([driver db-name] [driver db-name table-name] [driver db-name table-name field-name]), :style/indent 1}
+  {:arglists '([driver db-name] [driver db-name table-name] [driver db-name table-name field-name])}
   [driver & names]
   (let [identifier-type (condp = (count names)
                           1 :database
@@ -71,7 +74,6 @@
     (->> (apply qualified-name-components driver names)
          (map (partial ddl.i/format-name driver))
          (apply sql.u/quote-name driver identifier-type))))
-
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                              Interface (Comments)                                              |
@@ -95,7 +97,6 @@
   (when (seq field-comment)
     (format "COMMENT '%s'" field-comment)))
 
-
 (defmulti standalone-column-comment-sql
   "Return standalone `COMMENT` statement for a column."
   {:arglists '([driver dbdef tabledef fielddef])}
@@ -109,8 +110,8 @@
   [driver {:keys [database-name]} {:keys [table-name]} {:keys [field-name field-comment]}]
   (when (seq field-comment)
     (format "COMMENT ON COLUMN %s IS '%s';"
-      (qualify-and-quote driver database-name table-name field-name)
-      field-comment)))
+            (qualify-and-quote driver database-name table-name field-name)
+            field-comment)))
 
 (defmulti inline-table-comment-sql
   "Return an inline `COMMENT` statement for a table."
@@ -133,9 +134,8 @@
   [driver {:keys [database-name]} {:keys [table-name table-comment]}]
   (when (seq table-comment)
     (format "COMMENT ON TABLE %s IS '%s';"
-      (qualify-and-quote driver database-name table-name)
-      table-comment)))
-
+            (qualify-and-quote driver database-name table-name)
+            table-comment)))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                         Interface (DDL SQL Statements)                                         |
@@ -344,3 +344,49 @@
   :hierarchy #'driver/hierarchy)
 
 (defmethod session-schema :sql/test-extensions [_] nil)
+
+(defmethod tx/native-query-with-card-template-tag :sql
+  [_driver card-template-tag-name]
+  (let [source-table-name (u/lower-case-en (u.random/random-name))]
+    (format "SELECT * FROM {{%s}} %s" card-template-tag-name source-table-name)))
+
+(defmulti create-view-of-table-sql
+  "Generate the sql for creating a view of a table.
+   The view should be a simple view of the table, like `select * from table`
+   `view-name` is the name of the new view
+   `table-name` is the name of the table.
+   `options` can have these keys
+    - `:materialized?` will be true if it should create a materialized view."
+  {:arglists '([driver database view-name table-name options])}
+  tx/dispatch-on-driver-with-test-extensions
+  :hierarchy #'driver/hierarchy)
+
+(defmethod create-view-of-table-sql :sql/test-extensions
+  [driver database view-name table-name {:keys [materialized?]}]
+  (let [database-name (get-in database [:settings :database-source-dataset-name])
+        qualified-view (qualify-and-quote driver database-name view-name)
+        qualified-table (qualify-and-quote driver database-name table-name)]
+    (sql/format
+     {(if materialized? :create-materialized-view :create-view)
+      [[[:raw qualified-view]]]
+      :select [:*]
+      :from [[[:raw qualified-table]]]}
+     :dialect (sql.qp/quote-style driver))))
+
+(defmulti drop-view-sql
+  "Generate sql to drop a view in database if it exists.
+   `view-name` is the name of the new view
+   `options` can have these keys
+    - `:materialized?` will be true if it should create a materialized view."
+  {:arglists '([driver database view-name options])}
+  tx/dispatch-on-driver-with-test-extensions
+  :hierarchy #'driver/hierarchy)
+
+(defmethod drop-view-sql :sql/test-extensions
+  [driver database view-name {:keys [materialized?]}]
+  (let [database-name (get-in database [:settings :database-source-dataset-name])
+        qualified-view (qualify-and-quote driver database-name view-name)]
+    (sql/format
+     {(if materialized? :drop-materialized-view :drop-view)
+      [[:if-exists [:raw qualified-view]]]}
+     :dialect (sql.qp/quote-style driver))))

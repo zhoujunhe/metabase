@@ -1,12 +1,13 @@
 import { t } from "ttag";
 
-import { useListRecentItemsQuery } from "metabase/api";
+import { useListRecentsQuery } from "metabase/api";
 import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
 import { getIcon } from "metabase/lib/icon";
 import { getName } from "metabase/lib/name";
 import { useSelector } from "metabase/lib/redux";
 import * as Urls from "metabase/lib/urls";
 import { getUser } from "metabase/selectors/user";
+import type { RecentItem } from "metabase-types/api";
 
 import { isWithinWeeks } from "../../utils";
 import { HomeCaption } from "../HomeCaption";
@@ -16,11 +17,7 @@ import { HomeModelCard } from "../HomeModelCard";
 import { SectionBody } from "./HomeRecentSection.styled";
 
 export const HomeRecentSection = () => {
-  const {
-    data: recentItems = [],
-    isLoading,
-    error,
-  } = useListRecentItemsQuery();
+  const { data: recentItems = [], isLoading, error } = useListRecentsQuery();
   const user = useSelector(getUser);
   const hasHelpCard =
     user != null && user.is_installer && isWithinWeeks(user.first_login, 2);
@@ -33,14 +30,11 @@ export const HomeRecentSection = () => {
     <div>
       <HomeCaption>{t`Pick up where you left off`}</HomeCaption>
       <SectionBody>
-        {recentItems.map((item, index) => (
+        {recentsFilter(recentItems).map((item, index) => (
           <HomeModelCard
             key={index}
-            title={getName(item.model_object)}
-            icon={getIcon(
-              { ...item.model_object, model: item.model },
-              { variant: "secondary" },
-            )}
+            title={getName(item)}
+            icon={getIcon(item)}
             url={Urls.modelToUrl(item) ?? ""}
           />
         ))}
@@ -48,4 +42,8 @@ export const HomeRecentSection = () => {
       </SectionBody>
     </div>
   );
+};
+
+export const recentsFilter = (results: RecentItem[]): RecentItem[] => {
+  return results.filter(item => item.model !== "collection").slice(0, 5);
 };

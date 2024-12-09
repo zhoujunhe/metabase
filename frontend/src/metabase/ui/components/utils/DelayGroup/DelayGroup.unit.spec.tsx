@@ -1,6 +1,6 @@
 import userEvent from "@testing-library/user-event";
 
-import { render, screen, act } from "__support__/ui";
+import { act, render, screen } from "__support__/ui";
 
 import { DelayGroup, useDelayGroup } from "./DelayGroup";
 
@@ -49,10 +49,12 @@ describe("DelayGroup", () => {
 
     act(function () {
       jest.advanceTimersByTime(timeout / 2);
-      expect(button).toHaveTextContent("delay: false");
-
-      jest.advanceTimersByTime(timeout / 2 + 1);
-      expect(button).toHaveTextContent("delay: true");
     });
+    expect(button).toHaveTextContent("delay: false");
+
+    act(function () {
+      jest.advanceTimersByTime(timeout / 2 + 1);
+    });
+    expect(button).toHaveTextContent("delay: true");
   });
 });

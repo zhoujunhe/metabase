@@ -2,6 +2,7 @@
   (:require
    [clojure.string :as str]
    [clojure.tools.trace :as trace]
+   [environ.core :as env]
    [java-time.api :as t]
    [metabase.analytics.prometheus :as prometheus]
    [metabase.config :as config]
@@ -11,18 +12,19 @@
    [metabase.driver.h2]
    [metabase.driver.mysql]
    [metabase.driver.postgres]
+   [metabase.embed.settings :as embed.settings]
    [metabase.events :as events]
    [metabase.logger :as logger]
+   [metabase.models.cloud-migration :as cloud-migration]
+   [metabase.models.database :as database]
    [metabase.models.setting :as settings]
+   [metabase.notification.core :as notification]
    [metabase.plugins :as plugins]
    [metabase.plugins.classloader :as classloader]
    [metabase.public-settings :as public-settings]
-   [metabase.public-settings.premium-features
-    :as premium-features
-    :refer [defenterprise]]
+   [metabase.public-settings.premium-features :as premium-features :refer [defenterprise]]
    [metabase.sample-data :as sample-data]
-   [metabase.server :as server]
-   [metabase.server.handler :as handler]
+   [metabase.server.core :as server]
    [metabase.setup :as setup]
    [metabase.task :as task]
    [metabase.troubleshooting :as troubleshooting]
@@ -92,7 +94,7 @@
 (defenterprise ensure-audit-db-installed!
   "OSS implementation of `audit-db/ensure-db-installed!`, which is an enterprise feature, so does nothing in the OSS
   version."
-  metabase-enterprise.audit-db [] ::noop)
+  metabase-enterprise.audit-app.audit [] ::noop)
 
 (defn- init!*
   "General application initialization function which should be run once at application startup."
@@ -114,28 +116,33 @@
   ;; and the test suite can take 2x longer. this is really unfortunate because it could lead to some false
   ;; negatives, but for now there's not much we can do
   (mdb/setup-db! :create-sample-content? (not config/is-test?))
-  (init-status/set-progress! 0.5)
+
+  ;; Disable read-only mode if its on during startup.
+  ;; This can happen if a cloud migration process dies during h2 dump.
+  (when (cloud-migration/read-only-mode)
+    (cloud-migration/read-only-mode! false))
+
+  (init-status/set-progress! 0.4)
   ;; Set up Prometheus
-  (when (prometheus/prometheus-server-port)
-    (log/info "Setting up prometheus metrics")
-    (prometheus/setup!)
-    (init-status/set-progress! 0.6))
+  (log/info "Setting up prometheus metrics")
+  (prometheus/setup!)
+  (init-status/set-progress! 0.5)
 
   (premium-features/airgap-check-user-count)
-  (init-status/set-progress! 0.65)
+  (init-status/set-progress! 0.55)
   ;; run a very quick check to see if we are doing a first time installation
   ;; the test we are using is if there is at least 1 User in the database
   (let [new-install? (not (setup/has-user-setup))]
     ;; initialize Metabase from an `config.yml` file if present (Enterprise Edition™ only)
     (config-from-file/init-from-file-if-code-available!)
-    (init-status/set-progress! 0.7)
+    (init-status/set-progress! 0.6)
     (when new-install?
       (log/info "Looks like this is a new installation ... preparing setup wizard")
       ;; create setup token
       (create-setup-token-and-log-setup-url!)
       ;; publish install event
       (events/publish-event! :event/install {}))
-    (init-status/set-progress! 0.8)
+    (init-status/set-progress! 0.7)
     ;; deal with our sample database as needed
     (when (config/load-sample-content?)
       (if new-install?
@@ -143,13 +150,20 @@
         (sample-data/extract-and-sync-sample-database!)
         ;; otherwise update if appropriate
         (sample-data/update-sample-database-if-needed!)))
-    (init-status/set-progress! 0.9))
+    (init-status/set-progress! 0.8))
 
   (ensure-audit-db-installed!)
+  (notification/truncate-then-seed-notification!)
+  (init-status/set-progress! 0.9)
+
+  (embed.settings/check-and-sync-settings-on-startup! env/env)
   (init-status/set-progress! 0.95)
 
-  ;; start scheduler at end of init!
+  (settings/migrate-encrypted-settings!)
+   ;; start scheduler at end of init!
   (task/start-scheduler!)
+   ;; In case we could not do this earlier (e.g. for DBs added via config file), because the scheduler was not up yet:
+  (database/check-and-schedule-tasks!)
   (init-status/set-complete!)
   (let [start-time (.getStartTime (ManagementFactory/getRuntimeMXBean))
         duration   (- (System/currentTimeMillis) start-time)]
@@ -170,7 +184,7 @@
   (log/info "Starting Metabase in STANDALONE mode")
   (try
     ;; launch embedded webserver async
-    (server/start-web-server! handler/app)
+    (server/start-web-server! (server/handler))
     ;; run our initialization process
     (init!)
     ;; Ok, now block forever while Jetty does its thing
@@ -180,9 +194,9 @@
       (log/error e "Metabase Initialization FAILED")
       (System/exit 1))))
 
-(defn- run-cmd [cmd args]
+(defn- run-cmd [cmd init-fn args]
   (classloader/require 'metabase.cmd)
-  ((resolve 'metabase.cmd/run-cmd) cmd args))
+  ((resolve 'metabase.cmd/run-cmd) cmd init-fn args))
 
 ;;; -------------------------------------------------- Tracing -------------------------------------------------------
 
@@ -204,5 +218,8 @@
   [& [cmd & args]]
   (maybe-enable-tracing)
   (if cmd
-    (run-cmd cmd args) ; run a command like `java -jar metabase.jar migrate release-locks` or `clojure -M:run migrate release-locks`
-    (start-normally))) ; with no command line args just start Metabase normally
+    ;; run a command like `java --add-opens java.base/java.nio=ALL-UNNAMED -jar metabase.jar migrate release-locks` or
+    ;; `clojure -M:run migrate release-locks`
+    (run-cmd cmd init! args)
+    ;; with no command line args just start Metabase normally
+    (start-normally)))

@@ -2,15 +2,16 @@ import { getMBQLName } from "metabase-lib/v1/expressions/config";
 import type { Expr } from "metabase-lib/v1/expressions/pratt";
 import {
   lexify,
-  parse,
   compile as newCompile,
+  parse,
 } from "metabase-lib/v1/expressions/pratt";
 import {
-  parse as oldParser,
-  useShorthands,
   adjustCase,
+  adjustMultiArgOptions,
   adjustOffset,
   adjustOptions,
+  parse as oldParser,
+  useShorthands,
 } from "metabase-lib/v1/expressions/recursive-parser";
 import { resolve } from "metabase-lib/v1/expressions/resolver";
 
@@ -25,7 +26,13 @@ interface Opts {
 
 export function compile(source: string, type: Type, opts: Opts = {}) {
   const { throwOnError } = opts;
-  const passes = [adjustOptions, useShorthands, adjustOffset, adjustCase];
+  const passes = [
+    adjustOptions,
+    useShorthands,
+    adjustOffset,
+    adjustCase,
+    adjustMultiArgOptions,
+  ];
   return newCompile(
     parse(lexify(source), {
       throwOnError,

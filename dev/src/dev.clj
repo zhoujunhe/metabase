@@ -55,7 +55,9 @@
    [clojure.test]
    [dev.debug-qp :as debug-qp]
    [dev.explain :as dev.explain]
+   [dev.migrate :as dev.migrate]
    [dev.model-tracking :as model-tracking]
+   [dev.render-png :as render-png]
    [hashp.core :as hashp]
    [honey.sql :as sql]
    [java-time.api :as t]
@@ -68,11 +70,13 @@
    [metabase.driver :as driver]
    [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
    [metabase.driver.sql-jdbc.execute :as sql-jdbc.execute]
+   [metabase.email :as email]
    [metabase.models.database :refer [Database]]
+   [metabase.models.setting :as setting]
    [metabase.query-processor.compile :as qp.compile]
    [metabase.query-processor.timezone :as qp.timezone]
-   [metabase.server :as server]
    [metabase.server.handler :as handler]
+   [metabase.server.instance :as server]
    [metabase.sync :as sync]
    [metabase.test :as mt]
    [metabase.test-runner]
@@ -101,6 +105,14 @@
   pprint-sql]
  [dev.explain
   explain-query]
+ [dev.migrate
+  migrate!
+  rollback!
+  migration-sql-by-id]
+ [render-png
+  open-html
+  open-png-bytes
+  open-hiccup-as-html]
  [model-tracking
   track!
   untrack!
@@ -215,7 +227,9 @@
 (defn query-jdbc-db
   "Execute a SQL query against a JDBC database. Useful for testing SQL syntax locally.
 
-    (query-jdbc-db :oracle SELECT to_date('1970-01-01', 'YYYY-MM-DD') FROM dual\")
+    (query-jdbc-db :oracle \"SELECT to_date('1970-01-01', 'YYYY-MM-DD') FROM dual\")
+
+    (query-jdbc-db :h2 \"SELECT name FROM people WHERE name LIKE '%Ken%'\")
 
   `sql-args` can be either a SQL string or a tuple with a SQL string followed by any prepared statement args. By
   default this method uses the same methods to set prepared statement args and read columns from results as used by
@@ -229,8 +243,8 @@
      [:sqlserver 'time-test-data]
      [\"SELECT * FROM dbo.users WHERE dbo.users.last_login_time > ?\" (java-time/offset-time \"16:00Z\")])"
   {:arglists '([driver sql]            [[driver dataset] sql]
-               [driver honeysql-form]  [[driver dataset] honeysql-form]
-               [driver [sql & params]] [[driver dataset] [sql & params]])}
+                                       [driver honeysql-form]  [[driver dataset] honeysql-form]
+                                       [driver [sql & params]] [[driver dataset] [sql & params]])}
   [driver-or-driver+dataset sql-args]
   (let [[driver dataset] (u/one-or-many driver-or-driver+dataset)
         [sql & params]   (if (map? sql-args)
@@ -258,14 +272,6 @@
         (a/>!! canceled-chan :cancel)
         (throw e)))))
 
-(defn migrate!
-  "Run migrations for the Metabase application database. Possible directions are `:up` (default), `:force`, `:down`, and
-  `:release-locks`. When migrating `:down` pass along a version to migrate to (44+)."
-  ([]
-   (migrate! :up))
-  ([direction & [version]]
-   (mdb/migrate! (mdb/data-source) direction version)))
-
 (methodical/defmethod t2.connection/do-with-connection :model/Database
   "Support running arbitrary queries against data warehouse DBs for easy REPL debugging. Only works for SQL+JDBC drivers
   right now!
@@ -280,7 +286,11 @@
 
     ;; use it with raw SQL
     (t2/query (t2/select-one Database :engine :postgres, :name \"test-data\")
-              \"SELECT * FROM venues;\")"
+              \"SELECT * FROM venues;\")
+
+    ;; use it with the Sample Database
+    (t2/query (t2/select-one Database :engine :h2, :name \"Sample Database\")
+              \"SELECT * FROM people LIMIT 1;\")"
   [database f]
   (t2.connection/do-with-connection (sql-jdbc.conn/db->pooled-connection-spec database) f))
 
@@ -310,26 +320,31 @@
                                  (qp.compile/compile built-query))]
     (into [query] params)))
 
+(defn- maybe-realize
+  "Realize a lazy sequence if it's a lazy sequence. Otherwise, return the value as is."
+  [x]
+  (if (instance? clojure.lang.LazySeq x)
+    (doall x)
+    x))
+
 (methodical/defmethod t2.hydrate/hydrate-with-strategy :around ::t2.hydrate/multimethod-simple
-  "Throws an error if do simple hydrations that make DB call on a sequence."
+  "Throws an error if simple hydrations make DB calls (which is an easy way to accidentally introduce an N+1 bug)."
   [model strategy k instances]
   (if (or config/is-prod?
-          (< (count instances) 2)
-          ;; we skip checking these keys because most of the times its call count
-          ;; are from deferencing metabase.api.common/*current-user-permissions-set*
-          (#{:can_write :can_read} k))
+          (< (count instances) 2))
     (next-method model strategy k instances)
-    (t2/with-call-count [call-count]
-      (let [res (next-method model strategy k instances)
-            ;; if it's a lazy-seq then we need to realize it so call-count is counted
-            res (if (instance? clojure.lang.LazySeq res)
-                  (doall res)
-                  res)]
-        ;; only throws an exception if the simple hydration makes a DB call
-        (when (pos-int? (call-count))
-          (throw (ex-info (format "N+1 hydration detected!!! Model %s, key %s]" (pr-str model) k)
-                          {:model model :strategy strategy :k k :items-count (count instances) :db-calls (call-count)})))
-        res))))
+    (do
+      ;; prevent things like dereferencing metabase.api.common/*current-user-permissions-set* from triggering the check
+      ;; by calling `next-method` *twice*. To reduce the performance impact, just call it with the first instance.
+      (maybe-realize (next-method model strategy k [(first instances)]))
+      ;; Now we can actually run the hydration with the full set of instances and make sure no more DB calls happened.
+      (t2/with-call-count [call-count]
+        (let [res (maybe-realize (next-method model strategy k instances))]
+          ;; only throws an exception if the simple hydration makes a DB call
+          (when (pos-int? (call-count))
+            (throw (ex-info (format "N+1 hydration detected!!! Model %s, key %s]" (pr-str model) k)
+                            {:model model :strategy strategy :k k :items-count (count instances) :db-calls (call-count)})))
+          res)))))
 
 (defn app-db-as-data-warehouse
   "Add the application database as a Database. Currently only works if your app DB uses broken-out details!"
@@ -363,6 +378,13 @@
   [form]
   (hashp/p* form))
 
+#_:clj-kondo/ignore
+(defn tap
+  "#tap, but to use in pipelines like `(-> 1 inc dev/tap prn inc)`."
+  [form]
+  (u/prog1 form
+    (tap> <>)))
+
 (defn- tests-in-var-ns [test-var]
   (->> test-var meta :ns ns-interns vals
        (filter (comp :test meta))))
@@ -390,3 +412,24 @@
         (when (failed?)
           (throw (ex-info (format "Test failed after running: `%s`" test)
                           {:test test})))))))
+
+(defn setup-email!
+  "Set up email settings for sending emails from Metabase. This is useful for testing email sending in the REPL."
+  [& settings]
+  (let [settings (merge {:host     "localhost"
+                         :port     1025
+                         :user     "metabase"
+                         :pass     "metabase@secret"
+                         :security :none}
+                        settings)]
+    (when (::email/error (email/test-smtp-connection settings))
+      (throw (ex-info "Failed to connect to SMTP server" {:settings settings})))
+    (setting/set-many! (update-keys settings
+                                    {:host        :email-smtp-host,
+                                     :user        :email-smtp-username,
+                                     :pass        :email-smtp-password,
+                                     :port        :email-smtp-port,
+                                     :security    :email-smtp-security,
+                                     :sender-name :email-from-name,
+                                     :sender      :email-from-address,
+                                     :reply-to    :email-reply-to}))))

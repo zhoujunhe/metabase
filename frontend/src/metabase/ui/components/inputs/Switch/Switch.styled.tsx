@@ -1,5 +1,5 @@
 import type { MantineThemeOverride, SwitchStylesParams } from "@mantine/core";
-import { rem, getSize, getStylesRef } from "@mantine/core";
+import { getSize, rem } from "@mantine/core";
 
 import { color } from "metabase/lib/colors";
 
@@ -73,7 +73,7 @@ export const getSwitchOverrides = (): MantineThemeOverride["components"] => ({
           lineHeight: getSize({ size, sizes: LABEL_LINE_HEIGHT }),
           color: theme.fn.themeColor("text-dark"),
           cursor: "pointer",
-          "&[data-disabled]": {
+          "&[data-disabled]:not([data-css-specificity-hack='😢'])": {
             color: theme.fn.themeColor("text-light"),
             cursor: "default",
           },
@@ -98,7 +98,7 @@ export const getSwitchOverrides = (): MantineThemeOverride["components"] => ({
           height: getSize({ size, sizes: TRACK_HEIGHTS }),
           width: getSize({ size, sizes: TRACK_WIDTHS }),
           cursor: "pointer",
-          [`${getStylesRef("input")}:disabled + &`]: {
+          "input:disabled + &": {
             backgroundColor: theme.fn.themeColor("bg-medium"),
           },
           marginTop: getSize({ size, sizes: TRACK_PADDING_TOP }),
@@ -109,7 +109,7 @@ export const getSwitchOverrides = (): MantineThemeOverride["components"] => ({
           borderRadius: rem(22),
           height: getSize({ size, sizes: THUMB_SIZES }),
           width: getSize({ size, sizes: THUMB_SIZES }),
-          [`${getStylesRef("input")}:disabled + * > &`]: {
+          "input:disabled + * > &": {
             backgroundColor: theme.fn.themeColor("bg-light"),
           },
         },

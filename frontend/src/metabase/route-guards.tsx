@@ -2,11 +2,22 @@ import { routerActions } from "react-router-redux";
 import { connectedReduxRedirect } from "redux-auth-wrapper/history3/redirect";
 
 import { getAdminPaths } from "metabase/admin/app/selectors";
-import { getIsMetabotEnabled } from "metabase/home/selectors";
+import { isSameOrSiteUrlOrigin } from "metabase/lib/dom";
 import { getSetting } from "metabase/selectors/settings";
 import type { State } from "metabase-types/store";
 
+import { getCanAccessOnboardingPage } from "./home/selectors";
+
 type Props = { children: React.ReactElement };
+
+const getRedirectUrl = () => {
+  const params = new URLSearchParams(window.location.search);
+  const redirectUrlParam = params.get("redirect");
+
+  return redirectUrlParam != null && isSameOrSiteUrlOrigin(redirectUrlParam)
+    ? redirectUrlParam
+    : "/";
+};
 
 const MetabaseIsSetup = connectedReduxRedirect<Props, State>({
   // eslint-disable-next-line no-literal-metabase-strings -- Not a user facing string
@@ -35,9 +46,10 @@ const UserIsAdmin = connectedReduxRedirect<Props, State>({
 
 const UserIsNotAuthenticated = connectedReduxRedirect<Props, State>({
   wrapperDisplayName: "UserIsNotAuthenticated",
-  redirectPath: "/",
+  redirectPath: () => getRedirectUrl(),
   allowRedirectBack: false,
-  authenticatingSelector: state => state.auth.loginPending,
+  authenticatingSelector: state =>
+    state.auth.loginPending || !state.auth.redirect,
   authenticatedSelector: state => !state.currentUser,
   redirectAction: routerActions.replace,
 });
@@ -50,11 +62,11 @@ const UserCanAccessSettings = connectedReduxRedirect<Props, State>({
   redirectAction: routerActions.replace,
 });
 
-export const UserCanAccessMetabot = connectedReduxRedirect<Props, State>({
-  wrapperDisplayName: "UserCanAccessMetabot",
+export const UserCanAccessOnboarding = connectedReduxRedirect<Props, State>({
+  wrapperDisplayName: "UserCanAccessOnboarding",
   redirectPath: "/",
   allowRedirectBack: false,
-  authenticatedSelector: state => getIsMetabotEnabled(state),
+  authenticatedSelector: state => getCanAccessOnboardingPage(state),
   redirectAction: routerActions.replace,
 });
 
@@ -73,6 +85,6 @@ export const CanAccessSettings = MetabaseIsSetup(
   UserIsAuthenticated(UserCanAccessSettings(({ children }) => children)),
 );
 
-export const CanAccessMetabot = UserCanAccessMetabot(
+export const CanAccessOnboarding = UserCanAccessOnboarding(
   ({ children }) => children,
 );

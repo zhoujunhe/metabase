@@ -11,6 +11,7 @@ const MODEL_TYPE_DISPLAY_NAMES: Record<EnabledSearchModel, string> = {
   dashboard: "Dashboard",
   database: "Database",
   dataset: "Model",
+  metric: "Metric",
   table: "Table",
   "indexed-entity": "Indexed record",
 };
@@ -22,6 +23,7 @@ const setup = (value: TypeFilterProps) => {
 
   render(<TypeFilterDisplay {...props} />);
 };
+
 describe("TypeFilterDisplay", () => {
   it("should display title when no type is selected", () => {
     setup([]);

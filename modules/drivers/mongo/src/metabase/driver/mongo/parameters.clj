@@ -1,6 +1,5 @@
 (ns metabase.driver.mongo.parameters
   (:require
-   [cheshire.core :as json]
    [clojure.string :as str]
    [clojure.walk :as walk]
    [java-time.api :as t]
@@ -17,6 +16,7 @@
    [metabase.util :as u]
    [metabase.util.date-2 :as u.date]
    [metabase.util.i18n :refer [tru]]
+   [metabase.util.json :as json]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu])
   (:import
@@ -65,7 +65,7 @@
     :else
     (pr-str x)))
 
-(mu/defn ^:private field->name
+(mu/defn- field->name
   ([field]
    (field->name field true))
 
@@ -109,7 +109,7 @@
     :else
     (format "{%s: %s}" (field->name field) (param-value->str field value))))
 
-(mu/defn ^:private substitute-field-filter
+(mu/defn- substitute-field-filter
   [{field :field, {:keys [value]} :value, :as field-filter} :- [:map
                                                                 [:field ::lib.schema.metadata/column]
                                                                 [:value [:map [:value :any]]]]]
@@ -144,7 +144,7 @@
                                     mbql.u/desugar-filter-clause
                                     qp.wrap-value-literals/wrap-value-literals-in-mbql
                                     mongo.qp/compile-filter
-                                    json/generate-string)]
+                                    json/encode)]
             [(conj acc compiled-clause) missing])
           ;; no-value field filters inside optional clauses are ignored and omitted entirely
           (and no-value? in-optional?) [acc (conj missing k)]
@@ -191,7 +191,7 @@
 
        :else
        (throw (ex-info (tru "Don''t know how to substitute {0} {1}" (.getName (class x)) (pr-str x))
-                {:type qp.error-type/driver}))))
+                       {:type qp.error-type/driver}))))
    [[] nil]
    xs))
 
@@ -199,7 +199,7 @@
   (let [[replaced missing] (substitute* param->value xs false)]
     (when (seq missing)
       (throw (ex-info (tru "Cannot run query: missing required parameters: {0}" (set missing))
-               {:type qp.error-type/invalid-query})))
+                      {:type qp.error-type/invalid-query})))
     (when (seq replaced)
       (str/join replaced))))
 

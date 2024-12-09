@@ -2,9 +2,9 @@ import { createMockMetadata } from "__support__/metadata";
 import * as Lib from "metabase-lib";
 import { createMockCard } from "metabase-types/api/mocks";
 import {
+  SAMPLE_DB_ID,
   createProductsTitleField,
   createSampleDatabase,
-  SAMPLE_DB_ID,
 } from "metabase-types/api/mocks/presets";
 
 import { columnFinder, createQuery } from "./test-helpers";
@@ -36,6 +36,8 @@ describe("order by", () => {
             displayName: "Orders",
             longDisplayName: "Orders",
             isSourceTable: true,
+            schema: "1:PUBLIC",
+            visibilityType: null,
           },
         }),
       );
@@ -60,6 +62,8 @@ describe("order by", () => {
             displayName: "Products",
             longDisplayName: "Products",
             isSourceTable: false,
+            schema: "1:PUBLIC",
+            visibilityType: null,
           },
         }),
       );

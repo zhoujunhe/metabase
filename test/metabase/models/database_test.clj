@@ -1,6 +1,5 @@
-(ns metabase.models.database-test
+(ns ^:mb/driver-tests metabase.models.database-test
   (:require
-   [cheshire.core :refer [decode encode]]
    [clojure.string :as str]
    [clojure.test :refer :all]
    [metabase.api.common :as api]
@@ -13,12 +12,13 @@
    [metabase.models.secret :as secret :refer [Secret]]
    [metabase.models.serialization :as serdes]
    [metabase.query-processor.store :as qp.store]
-   [metabase.server.middleware.session :as mw.session]
+   [metabase.request.core :as request]
    [metabase.task :as task]
    [metabase.task.sync-databases :as task.sync-databases]
    [metabase.test :as mt]
    [metabase.test.fixtures :as fixtures]
    [metabase.util :as u]
+   [metabase.util.json :as json]
    [toucan2.core :as t2]
    [toucan2.tools.with-temp :as t2.with-temp]))
 
@@ -41,7 +41,7 @@
 
 (deftest tasks-test
   (testing "Sync tasks should get scheduled for a newly created Database"
-    (mt/with-temp-scheduler
+    (mt/with-temp-scheduler!
       (task/init! ::task.sync-databases/SyncDatabases)
       (t2.with-temp/with-temp [Database {db-id :id}]
         (is (=? {:description         (format "sync-and-analyze Database %d" db-id)
@@ -59,7 +59,7 @@
                  (trigger-for-db db-id))))))))
 
 (deftest can-read-database-setting-test
-  (let [encode-decode (fn [obj] (decode (encode obj)))
+  (let [encode-decode (comp json/decode json/encode)
         pg-db         (mi/instance
                        Database
                        {:description nil
@@ -69,7 +69,7 @@
                                       :unaggregated-query-row-limit 2000}  ; visibility: :authenticated
                         :id          3})]
     (testing "authenticated users should see settings with authenticated visibility"
-      (mw.session/with-current-user
+      (request/with-current-user
         (mt/user->id :rasta)
         (is (= {"description" nil
                 "name"        "testpg"
@@ -78,7 +78,7 @@
                 "id"          3}
                (encode-decode pg-db)))))
     (testing "non-authenticated users shouldn't see settings with authenticated visibility"
-      (mw.session/with-current-user nil
+      (request/with-current-user nil
         (is (= {"description" nil
                 "name"        "testpg"
                 "settings"    {"database-enable-actions" true}
@@ -89,7 +89,7 @@
   (mt/test-drivers #{:sqlite}
     (testing "Updating database-enable-actions to true should fail if the engine doesn't support actions"
       (t2.with-temp/with-temp [Database database {:engine :sqlite}]
-        (is (= false (driver/database-supports? :sqlite :actions database)))
+        (is (= false (driver.u/supports? :sqlite :actions database)))
         (is (thrown-with-msg?
              clojure.lang.ExceptionInfo
              #"The database does not support actions."
@@ -102,7 +102,7 @@
              (t2/update! Database (:id database) {:engine :sqlite})))))))
 
 (deftest ^:parallel sensitive-data-redacted-test
-  (let [encode-decode (fn [obj] (decode (encode obj)))
+  (let [encode-decode (comp json/decode json/encode)
         project-id    "random-project-id" ; the actual value here doesn't seem to matter
         ;; this is trimmed for the parts we care about in the test
         pg-db         (mi/instance
@@ -140,7 +140,7 @@
                         :engine      :bigquery-cloud-sdk})]
     (testing "sensitive fields are redacted when database details are encoded"
       (testing "details removed for non-admin users"
-        (mw.session/with-current-user
+        (request/with-current-user
           (mt/user->id :rasta)
           (qp.store/with-metadata-provider (lib.tu/mock-metadata-provider {:database pg-db})
             (is (= {"description" nil
@@ -157,7 +157,7 @@
                  (encode-decode bq-db)))))
 
       (testing "details are obfuscated for admin users"
-        (mw.session/with-current-user
+        (request/with-current-user
           (mt/user->id :crowberto)
           (is (= {"description" nil
                   "name"        "testpg"
@@ -309,6 +309,16 @@
         (is (partial= {:details {}}
                       db))))))
 
+(deftest ^:parallel after-select-driver-features-realize-db-row-test
+  ;; This test is necessary because driver multimethods should be able to assume that the db argument is a Database
+  ;; instance, not a transient row. Otherwise a call like `(mi/instance-of :model/Database db)` will return false
+  ;; when it should return true.
+  (testing "Make sure selecting a database calls `driver/database-supports?` with a database instance"
+    (mt/with-temp [Database {db-id :id} {:engine (u/qualified-name ::test)}]
+      (mt/with-dynamic-redefs [driver.u/supports? (fn [_ _ db]
+                                                    (is (true? (mi/instance-of? :model/Database db))))]
+        (is (some? (t2/select-one-fn :features Database :id db-id)))))))
+
 (deftest hydrate-tables-test
   (is (= ["CATEGORIES"
           "CHECKINS"
@@ -318,7 +328,7 @@
           "REVIEWS"
           "USERS"
           "VENUES"]
-       (-> (mt/db)
-           (t2/hydrate :tables)
-           :tables
-           (#(map :name %))))))
+         (-> (mt/db)
+             (t2/hydrate :tables)
+             :tables
+             (#(map :name %))))))

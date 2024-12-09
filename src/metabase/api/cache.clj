@@ -3,10 +3,10 @@
    [clojure.walk :as walk]
    [compojure.core :refer [GET]]
    [metabase.api.common :as api]
-   [metabase.api.common.validation :as validation]
    [metabase.models.cache-config :as cache-config]
    [metabase.public-settings.premium-features :as premium-features :refer [defenterprise]]
    [metabase.util.i18n :refer [tru trun]]
+   [metabase.util.malli :as mu]
    [metabase.util.malli.schema :as ms]
    [toucan2.core :as t2]))
 
@@ -44,7 +44,6 @@
   []
   (drop-internal-fields (CacheStrategy)))
 
-
 (defn- assert-valid-models [model ids premium?]
   (cond
     (= model "root")
@@ -62,19 +61,35 @@
                                     "question"  :model/Card)
                                   :id [:in ids]))))
 
+(defn- check-cache-access [model id]
+  (if (or (nil? id)
+          ;; sometimes its a sequence and we're going to check for settings access anyway
+          (not (number? id))
+          (zero? id))
+    ;; if you're not accessing a concrete entity, you have to be an admin
+    (api/check-superuser)
+    (api/write-check (case model
+                       "database" :model/Database
+                       "dashboard" :model/Dashboard
+                       "question" :model/Card)
+                     id)))
+
 (api/defendpoint GET "/"
   "Return cache configuration."
-  [:as {{:strs [model collection]
+  [:as {{:strs [model collection id]
          :or   {model "root"}}
         :query-params}]
-  {model      (ms/QueryVectorOf cache-config/CachingModel)
-   ;; note that `nil` in `collection` means all configurations not scoped to any particular collection
-   collection [:maybe ms/PositiveInt]}
-  (validation/check-has-application-permission :setting)
+  {model      (mu/with (ms/QueryVectorOf cache-config/CachingModel)
+                       {:description "Type of model"})
+   collection (mu/with [:maybe ms/PositiveInt]
+                       {:description "Collection id to filter results. Returns everything if not supplied."})
+   id         (mu/with [:maybe ms/PositiveInt]
+                       {:description "Model id to get configuration for."})}
   (when (and (not (premium-features/enable-cache-granular-controls?))
              (not= model ["root"]))
     (throw (premium-features/ee-feature-error (tru "Granular Caching"))))
-  {:data (cache-config/get-list model collection)})
+  (check-cache-access (first model) id)
+  {:data (cache-config/get-list model collection id)})
 
 (api/defendpoint PUT "/"
   "Store cache configuration."
@@ -82,8 +97,8 @@
   {model    cache-config/CachingModel
    model_id ms/IntGreaterThanOrEqualToZero
    strategy (CacheStrategyAPI)}
-  (validation/check-has-application-permission :setting)
   (assert-valid-models model [model_id] (premium-features/enable-cache-granular-controls?))
+  (check-cache-access model model_id)
   {:id (cache-config/store! api/*current-user-id* config)})
 
 (api/defendpoint DELETE "/"
@@ -91,11 +106,10 @@
   [:as {{:keys [model model_id]} :body}]
   {model    cache-config/CachingModel
    model_id (ms/QueryVectorOf ms/IntGreaterThanOrEqualToZero)}
-  (validation/check-has-application-permission :setting)
   (assert-valid-models model model_id (premium-features/enable-cache-granular-controls?))
+  (doseq [id model_id] (check-cache-access model id))
   (cache-config/delete! api/*current-user-id* model model_id)
   nil)
-
 
 (api/defendpoint POST "/invalidate"
   "Invalidate cache entries.
@@ -107,12 +121,16 @@
   touching all nested configurations, or you want your invalidation to trickle down to every card."
   [include database dashboard question]
   {include   [:maybe {:description "All cache configuration overrides should invalidate cache too"} [:= :overrides]]
-   database  [:maybe {:description "A database id"} (ms/QueryVectorOf ms/IntGreaterThanOrEqualToZero)]
-   dashboard [:maybe {:description "A dashboard id"} (ms/QueryVectorOf ms/IntGreaterThanOrEqualToZero)]
-   question  [:maybe {:description "A question id"} (ms/QueryVectorOf ms/IntGreaterThanOrEqualToZero)]}
+   database  [:maybe {:description "A list of database ids"} (ms/QueryVectorOf ms/IntGreaterThanOrEqualToZero)]
+   dashboard [:maybe {:description "A list of dashboard ids"} (ms/QueryVectorOf ms/IntGreaterThanOrEqualToZero)]
+   question  [:maybe {:description "A list of question ids"} (ms/QueryVectorOf ms/IntGreaterThanOrEqualToZero)]}
 
   (when-not (premium-features/enable-cache-granular-controls?)
     (throw (premium-features/ee-feature-error (tru "Granular Caching"))))
+
+  (doseq [db-id database] (api/write-check :model/Database db-id))
+  (doseq [dashboard-id dashboard] (api/write-check :model/Dashboard dashboard-id))
+  (doseq [question-id question] (api/write-check :model/Card question-id))
 
   (let [cnt (cache-config/invalidate! {:databases       database
                                        :dashboards      dashboard
@@ -121,9 +139,9 @@
     {:status (if (= cnt -1) 404 200)
      :body   {:count   cnt
               :message (case [(= include :overrides) (if (pos? cnt) 1 cnt)]
-                         [true -1]  (tru "Could not find a question for the criteria you've specified.")
-                         [true 0]   (tru "No cached results to invalidate.")
-                         [true 1]   (trun "Invalidated a cached result." "Invalidated {0} cached results." cnt)
+                         [true -1]  (tru "Could not find any questions for the criteria you specified.")
+                         [true 0]   (tru "No cached results to clear.")
+                         [true 1]   (trun "Cleared a cached result." "Cleared {0} cached results." cnt)
                          [false -1] (tru "Nothing to invalidate.")
                          [false 0]  (tru "No cache configuration to invalidate.")
                          [false 1]  (trun "Invalidated cache configuration." "Invalidated {0} cache configurations." cnt))}}))

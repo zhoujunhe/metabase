@@ -22,11 +22,12 @@ const setup = ({ isLoading = false }: SetupProps = {}) => {
     onApply,
   };
 };
+
 describe("SearchFilterPopoverWrapper", () => {
   it("should render loading spinner when isLoading is true", () => {
     setup({ isLoading: true });
 
-    const loadingSpinner = screen.getByTestId("loading-spinner");
+    const loadingSpinner = screen.getByTestId("loading-indicator");
     expect(loadingSpinner).toBeInTheDocument();
   });
 

@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { t } from "ttag";
 
 import { QueryColumnPicker } from "metabase/common/components/QueryColumnPicker";
-import { Text, Box, Stack, Button } from "metabase/ui";
+import { Box, Button, Flex, Stack, Text, Title } from "metabase/ui";
 import * as Lib from "metabase-lib";
 
 import { ExpressionWidgetHeader } from "../ExpressionWidgetHeader";
@@ -18,7 +18,7 @@ type Props = {
     name: string,
     extraction: Lib.ColumnExtraction,
   ) => void;
-  onCancel: () => void;
+  onCancel?: () => void;
 };
 
 export function ExtractColumn({
@@ -81,7 +81,7 @@ function ColumnPicker({
   stageIndex: number;
   column: Lib.ColumnMetadata | null;
   onSelect: (column: Lib.ColumnMetadata) => void;
-  onCancel: () => void;
+  onCancel?: () => void;
 }) {
   const extractableColumns = useMemo(
     () =>
@@ -94,11 +94,18 @@ function ColumnPicker({
 
   return (
     <>
-      <ExpressionWidgetHeader
-        title={t`Select column to extract from`}
-        onBack={onCancel}
-      />
+      {onCancel && (
+        <ExpressionWidgetHeader
+          title={t`Select column to extract from`}
+          onBack={onCancel}
+        />
+      )}
       <Box py="sm">
+        {!onCancel && (
+          <Title p="md" pt="sm" pb={0} order={6}>
+            {t`Select column to extract from`}
+          </Title>
+        )}
         <QueryColumnPicker
           query={query}
           stageIndex={stageIndex}
@@ -180,15 +187,18 @@ function ExtractColumnButton({
       className={styles.button}
       classNames={{
         inner: styles.inner,
+        label: styles.label,
       }}
       onClick={onClick}
     >
-      <Text color="text-dark" className={styles.content} weight="bold" p={0}>
-        {title}
-      </Text>
-      <Text color="text-light" size="sm" className={styles.example}>
-        {example}
-      </Text>
+      <Flex align="center" justify="space-between" gap="1rem">
+        <Text color="text-dark" className={styles.content} weight="bold" p={0}>
+          {title}
+        </Text>
+        <Text color="text-light" size="sm" className={styles.example}>
+          {example}
+        </Text>
+      </Flex>
     </Button>
   );
 }

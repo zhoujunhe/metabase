@@ -149,17 +149,18 @@
 
 (deftest premium-features-test
   (testing "without a premium token"
-    (ts/with-random-dump-dir [dump-dir "serdes-"]
-      (testing "dump should fail"
-        (is (thrown-with-msg? Exception #"Please upgrade"
-                              (cmd/dump dump-dir "--user" "crowberto@metabase.com"))))
-
-      (testing "load should fail"
-        (mt/with-empty-h2-app-db
+    (mt/with-premium-features #{}
+      (ts/with-random-dump-dir [dump-dir "serdes-"]
+        (testing "dump should fail"
           (is (thrown-with-msg? Exception #"Please upgrade"
-                                (cmd/load dump-dir
-                                          "--mode"     "update"
-                                          "--on-error" "abort"))))))))
+                                (cmd/dump dump-dir "--user" "crowberto@metabase.com"))))
+
+        (testing "load should fail"
+          (mt/with-empty-h2-app-db
+            (is (thrown-with-msg? Exception #"Please upgrade"
+                                  (cmd/load dump-dir
+                                            "--mode"     "update"
+                                            "--on-error" "abort")))))))))
 
 (deftest dump-readonly-dir-test
   (testing "command exits early when destination is not writable"
@@ -178,11 +179,12 @@
       (mt/with-empty-h2-app-db
         (snowplow-test/with-fake-snowplow-collector
           (ts/with-random-dump-dir [dump-dir "serdesv2-"]
-            (let [coll  (ts/create! Collection :name "coll")
-                  _card (ts/create! Card :name "card" :collection_id (:id coll))]
+            (let [coll (ts/create! Collection :name "coll")
+                  card (ts/create! Card :name "card" :collection_id (:id coll))]
               (cmd/export dump-dir "--collection" (str (:id coll)) "--no-data-model")
               (testing "Snowplow export event was sent"
-                (is (=? {"event"           "serialization_export"
+                (is (=? {"event"           "serialization"
+                         "direction"       "export"
                          "collection"      (str (:id coll))
                          "all_collections" false
                          "data_model"      false
@@ -195,12 +197,13 @@
                          "success"         true
                          "error_message"   nil}
                         (->> (map :data (snowplow-test/pop-event-data-and-user-id!))
-                             (filter #(= "serialization_export" (get % "event")))
+                             (filter #(= "serialization" (get % "event")))
                              first))))
 
               (cmd/import dump-dir)
               (testing "Snowplow import event was sent"
-                (is (=? {"event"         "serialization_import"
+                (is (=? {"event"         "serialization"
+                         "direction"     "import"
                          "duration_ms"   pos?
                          "source"        "cli"
                          "models"        "Card,Collection,Setting"
@@ -214,7 +217,8 @@
                 (is (thrown? Exception
                              (cmd/export dump-dir "--collection" (str (:id coll)) "--no-data-model")))
                 (testing "Snowplow export event about error was sent"
-                  (is (=? {"event"           "serialization_export"
+                  (is (=? {"event"           "serialization"
+                           "direction"       "export"
                            "collection"      (str (:id coll))
                            "all_collections" false
                            "data_model"      false
@@ -225,27 +229,31 @@
                            "source"          "cli"
                            "secrets"         false
                            "success"         false
-                           "error_message"   "java.lang.Exception: Cannot load settings"}
+                           "error_message"   "Cannot load settings"}
                           (->> (map :data (snowplow-test/pop-event-data-and-user-id!))
-                               (filter #(= "serialization_export" (get % "event")))
+                               (filter #(= "serialization" (get % "event")))
                                first)))))
 
               (let [load-one! @#'v2.load/load-one!]
-                (with-redefs [v2.load/load-one! (fn [ctx path]
-                                                  (when (= "Collection" (-> path first :model))
-                                                    (throw (Exception. "Cannot import Collection")))
-                                                  (load-one! ctx path))]
+                (with-redefs [v2.load/load-one! (fn [ctx path & [modfn]]
+                                                  (load-one! ctx path
+                                                             (or modfn
+                                                                 (fn [ingested]
+                                                                   (cond-> ingested
+                                                                     (= (:entity_id ingested) (:entity_id card))
+                                                                     (assoc :collection_id "DoesNotExist"))))))]
                   (is (thrown? Exception
                                (cmd/import dump-dir)))
                   (testing "Snowplow import event about error was sent"
-                    (is (=? {"event"         "serialization_import"
+                    (is (=? {"event"         "serialization"
+                             "direction"     "import"
                              "duration_ms"   pos?
                              "source"        "cli"
                              "models"        ""
                              "count"         0
                              "success"       false
                              ;; t2/with-transactions re-wraps errors with data about toucan connections
-                             "error_message" #".*Cannot import Collection.*"}
+                             "error_message" #"(?s)Failed to read file for Collection DoesNotExist.*"}
                             (-> (snowplow-test/pop-event-data-and-user-id!) first :data)))))))))))))
 
 (deftest entity-id-dump&load-test
@@ -255,34 +263,34 @@
       (mt/with-premium-features #{:serialization}
         (ts/with-random-dump-dir [dump-dir "serialization"]
           (ts/with-dbs [source-db dest-db]
-             (testing "create 2 questions in a dashboard"
-               (ts/with-db source-db
-                 (let [db   (ts/create! Database)
-                       dash (ts/create! Dashboard)
-                       c1   (ts/create! Card {:name          "card1"
-                                              :database_id   (:id db)
-                                              :dataset_query {:database (:id db), :type :native, :native {:query "SELECT 1;"}}})
-                       c2   (ts/create! Card {:name          "card2"
-                                              :database_id   (:id db)
-                                              :dataset_query {:database (:id db), :type :native, :native {:query "SELECT 1;"}}})
-                       _    (ts/create! DashboardCard {:dashboard_id (:id dash) :card_id (:id c1)})
-                       _    (ts/create! DashboardCard {:dashboard_id (:id dash) :card_id (:id c2)})]
-                   (testing "initial dump"
-                     (is (nil? (cmd/dump dump-dir))))
-                   (testing "storing original entity ids"
-                     (is (reset! entity-ids* (eid-map [c1 c2])))))))
-             (testing "initial load"
-               (ts/with-db dest-db
-                 (is (some? (ts/create! User, :is_superuser true)))
-                 (is (nil? (cmd/load dump-dir "--on-error" "abort")))
-                 (testing "verify that entities got their own entity_id"
-                   (is (not= @entity-ids*
-                             (eid-map (t2/select Card)))))))
-             (testing "creating dump with entity ids included"
-               (ts/with-db source-db
-                 (is (nil? (cmd/dump dump-dir "--include-entity-id")))))
-             (testing "loading dump with entity ids will overwrite new entity ids with original ones"
-               (ts/with-db dest-db
-                 (is (nil? (cmd/load dump-dir "--on-error" "abort" "--mode" "update")))
-                 (is (= @entity-ids*
-                        (eid-map (t2/select Card))))))))))))
+            (testing "create 2 questions in a dashboard"
+              (ts/with-db source-db
+                (let [db   (ts/create! Database)
+                      dash (ts/create! Dashboard)
+                      c1   (ts/create! Card {:name          "card1"
+                                             :database_id   (:id db)
+                                             :dataset_query {:database (:id db), :type :native, :native {:query "SELECT 1;"}}})
+                      c2   (ts/create! Card {:name          "card2"
+                                             :database_id   (:id db)
+                                             :dataset_query {:database (:id db), :type :native, :native {:query "SELECT 1;"}}})
+                      _    (ts/create! DashboardCard {:dashboard_id (:id dash) :card_id (:id c1)})
+                      _    (ts/create! DashboardCard {:dashboard_id (:id dash) :card_id (:id c2)})]
+                  (testing "initial dump"
+                    (is (nil? (cmd/dump dump-dir))))
+                  (testing "storing original entity ids"
+                    (is (reset! entity-ids* (eid-map [c1 c2])))))))
+            (testing "initial load"
+              (ts/with-db dest-db
+                (is (some? (ts/create! User, :is_superuser true)))
+                (is (nil? (cmd/load dump-dir "--on-error" "abort")))
+                (testing "verify that entities got their own entity_id"
+                  (is (not= @entity-ids*
+                            (eid-map (t2/select Card)))))))
+            (testing "creating dump with entity ids included"
+              (ts/with-db source-db
+                (is (nil? (cmd/dump dump-dir "--include-entity-id")))))
+            (testing "loading dump with entity ids will overwrite new entity ids with original ones"
+              (ts/with-db dest-db
+                (is (nil? (cmd/load dump-dir "--on-error" "abort" "--mode" "update")))
+                (is (= @entity-ids*
+                       (eid-map (t2/select Card))))))))))))

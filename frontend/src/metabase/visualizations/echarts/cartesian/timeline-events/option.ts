@@ -8,6 +8,11 @@ import type { TimelineEventsModel } from "metabase/visualizations/echarts/cartes
 import type { RenderingContext } from "metabase/visualizations/types";
 import type { TimelineEventId } from "metabase-types/api";
 
+import {
+  TIMELINE_EVENT_DATA_NAME,
+  TIMELINE_EVENT_SERIES_ID,
+} from "../constants/dataset";
+
 // TODO: change to GraalVM supported implementation
 export const setSvgColor = (svgString: string, color: string) => {
   // Parse the SVG string into a DOM element
@@ -35,8 +40,10 @@ function svgToImageUri(svgString: string) {
 export const getTimelineEventsSeries = (
   timelineEventsModel: TimelineEventsModel,
   selectedEventsIds: TimelineEventId[],
-  { fontFamily, getColor }: RenderingContext,
+  { fontFamily, getColor, theme }: RenderingContext,
 ): LineSeriesOption | null => {
+  const { fontSize } = theme?.cartesian?.label ?? {};
+
   if (timelineEventsModel.length === 0) {
     return null;
   }
@@ -55,7 +62,7 @@ export const getTimelineEventsSeries = (
       const dataUri = svgToImageUri(iconSvg);
 
       return {
-        name: "timeline-event",
+        name: TIMELINE_EVENT_DATA_NAME,
         xAxis: date,
         symbolSize: 16,
         symbolOffset: [0, 12],
@@ -69,7 +76,7 @@ export const getTimelineEventsSeries = (
           padding: [0, 0, 0, 24],
           hideOverlap: true,
           color,
-          fontSize: CHART_STYLE.axisTicks.size,
+          fontSize,
           fontWeight: CHART_STYLE.axisTicks.weight,
           fontFamily,
         },
@@ -77,7 +84,7 @@ export const getTimelineEventsSeries = (
     });
 
   return {
-    id: "timeline-events",
+    id: TIMELINE_EVENT_SERIES_ID,
     animation: false,
     type: "line",
     data: [],
@@ -91,6 +98,17 @@ export const getTimelineEventsSeries = (
         },
         lineStyle: {
           opacity: 1,
+        },
+      },
+      emphasis: {
+        lineStyle: {
+          color: getColor("brand"),
+        },
+        label: {
+          color: getColor("brand"),
+        },
+        itemStyle: {
+          color: getColor("brand"),
         },
       },
       symbol: "none",

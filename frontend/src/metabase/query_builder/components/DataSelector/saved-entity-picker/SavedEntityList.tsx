@@ -2,48 +2,50 @@ import { Fragment } from "react";
 import { t } from "ttag";
 
 import EmptyState from "metabase/components/EmptyState";
-import { PERSONAL_COLLECTIONS } from "metabase/entities/collections";
+import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import SelectList from "metabase/components/SelectList";
+import { PERSONAL_COLLECTIONS } from "metabase/entities/collections/constants";
 import Search from "metabase/entities/search";
 import { PLUGIN_MODERATION } from "metabase/plugins";
+import { Box } from "metabase/ui";
 import { getQuestionVirtualTableId } from "metabase-lib/v1/metadata/utils/saved-questions";
-import type { Collection, CollectionItem } from "metabase-types/api";
+import type { CardType, Collection, CollectionItem } from "metabase-types/api";
 
-import {
-  LoadingWrapper,
-  SavedEntityListEmptyState,
-  SavedEntityListItem,
-  SavedEntityListRoot,
-} from "./SavedEntityList.styled";
+import SavedEntityListS from "./SavedEntityList.module.css";
+import { CARD_INFO } from "./constants";
 
 interface SavedEntityListProps {
-  isDatasets: boolean;
+  type: CardType;
   selectedId: string;
   collection?: Collection;
   onSelect: (tableOrModelId: string) => void;
 }
 
 const SavedEntityList = ({
-  isDatasets,
+  type,
   selectedId,
   collection,
   onSelect,
 }: SavedEntityListProps): JSX.Element => {
   const emptyState = (
-    <SavedEntityListEmptyState>
+    <Box m="7.5rem 0">
       <EmptyState message={t`Nothing here`} />
-    </SavedEntityListEmptyState>
+    </Box>
   );
 
   const isVirtualCollection = collection?.id === PERSONAL_COLLECTIONS.id;
 
   return (
-    <SavedEntityListRoot>
-      <LoadingWrapper loading={!collection}>
+    <SelectList className={SavedEntityListS.SavedEntityListRoot}>
+      <LoadingAndErrorWrapper
+        className={SavedEntityListS.LoadingWrapper}
+        loading={!collection}
+      >
         {collection && !isVirtualCollection && (
           <Search.ListLoader
             query={{
               collection: collection.id,
-              models: [isDatasets ? "dataset" : "card"],
+              models: [CARD_INFO[type].model],
               sort_column: "name",
               sort_direction: "asc",
             }}
@@ -56,14 +58,15 @@ const SavedEntityList = ({
                     const virtualTableId = getQuestionVirtualTableId(id);
 
                     return (
-                      <SavedEntityListItem
+                      <SelectList.Item
+                        className={SavedEntityListS.SavedEntityListItem}
                         key={id}
                         id={id}
                         isSelected={selectedId === virtualTableId}
                         size="small"
                         name={name}
                         icon={{
-                          name: isDatasets ? "model" : "table2",
+                          name: CARD_INFO[type].icon,
                           size: 16,
                         }}
                         onSelect={() => onSelect(virtualTableId)}
@@ -80,8 +83,8 @@ const SavedEntityList = ({
           </Search.ListLoader>
         )}
         {isVirtualCollection && emptyState}
-      </LoadingWrapper>
-    </SavedEntityListRoot>
+      </LoadingAndErrorWrapper>
+    </SelectList>
   );
 };
 

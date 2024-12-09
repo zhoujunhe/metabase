@@ -76,6 +76,7 @@ const StaticRowChart = ({ data, settings, getColor }: StaticRowChartProps) => {
   const groupedData = getGroupedDataset(
     remappedColumnsData.rows,
     chartColumns,
+    settings,
     columnValueFormatter,
   );
   const labelsFormatter = getLabelsStaticFormatter(chartColumns, settings);
@@ -92,6 +93,7 @@ const StaticRowChart = ({ data, settings, getColor }: StaticRowChartProps) => {
 
   const legend = calculateLegendRows({
     items: series.map(series => ({
+      key: series.seriesKey,
       name: series.seriesName,
       color: seriesColors[series.seriesKey],
     })),

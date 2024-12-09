@@ -28,7 +28,7 @@
 (mr/def ::saved-questions-virtual-database
   [:=
    {:doc/title   "Saved Questions Virtual Database ID"
-    :doc/message (:doc (meta #'saved-questions-virtual-database-id))}
+    :description (:doc (meta #'saved-questions-virtual-database-id))}
    saved-questions-virtual-database-id])
 
 (mr/def ::table
@@ -43,7 +43,7 @@
 (mr/def ::segment
   [:schema {:doc/title "Valid legacy Segment ID"} pos-int?])
 
-(mr/def ::legacy-metric
+(mr/def ::metric
   [:schema {:doc/title "Valid legacy Metric ID"} pos-int?])
 
 (mr/def ::snippet

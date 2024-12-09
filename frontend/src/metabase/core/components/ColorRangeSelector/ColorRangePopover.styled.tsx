@@ -1,10 +1,7 @@
 import styled from "@emotion/styled";
 
-import { color } from "metabase/lib/colors";
-
 export const PopoverRoot = styled.div`
   padding: 0.75rem;
-  width: 19.25rem;
 `;
 
 export const PopoverColorList = styled.div`
@@ -22,5 +19,5 @@ export const PopoverColorRangeList = styled.div`
 
 export const PopoverDivider = styled.div`
   margin: 0.75rem -0.75rem;
-  border-top: 1px solid ${color("border")};
+  border-top: 1px solid var(--mb-color-border);
 `;
