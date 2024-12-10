@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { connect } from "react-redux";
 import { push } from "react-router-redux";
 import { t } from "ttag";
@@ -20,11 +20,10 @@ import {
   isPreviewEnabled,
 } from "metabase/collections/utils";
 import { ConfirmDeleteModal } from "metabase/components/ConfirmDeleteModal";
-import EventSandbox from "metabase/components/EventSandbox";
+import { bookmarks as BookmarkEntity } from "metabase/entities";
 import { useDispatch } from "metabase/lib/redux";
 import { entityForObject } from "metabase/lib/schema";
 import * as Urls from "metabase/lib/urls";
-import { canUseMetabotOnDatabase } from "metabase/metabot/utils";
 import { addUndo } from "metabase/redux/undo";
 import { getSetting } from "metabase/selectors/settings";
 import type Database from "metabase-lib/v1/metadata/Database";
@@ -47,7 +46,6 @@ export interface ActionMenuProps {
 
 interface ActionMenuStateProps {
   isXrayEnabled: boolean;
-  isMetabotEnabled: boolean;
 }
 
 function getIsBookmarked(item: CollectionItem, bookmarks: Bookmark[]) {
@@ -70,18 +68,15 @@ function normalizeItemModel(item: CollectionItem) {
 function mapStateToProps(state: State): ActionMenuStateProps {
   return {
     isXrayEnabled: getSetting(state, "enable-xrays"),
-    isMetabotEnabled: getSetting(state, "is-metabot-enabled"),
   };
 }
 
 function ActionMenu({
   className,
   item,
-  databases,
   bookmarks,
   collection,
   isXrayEnabled,
-  isMetabotEnabled,
   onCopy,
   onMove,
   createBookmark,
@@ -89,11 +84,7 @@ function ActionMenu({
 }: ActionMenuProps & ActionMenuStateProps) {
   const dispatch = useDispatch();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-
-  const database = databases?.find(({ id }) => id === item.database_id);
-
   const isBookmarked = bookmarks && getIsBookmarked(item, bookmarks);
-
   const canPin = canPinItem(item, collection);
   const canPreview = canPreviewItem(item, collection);
   const canMove = canMoveItem(item, collection);
@@ -101,8 +92,6 @@ function ActionMenu({
   const canRestore = item.can_restore;
   const canDelete = item.can_delete;
   const canCopy = onCopy && canCopyItem(item);
-  const canUseMetabot =
-    database != null && canUseMetabotOnDatabase(database) && isMetabotEnabled;
 
   const handlePin = useCallback(() => {
     item.setPinned?.(!isItemPinned(item));
@@ -117,7 +106,7 @@ function ActionMenu({
   }, [item, onMove]);
 
   const handleArchive = useCallback(() => {
-    item.setArchived?.(true);
+    return item.setArchived ? item.setArchived(true) : Promise.resolve();
   }, [item]);
 
   const handleToggleBookmark = useMemo(() => {
@@ -140,6 +129,7 @@ function ActionMenu({
     const result = await dispatch(
       Entity.actions.update({ id: item.id, archived: false }),
     );
+    await dispatch(BookmarkEntity.actions.invalidateLists());
     const parent = HACK_getParentCollectionFromEntityUpdateAction(item, result);
     const redirect = parent ? Urls.collection(parent) : `/collection/root`;
 
@@ -165,36 +155,31 @@ function ActionMenu({
   }, [item, dispatch]);
 
   return (
-    // this component is used within a `<Link>` component,
-    // so we must prevent events from triggering the activation of the link
-    <EventSandbox preventDefault>
-      <>
-        <EntityItemMenu
-          className={className}
-          item={item}
-          isBookmarked={isBookmarked}
-          isXrayEnabled={!item.archived && isXrayEnabled}
-          canUseMetabot={canUseMetabot}
-          onPin={canPin ? handlePin : undefined}
-          onMove={canMove ? handleMove : undefined}
-          onCopy={canCopy ? handleCopy : undefined}
-          onArchive={canArchive ? handleArchive : undefined}
-          onToggleBookmark={!item.archived ? handleToggleBookmark : undefined}
-          onTogglePreview={canPreview ? handleTogglePreview : undefined}
-          onRestore={canRestore ? handleRestore : undefined}
-          onDeletePermanently={
-            canDelete ? handleStartDeletePermanently : undefined
-          }
+    <>
+      <EntityItemMenu
+        className={className}
+        item={item}
+        isBookmarked={isBookmarked}
+        isXrayEnabled={!item.archived && isXrayEnabled}
+        onPin={canPin ? handlePin : undefined}
+        onMove={canMove ? handleMove : undefined}
+        onCopy={canCopy ? handleCopy : undefined}
+        onArchive={canArchive ? handleArchive : undefined}
+        onToggleBookmark={!item.archived ? handleToggleBookmark : undefined}
+        onTogglePreview={canPreview ? handleTogglePreview : undefined}
+        onRestore={canRestore ? handleRestore : undefined}
+        onDeletePermanently={
+          canDelete ? handleStartDeletePermanently : undefined
+        }
+      />
+      {showDeleteModal && (
+        <ConfirmDeleteModal
+          name={item.name}
+          onClose={() => setShowDeleteModal(false)}
+          onDelete={handleDeletePermanently}
         />
-        {showDeleteModal && (
-          <ConfirmDeleteModal
-            name={item.name}
-            onClose={() => setShowDeleteModal(false)}
-            onDelete={handleDeletePermanently}
-          />
-        )}
-      </>
-    </EventSandbox>
+      )}
+    </>
   );
 }
 

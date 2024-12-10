@@ -1,7 +1,6 @@
 (ns metabase.models.cloud-migration
   "A model representing a migration to cloud."
   (:require
-   [cheshire.core :as json]
    [clj-http.client :as http]
    [clojure.java.io :as io]
    [clojure.set :as set]
@@ -14,6 +13,7 @@
    [metabase.models.setting.cache :as setting.cache]
    [metabase.util :as u]
    [metabase.util.i18n :refer [deferred-tru tru]]
+   [metabase.util.json :as json]
    [metabase.util.log :as log]
    [methodical.core :as methodical]
    [toucan2.core :as t2]
@@ -43,6 +43,7 @@
 
 (defsetting store-url
   (deferred-tru "Store URL.")
+  :encryption :no
   :visibility :admin ;; should be :internal, but FE doesn't get internal settings
   :default    (str "https://store" (when (store-use-staging) ".staging") ".metabase.com")
   :doc        false
@@ -50,6 +51,7 @@
 
 (defsetting store-api-url
   (deferred-tru "Store API URL.")
+  :encryption :no
   :visibility :internal
   :default    (str "https://store-api" (when (store-use-staging) ".staging") ".metabase.com")
   :doc        false
@@ -57,6 +59,7 @@
 
 (defsetting migration-dump-file
   (deferred-tru "Dump file for migrations.")
+  :encryption :no
   :visibility :internal
   :default    nil
   :doc        false
@@ -64,6 +67,7 @@
 
 (defsetting migration-dump-version
   (deferred-tru "Custom dump version for migrations.")
+  :encryption :no
   :visibility :internal
   ;; Use a known version on staging when there's no real version.
   ;; This will cause the restore to fail on cloud unless you also set `migration-dump-file` to
@@ -74,9 +78,9 @@
 
 (defsetting read-only-mode
   (deferred-tru
-    (str "Boolean indicating whether a Metabase's is in read-only mode with regards to its app db. "
-         "Will take up to 1m to propagate to other Metabase instances in a cluster."
-         "Audit tables are excluded from read-only-mode mode."))
+   (str "Boolean indicating whether a Metabase's is in read-only mode with regards to its app db. "
+        "Will take up to 1m to propagate to other Metabase instances in a cluster."
+        "Audit tables are excluded from read-only-mode mode."))
   :type       :boolean
   :visibility :admin
   :default    false
@@ -110,7 +114,6 @@
       (throw (ex-info (tru "Metabase is in read-only-mode mode!")
                       {:status-code 403}))))
   resolved-query)
-
 
 ;; Helpers
 
@@ -151,8 +154,8 @@
                                    ret)]
     (proxy [InputStream] []
       (read
-       ([]
-        (f (.read input-stream) true))
+        ([]
+         (f (.read input-stream) true))
         ([^bytes b]
          (f (.read input-stream b)))
         ([^bytes b off len]
@@ -219,7 +222,7 @@
                           {:form-params  {:part_count (count parts)}
                            :content-type :json})
                 :body
-                (json/parse-string keyword))
+                json/decode+kw)
 
             etags
             (->> (map (fn [[start end] [part-number url]]
@@ -291,7 +294,7 @@
                                                        (config/mb-version-info :tag))}
                   :content-type :json})
       :body
-      (json/parse-string keyword)
+      json/decode+kw
       (select-keys [:id :upload_url])
       (set/rename-keys {:id :external_id})))
 
@@ -305,7 +308,7 @@
   ;; make sure to use a version that store supports, and a dump for that version.
   #_(migration-dump-version! "v0.49.7")
   ;; make a new dump with any released metabase jar using the command below:
-  ;;   java -jar metabase.jar dump-to-h2 dump --dump-plaintext
+  ;;   java --add-opens java.base/java.nio=ALL-UNNAMED -jar metabase.jar dump-to-h2 dump --dump-plaintext
   #_(migration-dump-file! "/path/to/dump.mv.db")
   ;; force migration with a smaller multipart threshold (~6mb is minimum)
   #_(def ^:private part-size 6e6)

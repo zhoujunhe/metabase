@@ -4,7 +4,7 @@
   Fields that were not newly created; newly created Fields are given appropriate metadata when first synced."
   (:require
    [clojure.string :as str]
-   [metabase.models.field :as field :refer [Field]]
+   [metabase.models.field :refer [Field]]
    [metabase.sync.interface :as i]
    [metabase.sync.sync-metadata.fields.common :as common]
    [metabase.sync.util :as sync-util]
@@ -14,7 +14,7 @@
    [metabase.util.malli.schema :as ms]
    [toucan2.core :as t2]))
 
-(mu/defn ^:private update-field-metadata-if-needed! :- [:enum 0 1]
+(mu/defn- update-field-metadata-if-needed! :- [:enum 0 1]
   "Update the metadata for a Metabase Field as needed if any of the info coming back from the DB has changed. Syncs
   base type, database type, semantic type, and comments/remarks; returns `1` if the Field was updated; `0` otherwise."
   [table          :- i/TableInstance
@@ -80,9 +80,9 @@
            {:database_type new-database-type})
          (when new-base-type?
            (log/infof "Base type of %s has changed from '%s' to '%s'. This field will be refingerprinted and analyzed."
-                     (common/field-metadata-name-for-logging table metabase-field)
-                     old-base-type
-                     new-base-type)
+                      (common/field-metadata-name-for-logging table metabase-field)
+                      old-base-type
+                      new-base-type)
            {:base_type           new-base-type
             :effective_type      new-base-type
             :coercion_strategy   nil
@@ -146,7 +146,7 @@
 
 (declare update-metadata!)
 
-(mu/defn ^:private update-nested-fields-metadata! :- ms/IntGreaterThanOrEqualToZero
+(mu/defn- update-nested-fields-metadata! :- ms/IntGreaterThanOrEqualToZero
   "Recursively call `update-metadata!` for all the nested Fields in a `metabase-field`."
   [table          :- i/TableInstance
    field-metadata :- i/TableMetadataField

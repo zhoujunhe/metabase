@@ -2,28 +2,16 @@ import { t } from "ttag";
 
 import { Ellipsified } from "metabase/core/components/Ellipsified";
 import { color } from "metabase/lib/colors";
+import { humanize, titleize } from "metabase/lib/formatting";
 import { getIcon } from "metabase/lib/icon";
 import { getName } from "metabase/lib/name";
-import { Flex, Tooltip, FixedSizeIcon } from "metabase/ui";
-import type { SearchResult } from "metabase-types/api";
+import { PLUGIN_MODERATION } from "metabase/plugins";
+import { FixedSizeIcon, Flex, Tooltip } from "metabase/ui";
 
+import type { SearchItem } from "../../types";
 import { ENTITY_PICKER_Z_INDEX } from "../EntityPickerModal";
 
 import { ChunkyListItem } from "./ResultItem.styled";
-
-export type ResultItemType = Pick<SearchResult, "model" | "name"> &
-  Partial<
-    Pick<
-      SearchResult,
-      | "id"
-      | "collection"
-      | "description"
-      | "collection_authority_level"
-      | "moderated_status"
-      | "display"
-      | "database_name"
-    >
-  >;
 
 export const ResultItem = ({
   item,
@@ -31,7 +19,7 @@ export const ResultItem = ({
   isSelected,
   isLast,
 }: {
-  item: ResultItemType;
+  item: SearchItem;
   onClick: () => void;
   isSelected?: boolean;
   isLast?: boolean;
@@ -59,6 +47,11 @@ export const ResultItem = ({
         <Ellipsified style={{ fontWeight: "bold" }}>
           {getName(item)}
         </Ellipsified>
+        <PLUGIN_MODERATION.ModerationStatusIcon
+          status={item.moderated_status}
+          filled
+          size={14}
+        />
         {item.description && (
           <Tooltip
             maw="20rem"
@@ -89,11 +82,21 @@ export const ResultItem = ({
   );
 };
 
-function getParentInfo(item: ResultItemType) {
+function getParentInfo(item: SearchItem) {
   if (item.model === "table") {
+    const icon = getIcon({ model: "database" }).name;
+    const databaseName = item.database_name ?? t`Database`;
+
+    if (!item.table_schema) {
+      return {
+        icon,
+        name: databaseName,
+      };
+    }
+
     return {
-      icon: getIcon({ model: "database" }).name,
-      name: item.database_name ?? t`Database`,
+      icon,
+      name: `${databaseName} (${titleize(humanize(item.table_schema))})`,
     };
   }
 

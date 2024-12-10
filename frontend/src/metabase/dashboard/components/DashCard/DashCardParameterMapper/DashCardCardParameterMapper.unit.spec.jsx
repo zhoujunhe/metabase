@@ -5,20 +5,21 @@ import {
   renderWithProviders,
   screen,
 } from "__support__/ui";
+import * as parameterActions from "metabase/dashboard/actions/parameters";
 import { getMetadata } from "metabase/selectors/metadata";
 import Question from "metabase-lib/v1/Question";
 import {
-  createMockCard,
-  createMockTemplateTag,
-  createMockDashboardCard,
   createMockActionDashboardCard,
+  createMockCard,
+  createMockDashboardCard,
   createMockHeadingDashboardCard,
-  createMockParameter,
-  createMockTextDashboardCard,
-  createMockStructuredDatasetQuery,
+  createMockLinkDashboardCard,
   createMockNativeDatasetQuery,
   createMockNativeQuery,
-  createMockLinkDashboardCard,
+  createMockParameter,
+  createMockStructuredDatasetQuery,
+  createMockTemplateTag,
+  createMockTextDashboardCard,
   createMockVirtualCard,
   createMockVirtualDashCard,
 } from "metabase-types/api/mocks";
@@ -41,27 +42,26 @@ const metadata = getMetadata(state); // metabase-lib Metadata instance
 const setup = options => {
   const card = options.card ?? createMockCard();
 
-  renderWithProviders(
+  const { rerender } = renderWithProviders(
     <DashCardCardParameterMapper
       card={card}
       dashcard={createMockDashboardCard({ card })}
       question={new Question(card, metadata)}
       editingParameter={createMockParameter()}
-      isRecentlyAutoConnected={options.isRecentlyAutoConnected ?? false}
+      isRecentlyAutoConnected={false}
       mappingOptions={[]}
-      metadata={metadata}
-      setParameterMapping={jest.fn()}
       isMobile={false}
       {...options}
     />,
   );
+
+  return { rerender };
 };
 
 describe("DashCardCardParameterMapper", () => {
   it("should render an unauthorized state for a card with no dataset query", () => {
     const card = createMockCard({
       dataset_query: createMockStructuredDatasetQuery({ query: {} }),
-      can_run_adhoc_query: false,
     });
     setup({ card });
 
@@ -228,6 +228,7 @@ describe("DashCardCardParameterMapper", () => {
       expect(screen.queryByText("Auto-connected")).not.toBeInTheDocument();
       expect(getIcon("sparkles")).toBeInTheDocument();
     });
+
     it("should not render an icon when a dashcard is narrow", () => {
       const card = createMockCard();
       const dashcard = createMockDashboardCard({ card, size_y: 3, size_x: 3 });
@@ -410,5 +411,65 @@ describe("DashCardCardParameterMapper", () => {
       });
       expect(screen.queryByText(/Variable to map to/i)).not.toBeInTheDocument();
     });
+  });
+
+  it("should reset mapping on parameter change", () => {
+    const card = createMockCard({
+      dataset_query: createMockNativeDatasetQuery({
+        dataset_query: {
+          native: createMockNativeQuery({
+            query: "SELECT * FROM ORDERS WHERE tax = {{ tax }}",
+            "template-tags": [
+              createMockTemplateTag({
+                name: "tax",
+                type: "number/=",
+              }),
+            ],
+          }),
+        },
+      }),
+    });
+
+    jest.spyOn(parameterActions, "resetParameterMapping");
+
+    const question = new Question(card, metadata);
+    const dashcard = createMockDashboardCard({ card });
+    const editingParameter = createMockParameter({ type: "number/=" });
+    const props = {
+      card,
+      question,
+      dashcard,
+      target: ["variable", ["template-tag", "tax"]],
+      editingParameter,
+      mappingOptions: [
+        {
+          name: "Tax",
+          icon: "int",
+          isForeign: false,
+          target: ["variable", ["template-tag", "tax"]],
+        },
+      ],
+      isRecentlyAutoConnected: false,
+      isMobile: false,
+    };
+
+    expect(parameterActions.resetParameterMapping).not.toHaveBeenCalled();
+
+    const { rerender } = setup(props);
+
+    rerender(
+      <DashCardCardParameterMapper
+        {...props}
+        editingParameter={{
+          ...editingParameter,
+          type: "number/!=",
+        }}
+      />,
+    );
+
+    expect(parameterActions.resetParameterMapping).toHaveBeenCalledWith(
+      editingParameter.id,
+      dashcard.id,
+    );
   });
 });

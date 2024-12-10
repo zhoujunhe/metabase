@@ -12,11 +12,10 @@
    [metabase.models.interface :as mi]
    [metabase.models.params.chain-filter :as chain-filter]
    [metabase.models.params.field-values :as params.field-values]
-   [metabase.models.table :as table :refer [Table]]
+   [metabase.models.table :refer [Table]]
    [metabase.query-processor :as qp]
    [metabase.related :as related]
-   [metabase.server.middleware.offset-paging :as mw.offset-paging]
-   [metabase.server.middleware.session :as mw.session]
+   [metabase.request.core :as request]
    [metabase.sync :as sync]
    [metabase.sync.concurrent :as sync.concurrent]
    [metabase.types :as types]
@@ -69,7 +68,7 @@
   [ids]
   (when (seq ids)
     (-> (filter mi/can-read? (t2/select Field :id [:in ids]))
-        (t2/hydrate [:table :db] :has_field_values :dimensions :name_field))))
+        (t2/hydrate :has_field_values :dimensions :name_field))))
 
 (api/defendpoint GET "/:id"
   "Get `Field` with ID."
@@ -163,7 +162,7 @@
     ;; TODO - we should also check that the Field is within the same database as our field
     (when fk-target-field-id
       (api/checkp (t2/exists? Field :id fk-target-field-id)
-        :fk_target_field_id "Invalid target field"))
+                  :fk_target_field_id "Invalid target field"))
     (when (and display_name
                (not removed-fk?)
                (not= (:display_name field) display_name))
@@ -202,7 +201,6 @@
     [[:count     (metadata-queries/field-count field)]
      [:distincts (metadata-queries/field-distinct-count field)]]))
 
-
 ;;; --------------------------------------------------- Dimensions ---------------------------------------------------
 
 (api/defendpoint POST "/:id/dimension"
@@ -237,11 +235,7 @@
   (t2/delete! Dimension :field_id id)
   api/generic-204-no-content)
 
-
 ;;; -------------------------------------------------- FieldValues ---------------------------------------------------
-
-(def ^:private empty-field-values
-  {:values []})
 
 (declare search-values)
 
@@ -279,15 +273,6 @@
   (let [field (api/read-check (t2/select-one Field :id id))]
     (field->values field)))
 
-;; match things like GET /field%2Ccreated_at%2options
-;; (this is how things like [field,created_at,{:base-type,:type/Datetime}] look when URL-encoded)
-(api/defendpoint GET "/field%2C:field-name%2C:options/values"
-  "Implementation of the field values endpoint for fields in the Saved Questions 'virtual' DB. This endpoint is just a
-  convenience to simplify the frontend code. It just returns the standard 'empty' field values response."
-  ;; we don't actually care what field-name or field-type are, so they're ignored
-  [_ _]
-  empty-field-values)
-
 (defn- validate-human-readable-pairs
   "Human readable values are optional, but if present they must be present for each field value. Throws if invalid,
   returns a boolean indicating whether human readable values were found."
@@ -296,7 +281,7 @@
         has-human-readable-values? (not-any? human-readable-missing? value-pairs)]
     (api/check (or has-human-readable-values?
                    (every? human-readable-missing? value-pairs))
-      [400 "If remapped values are specified, they must be specified for all field values"])
+               [400 "If remapped values are specified, they must be specified for all field values"])
     has-human-readable-values?))
 
 (api/defendpoint POST "/:id/values"
@@ -307,14 +292,14 @@
    value-pairs [:sequential [:or [:tuple :any] [:tuple :any ms/NonBlankString]]]}
   (let [field (api/write-check Field id)]
     (api/check (field-values/field-should-have-field-values? field)
-      [400 (str "You can only update the human readable values of a mapped values of a Field whose value of "
-                "`has_field_values` is `list` or whose 'base_type' is 'type/Boolean'.")])
+               [400 (str "You can only update the human readable values of a mapped values of a Field whose value of "
+                         "`has_field_values` is `list` or whose 'base_type' is 'type/Boolean'.")])
     (let [human-readable-values? (validate-human-readable-pairs value-pairs)
           update-map             {:values                (map first value-pairs)
                                   :human_readable_values (when human-readable-values?
                                                            (map second value-pairs))}
           updated-pk             (mdb.query/update-or-insert! FieldValues {:field_id (u/the-id field), :type :full}
-                                   (constantly update-map))]
+                                                              (constantly update-map))]
       (api/check-500 (pos? updated-pk))))
   {:status :success})
 
@@ -327,8 +312,8 @@
     ;; Grant full permissions so that permission checks pass during sync. If a user has DB detail perms
     ;; but no data perms, they should stll be able to trigger a sync of field values. This is fine because we don't
     ;; return any actual field values from this API. (#21764)
-    (mw.session/as-admin
-     (field-values/create-or-update-full-field-values! field)))
+    (request/as-admin
+      (field-values/create-or-update-full-field-values! field)))
   {:status :success})
 
 (api/defendpoint POST "/:id/discard_values"
@@ -387,13 +372,13 @@
     value        :- [:maybe ms/NonBlankString]
     maybe-limit  :- [:maybe ms/PositiveInt]]
    (try
-    (let [field        (follow-fks field)
-          search-field (follow-fks search-field)
-          limit        (or maybe-limit default-max-field-search-limit)]
-      (metadata-queries/search-values-query field search-field value limit))
-    (catch Throwable e
-      (log/error e "Error searching field values")
-      []))))
+     (let [field        (follow-fks field)
+           search-field (follow-fks search-field)
+           limit        (or maybe-limit default-max-field-search-limit)]
+       (metadata-queries/search-values-query field search-field value limit))
+     (catch Throwable e
+       (log/error e "Error searching field values")
+       []))))
 
 (api/defendpoint GET "/:id/search/:search-id"
   "Search for values of a Field with `search-id` that start with `value`. See docstring for
@@ -406,7 +391,7 @@
         search-field (api/check-404 (t2/select-one Field :id search-id))]
     (api/check-403 (mi/can-read? field))
     (api/check-403 (mi/can-read? search-field))
-    (search-values field search-field value mw.offset-paging/*limit*)))
+    (search-values field search-field value (request/limit))))
 
 (defn remapped-value
   "Search for one specific remapping where the value of `field` exactly matches `value`. Returns a pair like

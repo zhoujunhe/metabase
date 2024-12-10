@@ -1,21 +1,11 @@
 (ns hooks.clojure.core
   (:require
    [clj-kondo.hooks-api :as hooks]
-   [clojure.set :as set]
-   [clojure.string :as str]))
+   [clojure.string :as str]
+   [hooks.common]))
 
-(defn- node->qualified-symbol [node]
-  (try
-   (when (hooks/token-node? node)
-     (let [sexpr (hooks/sexpr node)]
-       (when (symbol? sexpr)
-         (let [resolved (hooks/resolve {:name sexpr})]
-           (when-not (= :clj-kondo/unknown-namespace (:ns resolved))
-             (symbol (name (:ns resolved)) (name (:name resolved))))))))
-   ;; some symbols like `*count/Integer` aren't resolvable.
-   (catch Exception _
-     nil)))
-
+;;; TODO -- seems silly to maintain different blacklists and whitelists here than we use for the deftest `^:parallel`
+;;; checker... those lists live in the Clj Kondo config file
 (def ^:private symbols-allowed-in-fns-not-ending-in-an-exclamation-point
   '#{;; these toucan methods might actually set global values if it's used outside of a transaction,
      ;; but since mt/with-temp runs in a transaction, so we'll ignore them in this case.
@@ -95,15 +85,14 @@
      metabase.models.permissions/update-data-perms-graph!
      metabase.models.permissions/update-group-permissions!
      metabase.models.persisted-info/ready-database!
-     metabase.models.revision/revert!
      metabase.models.setting-test/test-user-local-allowed-setting!
      metabase.models.setting-test/test-user-local-only-setting!
      metabase.models.setting.cache/restore-cache!
      metabase.models.setting/set!
      metabase.models.setting/validate-settings-formatting!
      metabase.permissions.test-util/with-restored-perms!
-     metabase.pulse/send-notifications!
-     metabase.pulse/send-pulse!
+     metabase.pulse.send/send-notifications!
+     metabase.pulse.send/send-pulse!
      metabase.query-processor.streaming.interface/begin!
      metabase.query-processor.streaming.interface/finish!
      metabase.query-processor.streaming.interface/write-row!
@@ -150,23 +139,34 @@
   [s]
   (str/ends-with? s "!"))
 
+(defn- explicitly-safe? [qualified-symbol]
+  (contains? symbols-allowed-in-fns-not-ending-in-an-exclamation-point qualified-symbol))
+
+(defn- explicitly-unsafe? [config qualified-symbol]
+  (contains? (get-in config [:linters :metabase/validate-deftest :parallel/unsafe]) qualified-symbol))
+
+(defn- unsafe? [config qualified-symbol]
+  (and (or (end-with-exclamation? qualified-symbol)
+           (explicitly-unsafe? config qualified-symbol))
+       (not (explicitly-safe? qualified-symbol))))
+
 (defn- non-thread-safe-form-should-end-with-exclamation*
-  [{[defn-or-defmacro form-name] :children, :as node}]
+  [{[defn-or-defmacro form-name] :children, :as node} config]
   (when-not (and (:string-value form-name)
                  (end-with-exclamation? (:string-value form-name)))
     (letfn [(walk [f form]
               (f form)
               (doseq [child (:children form)]
-                (walk f child)))]
-      (walk (fn [form]
-              (when-let [qualified-symbol (node->qualified-symbol form)]
-                (when (and (not (contains? symbols-allowed-in-fns-not-ending-in-an-exclamation-point qualified-symbol))
-                           (end-with-exclamation? qualified-symbol))
-                  (hooks/reg-finding! (assoc (meta form-name)
-                                             :message (format "The name of this %s should end with `!` because it contains calls to non thread safe form `%s`."
-                                                              (:string-value defn-or-defmacro) qualified-symbol)
-                                             :type :metabase/test-helpers-use-non-thread-safe-functions)))))
-            node))
+                (walk f child)))
+            (check-node [form]
+              (when-let [qualified-symbol (hooks.common/node->qualified-symbol form)]
+                (when (unsafe? config qualified-symbol)
+                  (hooks/reg-finding!
+                   (assoc (meta form-name)
+                          :message (format "The name of this %s should end with `!` because it contains calls to non thread safe form `%s`. [:metabase/test-helpers-use-non-thread-safe-functions]"
+                                           (:string-value defn-or-defmacro) qualified-symbol)
+                          :type :metabase/test-helpers-use-non-thread-safe-functions)))))]
+      (walk check-node node))
     node))
 
 (defn non-thread-safe-form-should-end-with-exclamation
@@ -174,36 +174,36 @@
   A function or a macro can be defined as 'not thread safe' when their funciton name ends with a `!`.
 
   Only used in tests to identify thread-safe/non-thread-safe test helpers. See #37126"
-  [{:keys [node cljc lang]}]
+  [{:keys [node cljc lang config]}]
   (when (or (not cljc)
             (= lang :clj))
-    (non-thread-safe-form-should-end-with-exclamation* node))
+    (non-thread-safe-form-should-end-with-exclamation* node config))
   {:node node})
 
 (comment
- (require '[clj-kondo.core :as clj-kondo])
- (def form (str '(defmacro a
-                   [x]
-                   `(fun-call x))))
+  (require '[clj-kondo.core :as clj-kondo])
+  (def form (str '(defmacro a
+                    [x]
+                    `(fun-call x))))
 
- (def form "(defmacro a
+  (def form "(defmacro a
            [x]
            `(some! ~x))")
 
- (def form "(defun f
+  (def form "(defun f
            [x]
            (let [g! (fn [] 1)]
            (g!)))")
 
- (str (hooks/parse-string form))
- (hooks/sexpr (hooks/parse-string form))
+  (str (hooks/parse-string form))
+  (hooks/sexpr (hooks/parse-string form))
 
- (binding [hooks/*reload* true]
-   (-> form
-       (with-in-str (clj-kondo/run! {:lint ["-"]}))
-       :findings))
+  (binding [hooks/*reload* true]
+    (-> form
+        (with-in-str (clj-kondo/run! {:lint ["-"]}))
+        :findings))
 
- (do (non-thread-safe-form-should-end-with-exclamation* (hooks/parse-string form)) nil))
+  (do (non-thread-safe-form-should-end-with-exclamation* (hooks/parse-string form)) nil))
 
 (defn- ns-form-node->require-node [ns-form-node]
   (some (fn [node]
@@ -238,11 +238,12 @@
                   (cond
                     (hooks/vector-node? node)
                     ;; propagate the metadata attached to this vector in case there's a `:clj-kondo/ignore` form.
-                    (vary-meta (first (:children node)) (partial merge (meta require-node) (meta node)))
+                    (let [symbol-node (first (:children node))]
+                      (hooks.common/merge-ignored-linters symbol-node require-node node))
 
                     ;; this should also be dead code since we require requires to be vectors
                     (hooks/token-node? node)
-                    (vary-meta node (partial merge (meta require-node)))
+                    (hooks.common/merge-ignored-linters node require-node)
 
                     :else
                     (printf "Don't know how to figure out what namespace is being required in %s\n" (pr-str node)))))
@@ -294,8 +295,7 @@
                                                 ns-form-node->require-node
                                                 require-node->namespace-symb-nodes)]
           (doseq [node  required-namespace-symb-nodes
-                  :let  [clj-kondo-ignore (some-> (meta node) :clj-kondo/ignore hooks/sexpr set)]
-                  :when (not (contains? clj-kondo-ignore :metabase/ns-module-checker))
+                  :when (not (contains? (hooks.common/ignored-linters node) :metabase/ns-module-checker))
                   :let  [required-namespace (hooks/sexpr node)
                          required-module    (module required-namespace)]
                   ;; ignore stuff not in a module i.e. non-Metabase stuff.

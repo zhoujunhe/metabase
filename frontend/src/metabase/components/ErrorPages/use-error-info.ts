@@ -4,7 +4,7 @@ import { t } from "ttag";
 import { getCurrentUser } from "metabase/admin/datamodel/selectors";
 import { useSelector } from "metabase/lib/redux";
 import { getUserIsAdmin } from "metabase/selectors/user";
-import { UtilApi, MetabaseApi } from "metabase/services";
+import { MetabaseApi, UtilApi } from "metabase/services";
 
 import type { ErrorPayload, ReportableEntityName } from "./types";
 import { getEntityDetails, hasQueryData } from "./utils";
@@ -34,7 +34,7 @@ export const useErrorInfo = (
     }
     // https://regexr.com/7ra8o
     const matches = location.match(
-      /(question|model|dashboard|collection)[[\/\#]([\d\w]+)/,
+      /(question|model|dashboard|collection|metric)[[\/\#]([\d\w]+)/,
     );
 
     const entity = (matches?.[1] ?? undefined) as

@@ -19,11 +19,11 @@ export function setupFieldValuesEndpoints(fieldValues: GetFieldValuesResponse) {
   fetchMock.get(`path:/api/field/${fieldValues.field_id}/values`, fieldValues);
 }
 
-export function setupFieldValuesGeneralEndpoint() {
-  fetchMock.get(
-    { url: /\/api\/field\/\d+\/values/, overwriteRoutes: false },
-    [],
-  );
+export function setupUnauthorizedFieldEndpoint(field: Field) {
+  fetchMock.get(`path:/api/field/${field.id}`, {
+    status: 403,
+    body: PERMISSION_ERROR,
+  });
 }
 
 export function setupUnauthorizedFieldValuesEndpoints(
@@ -41,14 +41,15 @@ export function setupFieldsValuesEndpoints(
   fieldsValues.forEach(fieldValues => setupFieldValuesEndpoints(fieldValues));
 }
 
-export function setupFieldSearchValuesEndpoints(
+export function setupFieldSearchValuesEndpoint(
   fieldId: FieldId,
+  searchFieldId: FieldId,
   searchValue: string,
   result: FieldValue[] = [],
 ) {
   fetchMock.get(
     {
-      url: `path:/api/field/${fieldId}/search/${fieldId}`,
+      url: `path:/api/field/${fieldId}/search/${searchFieldId}`,
       query: {
         value: searchValue,
         limit: 100, // corresponds to MAX_SEARCH_RESULTS in FieldValuesWidget
@@ -57,5 +58,6 @@ export function setupFieldSearchValuesEndpoints(
     {
       body: result,
     },
+    { overwriteRoutes: false },
   );
 }

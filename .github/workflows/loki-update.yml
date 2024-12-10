@@ -27,7 +27,9 @@ jobs:
         run: yarn build-pure:cljs
 
       - name: Build Storybook
-        run: yarn build-storybook
+        # We won't be able to use Storybook play's `userEvent` with production build
+        # see https://github.com/storybookjs/storybook/issues/19758
+        run: NODE_ENV=development yarn build-storybook
 
       - name: Serve Storybook
         run: yarn http-server storybook-static -p 6006 &
@@ -59,9 +61,9 @@ jobs:
         with:
           github-token: ${{secrets.METABASE_AUTOMATION_USER_TOKEN}}
           script: |
-            github.issues.removeLabel({
+            github.rest.issues.removeLabel({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               name: 'loki-update'
-            })
+            });

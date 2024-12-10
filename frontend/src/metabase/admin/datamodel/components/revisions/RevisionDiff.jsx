@@ -12,13 +12,13 @@ export default class RevisionDiff extends Component {
   static propTypes = {
     property: PropTypes.string.isRequired,
     diff: PropTypes.object.isRequired,
-    tableMetadata: PropTypes.object.isRequired,
+    tableId: PropTypes.number.isRequired,
   };
 
   render() {
     const {
       diff: { before, after },
-      tableMetadata,
+      tableId,
     } = this.props;
 
     let icon;
@@ -42,7 +42,7 @@ export default class RevisionDiff extends Component {
           </div>
           <div>
             {this.props.property === "definition" ? (
-              <QueryDiff diff={this.props.diff} tableMetadata={tableMetadata} />
+              <QueryDiff diff={this.props.diff} tableId={tableId} />
             ) : (
               <TextDiff diff={this.props.diff} />
             )}

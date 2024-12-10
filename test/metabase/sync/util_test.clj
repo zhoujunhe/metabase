@@ -6,7 +6,7 @@
    [clojure.test :refer :all]
    [java-time.api :as t]
    [metabase.driver :as driver]
-   [metabase.models.database :as database :refer [Database]]
+   [metabase.models.database :refer [Database]]
    [metabase.models.interface :as mi]
    [metabase.models.table :refer [Table]]
    [metabase.models.task-history :as task-history :refer [TaskHistory]]
@@ -324,8 +324,8 @@
             db (t2/select-one Database :id (:id (mt/db)))]
         (with-redefs [sync-metadata/make-sync-steps (fn [_]
                                                       [(sync-util/create-sync-step
-                                                         "fake-step"
-                                                         (fn [_] (throw (java.net.ConnectException.))))])]
+                                                        "fake-step"
+                                                        (fn [_] (throw (java.net.ConnectException.))))])]
           (sync/sync-database! db)
           (is (= "aborted" (t2/select-one-fn :initial_sync_status Database :id (:id db)))))))
 

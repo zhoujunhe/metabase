@@ -2,13 +2,14 @@
   "The core metabot namespace. Consists primarily of functions named infer-X,
   where X is the thing we want to extract from the bot response."
   (:require
-   [cheshire.core :as json]
    [metabase.lib.native :as lib-native]
    [metabase.metabot.client :as metabot-client]
    [metabase.metabot.feedback :as metabot-feedback]
    [metabase.metabot.settings :as metabot-settings]
    [metabase.metabot.util :as metabot-util]
    [metabase.models :refer [Table]]
+   [metabase.util :as u]
+   [metabase.util.json :as json]
    [metabase.util.log :as log]
    [potemkin :as p]
    [toucan2.core :as t2]))
@@ -38,7 +39,7 @@
         {:template                (metabot-util/find-result
                                    (fn [message]
                                      (metabot-util/response->viz
-                                      (json/parse-string message keyword)))
+                                      (json/decode+kw message)))
                                    (metabot-client/invoke-metabot prompt))
          :prompt_template_version (format "%s:%s" prompt_template version)}))
     (log/warn "Metabot is not enabled")))
@@ -117,7 +118,7 @@
                      database-id user_prompt best-model-id)
           (update model
                   :prompt_template_versions
-                  (fnil conj [])
+                  u/conjv
                   (format "%s:%s" prompt_template version)))
         (log/infof "No model inferred for database '%s' with prompt '%s'." database-id user_prompt)))
     (log/warn "Metabot is not enabled")))

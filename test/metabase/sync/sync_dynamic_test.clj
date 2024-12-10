@@ -1,6 +1,6 @@
 (ns metabase.sync.sync-dynamic-test
   "Tests for databases with a so-called 'dynamic' schema, i.e. one that is not hard-coded somewhere.
-   A Mongo database is an example of such a DB. "
+   A Mongo database is an example of such a DB."
   (:require
    [clojure.test :refer :all]
    [metabase.models :refer [Database Table]]
@@ -39,5 +39,5 @@
   (testing "basic test to make sure syncing nested fields works. This is sort of a higher-level test."
     (t2.with-temp/with-temp [Database db {:engine ::toucanery/toucanery}]
       (sync/sync-database! db)
-     (is (= (remove-nonsense toucanery/toucanery-tables-and-fields)
-            (remove-nonsense (get-tables db)))))))
+      (is (= (remove-nonsense toucanery/toucanery-tables-and-fields)
+             (remove-nonsense (get-tables db)))))))

@@ -86,15 +86,15 @@
 (deftest instance-analytics-content-is-copied-to-mb-plugins-dir-test
   (mt/with-temp-env-var-value! [mb-plugins-dir "card_catalogue_dir"]
     (try
-     (let [plugins-dir (plugins/plugins-dir)]
-       (fs/create-dirs plugins-dir)
-       (#'ee-audit/ia-content->plugins plugins-dir)
-       (doseq [top-level-plugin-dir (map (comp str fs/absolutize)
-                                         (fs/list-dir (fs/path plugins-dir "instance_analytics")))]
-         (testing (str top-level-plugin-dir " starts with plugins value")
-           (is (str/starts-with? top-level-plugin-dir (str (fs/absolutize plugins-dir)))))))
-     (finally
-       (fs/delete-tree (plugins/plugins-dir))))))
+      (let [plugins-dir (plugins/plugins-dir)]
+        (fs/create-dirs plugins-dir)
+        (#'ee-audit/ia-content->plugins plugins-dir)
+        (doseq [top-level-plugin-dir (map (comp str fs/absolutize)
+                                          (fs/list-dir (fs/path plugins-dir "instance_analytics")))]
+          (testing (str top-level-plugin-dir " starts with plugins value")
+            (is (str/starts-with? top-level-plugin-dir (str (fs/absolutize plugins-dir)))))))
+      (finally
+        (fs/delete-tree (plugins/plugins-dir))))))
 
 (deftest all-instance-analytics-content-is-copied-from-mb-plugins-dir-test
   (mt/with-temp-env-var-value! [mb-plugins-dir "card_catalogue_dir"]
@@ -102,8 +102,8 @@
       (#'ee-audit/ia-content->plugins (plugins/plugins-dir))
       (is (= (count (file-seq (io/file (str (fs/path (plugins/plugins-dir) "instance_analytics")))))
              (count (file-seq (io/file (io/resource "instance_analytics"))))))
-     (finally
-       (fs/delete-tree (plugins/plugins-dir))))))
+      (finally
+        (fs/delete-tree (plugins/plugins-dir))))))
 
 (defn- get-audit-db-trigger-keys []
   (let [trigger-keys (->> (task/scheduler-info) :jobs (mapcat :triggers) (map :key))
@@ -155,12 +155,12 @@
 
 (deftest should-load-audit?-test
   (testing "load-analytics-content + checksums dont match => load"
-    (is (= (#'ee-audit/should-load-audit? true 1 3) true)))
+    (is (#'ee-audit/should-load-audit? true 1 3)))
   (testing "load-analytics-content + last-checksum is -1 => load (even if current-checksum is also -1)"
-    (is (= (#'ee-audit/should-load-audit? true -1 -1) true)))
+    (is (#'ee-audit/should-load-audit? true -1 -1)))
   (testing "checksums are the same => do not load"
-    (is (= (#'ee-audit/should-load-audit? true 3 3) false)))
+    (is (not (#'ee-audit/should-load-audit? true 3 3))))
   (testing "load-analytics-content false => do not load"
-    (is (= (#'ee-audit/should-load-audit? false 3 5) false)))
+    (is (not (#'ee-audit/should-load-audit? false 3 5))))
   (testing "load-analytics-content is false + checksums do not match  => do not load"
-    (is (= (#'ee-audit/should-load-audit? false 1 3) false))))
+    (is (not (#'ee-audit/should-load-audit? false 1 3)))))

@@ -3,10 +3,11 @@ import type { CSSProperties } from "react";
 import { Component } from "react";
 import { CSSTransition, TransitionGroup } from "react-transition-group";
 
+import { EMBEDDING_SDK_PORTAL_ROOT_ELEMENT_ID } from "embedding-sdk/config";
 import { MaybeOnClickOutsideWrapper } from "metabase/components/Modal/MaybeOnClickOutsideWrapper";
 import type {
-  ModalSize,
   BaseModalProps,
+  ModalSize,
 } from "metabase/components/Modal/utils";
 import { getModalContent, modalSizes } from "metabase/components/Modal/utils";
 import SandboxedPortal from "metabase/components/SandboxedPortal";
@@ -53,7 +54,13 @@ export class WindowModal extends Component<WindowModalProps> {
     if (props.zIndex != null) {
       this._modalElement.style.zIndex = String(props.zIndex);
     }
-    document.body.appendChild(this._modalElement);
+
+    const modalContainer =
+      window.document.querySelector(
+        `#${EMBEDDING_SDK_PORTAL_ROOT_ELEMENT_ID}`,
+      ) || document.body;
+
+    modalContainer.appendChild(this._modalElement);
   }
 
   componentWillUnmount() {
@@ -83,7 +90,13 @@ export class WindowModal extends Component<WindowModalProps> {
       >
         <FocusTrap active={this.props.trapFocus}>
           <div
-            className={cx(className, CS.relative, CS.bgWhite, CS.rounded)}
+            className={cx(
+              className,
+              CS.relative,
+              CS.bgWhite,
+              CS.rounded,
+              CS.textDark,
+            )}
             role="dialog"
             data-testid="modal"
           >
@@ -124,7 +137,7 @@ export class WindowModal extends Component<WindowModalProps> {
         container={this._modalElement}
         enableMouseEvents={enableMouseEvents}
         // disable keydown to allow FocusTrap to work
-        unsandboxEvents={["onKeyDown"]}
+        unsandboxedEvents={["onKeyDown"]}
       >
         <TransitionGroup
           appear={enableTransition}

@@ -1,10 +1,10 @@
 (ns metabase.server.middleware.offset-paging-test
   (:require
-   [cheshire.core :as json]
    [clojure.java.io :as io]
    [clojure.test :refer :all]
+   [metabase.request.core :as request]
    [metabase.server.handler :as handler]
-   [metabase.server.middleware.offset-paging :as mw.offset-paging]
+   [metabase.util.json :as json]
    [ring.mock.request :as ring.mock]
    [ring.util.response :as response])
   (:import
@@ -12,9 +12,9 @@
 
 (defn- handler [request]
   (let [handler  (fn [request respond _]
-                   (respond (response/response {:limit  mw.offset-paging/*limit*
-                                                :offset mw.offset-paging/*offset*
-                                                :paged? mw.offset-paging/*paged?*
+                   (respond (response/response {:limit  (request/limit)
+                                                :offset (request/offset)
+                                                :paged? (request/paged?)
                                                 :params (:params request)})))
         handler* (#'handler/apply-middleware handler)
         respond  identity
@@ -22,13 +22,13 @@
     (handler* request respond raise)))
 
 (defn- read-response
-  "Responses from our hanlders are inputstream, this is read the stream into real body."
+  "Responses from our handlers are InputStreams; this reads the stream into the real body."
   [response]
   (update response :body
           (fn [body]
             (if (instance? PipedInputStream body)
               (with-open [r (io/reader body)]
-                (json/parse-stream r))
+                (json/decode r))
               body))))
 
 (deftest paging-test
@@ -48,7 +48,7 @@
             (read-response (handler (ring.mock/request :get "/" {:offset "200", :limit "100", :whatever "true"}))))))
   (testing "w/ non-numeric paging params, paging is disabled"
     (is (=? {:status 200
-             :body {"limit" nil
+             :body {"limit"  nil
                     "offset" nil
                     "paged?" false
                     "params" {}}}

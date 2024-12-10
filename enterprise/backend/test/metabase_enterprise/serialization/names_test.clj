@@ -9,7 +9,7 @@
    [toucan2.core :as t2]))
 
 (deftest safe-name-test
-  (are [s expected] (= (names/safe-name {:name s}) expected)
+  (are [s expected] (= expected (names/safe-name {:name s}))
     "foo"         "foo"
     "foo/bar baz" "foo%2Fbar baz"))
 
@@ -20,8 +20,8 @@
     "foo%2Fbar baz" "foo/bar baz"))
 
 (deftest safe-name-unescape-name-test
- (is (= "foo/bar baz"
-        (-> {:name "foo/bar baz"} names/safe-name names/unescape-name))))
+  (is (= "foo/bar baz"
+         (-> {:name "foo/bar baz"} names/safe-name names/unescape-name))))
 
 (deftest roundtrip-test
   (ts/with-world

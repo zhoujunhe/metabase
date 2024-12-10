@@ -1,15 +1,5 @@
+import { H } from "e2e/support";
 import { USER_GROUPS } from "e2e/support/cypress_data";
-import {
-  restore,
-  modal,
-  popover,
-  describeEE,
-  openNativeEditor,
-  rightSidebar,
-  setTokenFeatures,
-  onlyOnOSS,
-  entityPickerModal,
-} from "e2e/support/helpers";
 
 const { ALL_USERS_GROUP } = USER_GROUPS;
 
@@ -25,31 +15,31 @@ function _clearAndIterativelyTypeUsingLabel(label, string) {
 
 describe("scenarios > question > snippets", () => {
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsNormalUser();
   });
 
   it("should let you create and use a snippet", () => {
-    openNativeEditor().type(
-      // Type a query and highlight some of the text
+    cy.log("Type a query and highlight some of the text");
+    H.openNativeEditor().type(
       "select 'stuff'" + "{shift}{leftarrow}".repeat("'stuff'".length),
     );
 
-    // Add a snippet of that text
-    cy.icon("snippet").click();
+    cy.log("Add a snippet of that text");
+    cy.findByTestId("native-query-editor-sidebar").icon("snippet").click();
     cy.findByTestId("sidebar-content").findByText("Create a snippet").click();
 
-    modal().within(() => {
+    H.modal().within(() => {
       cy.findByLabelText("Give your snippet a name").type("stuff-snippet");
-      cy.findByText("Save").click();
+      cy.button("Save").click();
     });
 
-    // SQL editor should get updated automatically
-    cy.get("@editor").contains("select {{snippet: stuff-snippet}}");
+    cy.log("SQL editor should get updated automatically");
+    cy.get("@editor").should("contain", "select {{snippet: stuff-snippet}}");
 
-    // Run the query and check the value
+    cy.log("Run the query and check the value");
     cy.findByTestId("native-query-editor-container").icon("play").click();
-    cy.findByTestId("scalar-value").contains("stuff");
+    cy.findByTestId("scalar-value").should("have.text", "stuff");
   });
 
   it("should let you edit snippet", () => {
@@ -61,7 +51,7 @@ describe("scenarios > question > snippets", () => {
 
     // Populate the native editor first
     // 1. select
-    openNativeEditor().type("select ");
+    H.openNativeEditor().type("select ");
     // 2. snippet
     cy.icon("snippet").click();
     cy.findByTestId("sidebar-right").within(() => {
@@ -73,7 +63,7 @@ describe("scenarios > question > snippets", () => {
     });
 
     // Update the name and content
-    modal().within(() => {
+    H.modal().within(() => {
       cy.findByText("Editing stuff-snippet");
 
       _clearAndIterativelyTypeUsingLabel(
@@ -136,22 +126,20 @@ describe("scenarios > question > snippets", () => {
     cy.findByText(/Open Editor/i).click();
     // We need these mid-point checks to make sure Cypress typed the sequence/query correctly
     // Check 1
-    cy.get(".ace_content")
-      .as("editor")
-      .contains(/^select \* from {{snippet: Table: Orders}} limit 1$/);
+    H.nativeEditor()
+      .should("be.visible")
+      .and("have.text", "select * from {{snippet: Table: Orders}} limit 1");
     // Replace "Orders" with "Reviews"
-    cy.get("@editor")
-      .click()
-      .type(
-        "{end}" +
-          "{leftarrow}".repeat("}} limit 1".length) + // move left to "reach" the "Orders"
-          "{backspace}".repeat("Orders".length) + // Delete orders character by character
-          "Reviews",
-      );
-    // Check 2
-    cy.get("@editor").contains(
-      /^select \* from {{snippet: Table: Reviews}} limit 1$/,
+    H.focusNativeEditor().type(
+      "{end}" +
+        "{leftarrow}".repeat("}} limit 1".length) + // move left to "reach" the "Orders"
+        "{backspace}".repeat("Orders".length) + // Delete orders character by character
+        "Reviews",
     );
+    // Check 2
+    H.nativeEditor()
+      .should("be.visible")
+      .and("have.text", "select * from {{snippet: Table: Reviews}} limit 1");
     // Rerun the query
     cy.findByTestId("native-query-editor-container").icon("play").click();
     cy.get("@results").contains(/christ/i);
@@ -160,29 +148,29 @@ describe("scenarios > question > snippets", () => {
 
 describe("scenarios > question > snippets (OSS)", { tags: "@OSS" }, () => {
   beforeEach(() => {
-    onlyOnOSS();
-    restore();
+    H.onlyOnOSS();
+    H.restore();
   });
 
   it("should display nested snippets in a flat list", () => {
     createNestedSnippet();
 
     // Open editor and sidebar
-    openNativeEditor();
+    H.openNativeEditor();
     cy.icon("snippet").click();
 
     // Confirm snippet is not in folder
-    rightSidebar().within(() => {
+    H.rightSidebar().within(() => {
       cy.findByText("snippet 1").should("be.visible");
     });
   });
 });
 
-describeEE("scenarios > question > snippets (EE)", () => {
+H.describeEE("scenarios > question > snippets (EE)", () => {
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
-    setTokenFeatures("all");
+    H.setTokenFeatures("all");
   });
 
   ["admin", "normal"].forEach(user => {
@@ -191,11 +179,11 @@ describeEE("scenarios > question > snippets (EE)", () => {
 
       cy.signIn(user);
 
-      openNativeEditor();
+      H.openNativeEditor();
       cy.icon("snippet").click();
       cy.findByTestId("sidebar-content").findByText("Create a snippet").click();
 
-      modal().within(() => {
+      H.modal().within(() => {
         cy.findByLabelText(
           "Enter some SQL here so you can reuse it later",
         ).type("SELECT 1", { delay: 0 });
@@ -223,14 +211,14 @@ describeEE("scenarios > question > snippets (EE)", () => {
       collection_id: null,
     });
 
-    openNativeEditor();
+    H.openNativeEditor();
 
     // create folder
     cy.icon("snippet").click();
     cy.findByTestId("sidebar-right").as("sidebar").find(".Icon-add").click();
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    popover().within(() => cy.findByText("New folder").click());
-    modal().within(() => {
+    H.popover().within(() => cy.findByText("New folder").click());
+    H.modal().within(() => {
       cy.findByText("Create your new folder");
       cy.findByLabelText("Give your folder a name").type(
         "my favorite snippets",
@@ -248,13 +236,13 @@ describeEE("scenarios > question > snippets (EE)", () => {
         cy.icon("chevrondown").click({ force: true });
       });
 
-    rightSidebar().within(() => {
+    H.rightSidebar().within(() => {
       cy.findByText("Edit").click();
     });
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    modal().within(() => cy.findByText("Top folder").click());
-    entityPickerModal().within(() => {
+    H.modal().within(() => cy.findByText("Top folder").click());
+    H.entityPickerModal().within(() => {
       cy.findByText("my favorite snippets").click();
       cy.findByText("Select").click();
     });
@@ -262,7 +250,7 @@ describeEE("scenarios > question > snippets (EE)", () => {
       "updateList",
     );
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    modal().within(() => cy.findByText("Save").click());
+    H.modal().within(() => cy.findByText("Save").click());
 
     // check that everything is in the right spot
     cy.wait("@updateList");
@@ -272,6 +260,31 @@ describeEE("scenarios > question > snippets (EE)", () => {
     cy.findByText("my favorite snippets").click();
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("snippet 1");
+
+    cy.log("via collection picker (metabase#44930");
+
+    // Edit snippet folder
+    cy.findByTestId("sidebar-right").within(() => {
+      cy.findByText("snippet 1").parent().parent().click();
+      cy.button(/Edit/).click();
+    });
+
+    H.modal().findByTestId("collection-picker-button").click();
+    H.entityPickerModal()
+      .findByRole("button", { name: /Create a new collection/ })
+      .click();
+    H.collectionOnTheGoModal()
+      .findByLabelText("Give it a name")
+      .type("my special snippets");
+    H.collectionOnTheGoModal().findByRole("button", { name: "Create" }).click();
+    H.entityPickerModal().findByRole("button", { name: "Select" }).click();
+    H.modal().findByRole("button", { name: "Save" }).click();
+
+    cy.findByTestId("sidebar-right").within(() => {
+      cy.findByText("snippet 1").should("not.exist");
+      cy.findByText("my special snippets").click();
+      cy.findByText("snippet 1").should("exist");
+    });
   });
 
   ["admin", "nocollection"].map(user => {
@@ -281,11 +294,11 @@ describeEE("scenarios > question > snippets (EE)", () => {
       cy.signIn(user);
 
       // Open editor and sidebar
-      openNativeEditor();
+      H.openNativeEditor();
       cy.icon("snippet").click();
 
       // Confirm snippet is in folder
-      rightSidebar().within(() => {
+      H.rightSidebar().within(() => {
         cy.findByText("Snippet Folder").click();
         cy.findByText("snippet 1").click();
       });
@@ -303,7 +316,34 @@ describeEE("scenarios > question > snippets (EE)", () => {
         description: null,
         parent_id: null,
         namespace: "snippets",
+      }).then(({ body }) => {
+        cy.request("POST", "/api/collection", {
+          name: "Nested snippet Folder",
+          description: null,
+          parent_id: body.id,
+          namespace: "snippets",
+        });
       });
+    });
+
+    it("should not allow you to move a snippet collection into a itself or a child (metabase#44930)", () => {
+      H.openNativeEditor();
+      cy.icon("snippet").click();
+
+      // Edit snippet folder
+      cy.findByTestId("sidebar-right").within(() => {
+        cy.findByText("Snippet Folder")
+          .next()
+          .find(".Icon-ellipsis")
+          .click({ force: true });
+      });
+
+      H.popover().findByText("Edit folder details").click();
+      H.modal().findByTestId("collection-picker-button").click();
+
+      H.entityPickerModal()
+        .findByRole("button", { name: /Snippet Folder/ })
+        .should("be.disabled");
     });
 
     it("should not display snippet folder as part of collections (metabase#14907)", () => {
@@ -315,9 +355,11 @@ describeEE("scenarios > question > snippets (EE)", () => {
     });
 
     it("shouldn't update root permissions when changing permissions on a created folder (metabase#17268)", () => {
-      cy.intercept("PUT", "/api/collection/graph").as("updatePermissions");
+      cy.intercept("PUT", "/api/collection/graph?skip-graph=true").as(
+        "updatePermissions",
+      );
 
-      openNativeEditor();
+      H.openNativeEditor();
       cy.icon("snippet").click();
 
       // Edit permissions for a snippet folder
@@ -332,13 +374,13 @@ describeEE("scenarios > question > snippets (EE)", () => {
       cy.findByText("Change permissions").click();
 
       // Update permissions for "All users" and let them only "View" this folder
-      modal().within(() => {
+      H.modal().within(() => {
         getPermissionsForUserGroup("All Users")
           .should("contain", "Curate")
           .click();
       });
 
-      popover().contains("View").click();
+      H.popover().contains("View").click();
       cy.button("Save").click();
 
       cy.wait("@updatePermissions");
@@ -350,17 +392,17 @@ describeEE("scenarios > question > snippets (EE)", () => {
       cy.findByText("Change permissions").click();
 
       // UI check
-      modal().within(() => {
+      H.modal().within(() => {
         getPermissionsForUserGroup("All Users").should("contain", "Curate");
       });
 
       // API check
-      cy.get("@updatePermissions").then(intercept => {
-        const { groups } = intercept.response.body;
-        const allUsers = groups[ALL_USERS_GROUP];
-
-        expect(allUsers.root).to.equal("write");
-      });
+      cy.request("GET", "/api/collection/graph?namespace=snippets").then(
+        ({ body }) => {
+          const allUsers = body.groups[ALL_USERS_GROUP];
+          expect(allUsers.root).to.equal("write");
+        },
+      );
     });
   });
 });

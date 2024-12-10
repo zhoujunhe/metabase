@@ -1,5 +1,6 @@
 (ns metabase.lib.join-test
   (:require
+   #?@(:cljs ([metabase.test-runner.assert-exprs.approximately-equal]))
    [clojure.test :refer [are deftest is testing]]
    [medley.core :as m]
    [metabase.lib.card :as lib.card]
@@ -12,8 +13,7 @@
    [metabase.lib.test-metadata :as meta]
    [metabase.lib.test-util :as lib.tu]
    [metabase.lib.test-util.mocks-31769 :as lib.tu.mocks-31769]
-   [metabase.util :as u]
-   #?@(:cljs ([metabase.test-runner.assert-exprs.approximately-equal]))))
+   [metabase.util :as u]))
 
 #?(:cljs (comment metabase.test-runner.assert-exprs.approximately-equal/keep-me))
 
@@ -67,6 +67,18 @@
              :lib/options {:lib/uuid string?}
              :fields      :all}
             (lib/join-clause (meta/table-metadata :orders)))))
+  (testing "Should allow specifying the join strategy when creating a join clause"
+    (is (= [:left-join :right-join :inner-join]
+           (let [query lib.tu/query-with-join
+                 product-table (meta/table-metadata :products)
+                 products-id (meta/id :products :id)
+                 orders-product-id (meta/id :orders :product-id)
+                 join-conditions [(lib/= orders-product-id products-id)]
+                 join-strategies (lib/available-join-strategies query)]
+             (into [] (comp
+                       (map #(lib/join-clause product-table join-conditions %))
+                       (map :strategy))
+                   join-strategies)))))
   (testing "source-card"
     (let [query {:lib/type :mbql/query
                  :lib/metadata lib.tu/metadata-provider-with-mock-cards
@@ -77,7 +89,7 @@
           [_ orders-product-id] (lib/join-condition-lhs-columns query product-card nil nil)
           [products-id] (lib/join-condition-rhs-columns query product-card orders-product-id nil)]
       (is (=? {:stages [{:joins [{:stages [{:source-card (:id product-card)}]}]}]}
-           (lib/join query (lib/join-clause product-card [(lib/= orders-product-id products-id)]))))))
+              (lib/join query (lib/join-clause product-card [(lib/= orders-product-id products-id)]))))))
   (testing "source-table"
     (let [query {:lib/type :mbql/query
                  :lib/metadata lib.tu/metadata-provider-with-mock-cards
@@ -195,17 +207,17 @@
                  :database     (meta/id)
                  :lib/metadata meta/metadata-provider}
           metadata (lib/returned-columns query)]
-        (is (=? [(merge (meta/field-metadata :categories :name)
-                        {:display-name         "Name"
-                         :lib/source           :source/fields
-                         ::lib.join/join-alias "CATEGORIES__via__CATEGORY_ID"})]
-                metadata))
-        (is (=? "CATEGORIES__via__CATEGORY_ID"
-                (lib.join.util/current-join-alias (first metadata))))
-        (is (=? [:field
-                 {:lib/uuid string?, :join-alias "CATEGORIES__via__CATEGORY_ID"}
-                 (meta/id :categories :name)]
-                (lib/ref (first metadata)))))))
+      (is (=? [(merge (meta/field-metadata :categories :name)
+                      {:display-name         "Name"
+                       :lib/source           :source/fields
+                       ::lib.join/join-alias "CATEGORIES__via__CATEGORY_ID"})]
+              metadata))
+      (is (=? "CATEGORIES__via__CATEGORY_ID"
+              (lib.join.util/current-join-alias (first metadata))))
+      (is (=? [:field
+               {:lib/uuid string?, :join-alias "CATEGORIES__via__CATEGORY_ID"}
+               (meta/id :categories :name)]
+              (lib/ref (first metadata)))))))
 
 (deftest ^:parallel join-against-source-card-metadata-test
   (let [metadata-provider (lib.tu/metadata-provider-with-cards-for-queries
@@ -515,10 +527,10 @@
                            (meta/field-metadata :venues :id)
                            (-> (meta/field-metadata :categories :id)
                                (lib/with-join-alias "My Join")))]]
-        (is (=? [[:= {}
-                  [:field {} (meta/id :venues :id)]
-                  [:field {:join-alias "My Join"} (meta/id :categories :id)]]]
-                (lib/join-conditions (lib/with-join-conditions join new-conditions)))))))
+      (is (=? [[:= {}
+                [:field {} (meta/id :venues :id)]
+                [:field {:join-alias "My Join"} (meta/id :categories :id)]]]
+              (lib/join-conditions (lib/with-join-conditions join new-conditions)))))))
 
 (deftest ^:parallel with-join-conditions-join-has-no-alias-yet-test
   (testing "with-join-conditions should work if join doesn't yet have an alias"
@@ -827,14 +839,14 @@
     (is (=? [{:alias "Checkins"}
              {:alias "Checkins_2"}]
             (-> (lib/query meta/metadata-provider (meta/table-metadata :users))
-                (lib/join (-> (lib/join-clause (meta/table-metadata :checkins)
-                                               [(lib/=
-                                                 (meta/field-metadata :users :id)
-                                                 (meta/field-metadata :checkins :user-id))])))
-                (lib/join (-> (lib/join-clause (meta/table-metadata :checkins)
-                                               [(lib/=
-                                                 (meta/field-metadata :users :id)
-                                                 (meta/field-metadata :checkins :user-id))])))
+                (lib/join (lib/join-clause (meta/table-metadata :checkins)
+                                           [(lib/=
+                                             (meta/field-metadata :users :id)
+                                             (meta/field-metadata :checkins :user-id))]))
+                (lib/join (lib/join-clause (meta/table-metadata :checkins)
+                                           [(lib/=
+                                             (meta/field-metadata :users :id)
+                                             (meta/field-metadata :checkins :user-id))]))
                 :stages first :joins)))))
 
 (deftest ^:parallel suggested-join-conditions-test
@@ -1244,43 +1256,43 @@
              [:field {:temporal-unit :year} (meta/id :orders :created-at)]
              [:field {:temporal-unit :year} (meta/id :products :created-at)]]
             (lib/join-condition-update-temporal-bucketing
-              query
-              -1
-              (lib/= orders-created-at
-                     products-created-at)
-              :year)))
+             query
+             -1
+             (lib/= orders-created-at
+                    products-created-at)
+             :year)))
     (is (=? [:= {}
              [:field (complement :temporal-unit) (meta/id :orders :id)]
              [:field {:temporal-unit :year} (meta/id :products :created-at)]]
             (lib/join-condition-update-temporal-bucketing
-              query
-              -1
-              (lib/= (meta/field-metadata :orders :id)
-                     products-created-at)
-              :year)))
+             query
+             -1
+             (lib/= (meta/field-metadata :orders :id)
+                    products-created-at)
+             :year)))
     (testing "removing with nil"
       (is (=? [:= {}
                [:field (complement :temporal-unit) (meta/id :orders :created-at)]
                [:field (complement :temporal-unit) (meta/id :products :created-at)]]
               (lib/join-condition-update-temporal-bucketing
+               query
+               -1
+               (lib/join-condition-update-temporal-bucketing
                 query
                 -1
-                (lib/join-condition-update-temporal-bucketing
-                  query
-                  -1
-                  (lib/= orders-created-at
-                         products-created-at)
-                  :year)
-                nil))))
+                (lib/= orders-created-at
+                       products-created-at)
+                :year)
+               nil))))
     (is (thrown-with-msg?
-          #?(:clj AssertionError :cljs :default)
-          #"Non-standard join condition."
-          (lib/join-condition-update-temporal-bucketing
-            query
-            -1
-            (lib/= (lib/+ (meta/field-metadata :orders :id) 1)
-                   products-created-at)
-            :year)))))
+         #?(:clj AssertionError :cljs :default)
+         #"Non-standard join condition."
+         (lib/join-condition-update-temporal-bucketing
+          query
+          -1
+          (lib/= (lib/+ (meta/field-metadata :orders :id) 1)
+                 products-created-at)
+          :year)))))
 
 (deftest ^:parallel default-join-alias-test
   (testing "default join-alias set without overwriting other aliases (#32897)"

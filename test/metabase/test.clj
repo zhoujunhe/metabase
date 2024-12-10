@@ -7,10 +7,10 @@
    [humane-are.core :as humane-are]
    [mb.hawk.assert-exprs.approximately-equal :as hawk.approx]
    [mb.hawk.init]
-   [mb.hawk.parallel]
    [metabase.actions.test-util :as actions.test-util]
    [metabase.config :as config]
    [metabase.db.schema-migrations-test.impl :as schema-migrations-test.impl]
+   [metabase.db.test-util :as mdb.test-util]
    [metabase.driver :as driver]
    [metabase.driver.sql-jdbc.test-util :as sql-jdbc.tu]
    [metabase.driver.sql.query-processor-test-util :as sql.qp-test-util]
@@ -21,7 +21,7 @@
    [metabase.query-processor :as qp]
    [metabase.query-processor.store :as qp.store]
    [metabase.query-processor.test-util :as qp.test-util]
-   [metabase.server.middleware.session :as mw.session]
+   [metabase.request.core]
    [metabase.test-runner.assert-exprs :as test-runner.assert-exprs]
    [metabase.test.data :as data]
    [metabase.test.data.datasets :as datasets]
@@ -34,13 +34,14 @@
    [metabase.test.redefs :as test.redefs]
    [metabase.test.util :as tu]
    [metabase.test.util.async :as tu.async]
-   [metabase.test.util.dynamic-redefs :as tu.dr]
+   [metabase.test.util.dynamic-redefs]
    [metabase.test.util.i18n :as i18n.tu]
    [metabase.test.util.log :as tu.log]
    [metabase.test.util.misc :as tu.misc]
    [metabase.test.util.public-settings :as tu.public-setings]
    [metabase.test.util.thread-local :as tu.thread-local]
    [metabase.test.util.timezone :as test.tz]
+   [metabase.util.log.capture]
    [metabase.util.random :as u.random]
    [pjstadig.humane-test-output :as humane-test-output]
    [potemkin :as p]
@@ -68,18 +69,21 @@
   initialize/keep-me
   lib.metadata.jvm/keep-me
   mb.hawk.init/keep-me
-  mb.hawk.parallel/keep-me
-  test.redefs/keep-me
-  mw.session/keep-me
+  mdb.test-util/keep-me
+  metabase.request.core/keep-me
+  metabase.test.util.dynamic-redefs/keep-me
+  metabase.util.log.capture/keep-me
   perms.test-util/keep-me
   qp.store/keep-me
   qp.test-util/keep-me
   qp/keep-me
+  schema-migrations-test.impl/keep-me
   sql-jdbc.tu/keep-me
   sql.qp-test-util/keep-me
   t2.with-temp/keepme
   test-runner.assert-exprs/keep-me
   test.persistence/keep-me
+  test.redefs/keep-me
   test.tz/keep-me
   test.users/keep-me
   tu.async/keep-me
@@ -87,11 +91,10 @@
   tu.misc/keep-me
   tu.public-setings/keep-me
   tu.thread-local/keep-me
-  u.random/keep-me
   tu/keep-me
   tx.env/keep-me
   tx/keep-me
-  schema-migrations-test.impl/keep-me)
+  u.random/keep-me)
 
 ;; Add more stuff here as needed
 #_{:clj-kondo/ignore [:discouraged-var :deprecated-var]}
@@ -144,7 +147,6 @@
   with-fake-inbox]
 
  [client
-  authenticate
   build-url
   client
   real-client
@@ -152,7 +154,7 @@
   client-real-response]
 
  [i18n.tu
-  with-mock-i18n-bundles
+  with-mock-i18n-bundles!
   with-user-locale]
 
  [initialize
@@ -161,9 +163,19 @@
  [lib.metadata.jvm
   application-database-metadata-provider]
 
- [mw.session
-  with-current-user
-  as-admin]
+ [metabase.util.log.capture
+  with-log-messages-for-level]
+
+ [mdb.test-util
+  with-app-db-timezone-id!]
+
+ [metabase.request.core
+  as-admin
+  with-current-user]
+
+ [metabase.test.util.dynamic-redefs
+  dynamic-value
+  with-dynamic-redefs]
 
  [perms.test-util
   with-restored-data-perms!
@@ -191,13 +203,11 @@
   formatted-rows
   nest-query
   normal-drivers
-  normal-drivers-except
   normal-drivers-with-feature
   normal-drivers-without-feature
   rows
   rows+column-names
   with-database-timezone-id
-  with-mock-fks-for-drivers-without-fk-constraints
   with-report-timezone-id!
   with-results-timezone-id]
 
@@ -211,7 +221,7 @@
   derecordize]
 
  [test.persistence
-  with-persistence-enabled]
+  with-persistence-enabled!]
 
  [test.users
   fetch-user
@@ -231,6 +241,7 @@
 
  [tu
   boolean-ids-and-timestamps
+  call-with-map-params
   call-with-paused-query
   discard-setting-changes
   doall-recursive
@@ -239,6 +250,7 @@
   latest-audit-log-entry
   let-url
   obj->json->obj
+  ordered-subset?
   postwalk-pred
   round-all-decimals
   scheduler-current-tasks
@@ -249,7 +261,7 @@
   with-all-users-permission
   with-column-remappings
   with-discarded-collections-perms-changes
-  with-discard-model-updates
+  with-discard-model-updates!
   with-env-keys-renamed-by
   with-locale
   with-model-cleanup
@@ -257,15 +269,17 @@
   with-non-admin-groups-no-root-collection-perms
   with-non-admin-groups-no-collection-perms
   with-all-users-data-perms-graph!
+  with-anaphora
   with-temp-env-var-value!
   with-temp-dir
   with-temp-file
-  with-temp-scheduler
+  with-temp-scheduler!
   with-temp-vals-in-db
   with-temporary-setting-values
   with-temporary-raw-setting-values
   with-user-in-groups
-  with-verified-cards!]
+  with-verified-cards!
+  works-after]
 
  [tu.async
   wait-for-result
@@ -274,7 +288,6 @@
  [tu.log
   ns-log-level
   set-ns-log-level!
-  with-log-messages-for-level
   with-log-level]
 
  [tu.misc
@@ -284,7 +297,8 @@
 
  [tu.public-setings
   with-premium-features
-  with-additional-premium-features]
+  with-additional-premium-features
+  assert-has-premium-feature-error]
 
  [u.random
   random-name
@@ -311,20 +325,15 @@
   get-dataset-definition
   has-test-extensions?
   metabase-instance
-  sorts-nil-first?
-  supports-time-type?
-  supports-timestamptz-type?]
+  native-query-with-card-template-tag
+  sorts-nil-first?]
 
  [tx.env
   set-test-drivers!
   with-test-drivers]
 
  [schema-migrations-test.impl
-  with-temp-empty-app-db]
-
- [tu.dr
-  dynamic-value
-  with-dynamic-redefs])
+  with-temp-empty-app-db])
 
 ;; Rename this instead of using `import-vars` to make it clear that it's related to `=?`
 (p/import-fn hawk.approx/malli malli=?)

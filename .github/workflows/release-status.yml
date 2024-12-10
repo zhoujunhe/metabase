@@ -3,10 +3,12 @@ name: Release and Backport Status Check
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 11 * * 1-5' # every weekday at 6am US eastern time
+    - cron: '0 7 * * 1-5' # every weekday at 8am/9am Central European Time
 
 jobs:
   check-release-status:
+    # don't run this workflow on a cron for forks
+    if: ${{ github.event_name != 'schedule' || github.repository == 'metabase/metabase' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:

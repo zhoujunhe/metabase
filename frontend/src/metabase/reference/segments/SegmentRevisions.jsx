@@ -15,12 +15,12 @@ import * as metadataActions from "metabase/redux/metadata";
 
 import ReferenceHeader from "../components/ReferenceHeader";
 import {
-  getSegmentRevisions,
+  getError,
+  getLoading,
   getSegment,
+  getSegmentRevisions,
   getTables,
   getUser,
-  getLoading,
-  getError,
 } from "../selectors";
 
 const emptyStateData = {
@@ -70,7 +70,7 @@ class SegmentRevisions extends Component {
         : {};
 
     return (
-      <div style={style} className={CS.full}>
+      <div style={style} className={CS.full} data-testid="segment-revisions">
         <ReferenceHeader
           name={t`Revision history for ${this.props.segment.name}`}
           headerIcon="segment"
@@ -98,7 +98,7 @@ class SegmentRevisions extends Component {
                           <Revision
                             key={revision.id}
                             revision={revision || {}}
-                            tableMetadata={tables[entity.table_id] || {}}
+                            tableId={entity.table_id}
                             objectName={entity.name}
                             currentUser={user || {}}
                             userColor={

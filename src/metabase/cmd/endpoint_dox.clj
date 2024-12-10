@@ -29,7 +29,7 @@
 
 (def initialisms
   "Used to format initialisms/acronyms in generated docs."
-  '["SSO" "SAML" "GTAP" "LDAP" "SQL" "JSON" "API" "LLM"])
+  '["SSO" "SAML" "GTAP" "LDAP" "SQL" "JSON" "API" "LLM" "SCIM"])
 
 (defn capitalize-initialisms
   "Converts initialisms to upper case."
@@ -260,7 +260,7 @@
                         "If you want to include them, run the command with"
                         \newline
                         \newline
-                        "clojure -M:ee:run api-documentation"))))
+                        "clojure -M:ee:doc api-documentation"))))
   (let [endpoint-map (map-endpoints)]
     (reset-dir (io/file "docs/api"))
     (generate-index-page! endpoint-map)

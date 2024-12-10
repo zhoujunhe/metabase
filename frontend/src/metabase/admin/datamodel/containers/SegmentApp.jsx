@@ -2,11 +2,12 @@
 import { useCallback, useState } from "react";
 import { connect } from "react-redux";
 import { push } from "react-router-redux";
+import _ from "underscore";
 
 import { LeaveConfirmationModal } from "metabase/components/LeaveConfirmationModal";
 import Segments from "metabase/entities/segments";
+import Tables from "metabase/entities/tables";
 import { useCallbackEffect } from "metabase/hooks/use-callback-effect";
-import * as MetabaseAnalytics from "metabase/lib/analytics";
 
 import SegmentForm from "../components/SegmentForm";
 import { updatePreviewSummary } from "../datamodel";
@@ -38,7 +39,6 @@ const UpdateSegmentFormInner = ({
 
       try {
         await updateSegment(segment);
-        MetabaseAnalytics.trackStructEvent("Data Model", "Segment Updated");
         onChangeLocation("/admin/datamodel/segments");
       } catch (error) {
         setIsDirty(isDirty);
@@ -60,9 +60,16 @@ const UpdateSegmentFormInner = ({
   );
 };
 
-const UpdateSegmentForm = Segments.load({
-  id: (state, props) => parseInt(props.params.id),
-})(UpdateSegmentFormInner);
+const UpdateSegmentForm = _.compose(
+  Segments.load({
+    id: (_state, { params }) => parseInt(params.id),
+  }),
+  Tables.load({
+    id: (_state, { segment }) => segment?.table_id,
+    fetchType: "fetchMetadataAndForeignTables",
+    requestType: "fetchMetadataDeprecated",
+  }),
+)(UpdateSegmentFormInner);
 
 const CreateSegmentForm = ({
   route,
@@ -84,11 +91,7 @@ const CreateSegmentForm = ({
 
       scheduleCallback(async () => {
         try {
-          await createSegment({
-            ...segment,
-            table_id: segment.definition["source-table"],
-          });
-          MetabaseAnalytics.trackStructEvent("Data Model", "Segment Updated");
+          await createSegment(segment);
           onChangeLocation("/admin/datamodel/segments");
         } catch (error) {
           setIsDirty(isDirty);

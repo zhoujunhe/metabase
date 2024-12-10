@@ -12,7 +12,8 @@
    [metabase.lib.test-metadata :as meta]
    [metabase.lib.test-util :as lib.tu]
    [metabase.lib.types.isa :as lib.types.isa]
-   [metabase.lib.util :as lib.util]))
+   [metabase.lib.util :as lib.util]
+   [metabase.util :as u]))
 
 #?(:cljs (comment metabase.test-runner.assert-exprs.approximately-equal/keep-me))
 
@@ -165,11 +166,12 @@
              :display-name "Sum of double-price"}
             (col-info-for-aggregation-clause
              (lib.tu/venues-query-with-last-stage
-               {:expressions [[:*
-                               {:lib/uuid (str (random-uuid))
-                                :lib/expression-name "double-price"}
-                               (lib.tu/field-clause :venues :price {:base-type :type/Integer})
-                               2]]})
+              {:expressions [[:*
+                              {:lib/uuid (str (random-uuid))
+                               :lib/expression-name "double-price"
+                               :ident (u/generate-nano-id)}
+                              (lib.tu/field-clause :venues :price {:base-type :type/Integer})
+                              2]]})
              [:sum
               {:lib/uuid (str (random-uuid))}
               [:expression {:base-type :type/Integer, :lib/uuid (str (random-uuid))} "double-price"]])))))
@@ -311,9 +313,9 @@
     (is (=? [:count {} [:field {} (meta/id :venues :price)]]
             (lib/aggregation-clause count-op (meta/field-metadata :venues :price))))
     (is (thrown-with-msg?
-          #?(:clj Exception :cljs :default)
-          #"aggregation operator :sum requires an argument"
-          (lib/aggregation-clause sum-op)))))
+         #?(:clj Exception :cljs :default)
+         #"aggregation operator :sum requires an argument"
+         (lib/aggregation-clause sum-op)))))
 
 (deftest ^:parallel aggregation-operator-test
   (let [query (-> lib.tu/venues-query
@@ -526,7 +528,7 @@
                  :requires-column true
                  :selected true}]
                (take 2 (map #(lib/display-info query %) selected-operators))))
-        (is (=? [{:display-name "Latitude",}
+        (is (=? [{:display-name "Latitude"}
                  {:display-name "Longitude"}
                  {:display-name "Price"}
                  {:display-name "double-price"
@@ -773,16 +775,16 @@
                           (lib/expression "Zero" (lib/+ 0 0))
                           (lib/expression "Total of Zero" (lib/coalesce (meta/field-metadata :orders :total) 0)))
           converted-query (lib/query meta/metadata-provider
-                            (lib.convert/->pMBQL
-                              {:database (meta/id)
-                               :type :query
-                               :query {:source-table (meta/id :orders) ,
-                                       :expressions {"Zero" [:+ 0 0]
-                                                     "Total of Zero" [:coalesce
-                                                                      [:field
-                                                                       (meta/id :orders :total) ,
-                                                                       nil],
-                                                                      0]}}}))]
+                                     (lib.convert/->pMBQL
+                                      {:database (meta/id)
+                                       :type :query
+                                       :query {:source-table (meta/id :orders) ,
+                                               :expressions {"Zero" [:+ 0 0]
+                                                             "Total of Zero" [:coalesce
+                                                                              [:field
+                                                                               (meta/id :orders :total) ,
+                                                                               nil],
+                                                                              0]}}}))]
       (is (= (->> built-query
                   lib/available-aggregation-operators
                   (m/find-first #(= (:short %) :sum))
@@ -809,7 +811,8 @@
                        (lib/aggregate (lib/sum (meta/field-metadata :venues :price))))
         price      (m/find-first #(= (:name %) "PRICE") (lib/visible-columns query))
         aggs       (lib/aggregations query)]
-    (is (= (count aggs) 2))
+    (is (= 2
+           (count aggs)))
     (testing "aggregations like COUNT have no column"
       (is (nil? (lib.aggregation/aggregation-column query -1 (first aggs)))))
     (testing "aggregations like SUM return the column of interest"
@@ -820,20 +823,20 @@
   (testing "available operators includes avg and sum once numeric fields are present (#31384)"
     (let [query (lib/query meta/metadata-provider (meta/table-metadata :categories))]
       (is (not (set/subset?
-                 #{:avg :sum}
-                 (set (mapv :short (lib/available-aggregation-operators query)))))
-          (is (set/subset?
                 #{:avg :sum}
-                (set (mapv :short (-> query
-                                      (lib/join (meta/table-metadata :venues))
-                                      lib/available-aggregation-operators)))))))))
+                (set (mapv :short (lib/available-aggregation-operators query)))))
+          (is (set/subset?
+               #{:avg :sum}
+               (set (mapv :short (-> query
+                                     (lib/join (meta/table-metadata :venues))
+                                     lib/available-aggregation-operators)))))))))
 
 (deftest ^:synchronized selected-aggregation-operators-skip-marking-columns-for-non-refs-test
   (testing "when the aggregation's argument is not a column ref, don't try to mark selected columns"
     ;; See https://metaboat.slack.com/archives/C05MPF0TM3L/p1702039952166409 for details.
     (let [query     (-> (lib/query meta/metadata-provider (meta/table-metadata :orders))
                         (lib/aggregate (lib/distinct (lib/case
-                                                       [[(lib/= (meta/field-metadata :products :category) "Gizmo") 2]]
+                                                      [[(lib/= (meta/field-metadata :products :category) "Gizmo") 2]]
                                                        3))))
           available (lib/available-aggregation-operators query)]
       (is (=? (for [op available]

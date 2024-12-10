@@ -1,9 +1,9 @@
-import type { UniqueIdentifier, DragEndEvent } from "@dnd-kit/core";
+import type { DragEndEvent, UniqueIdentifier } from "@dnd-kit/core";
 import {
   DndContext,
-  useSensor,
-  PointerSensor,
   MouseSensor,
+  PointerSensor,
+  useSensor,
 } from "@dnd-kit/core";
 import {
   restrictToHorizontalAxis,
@@ -13,7 +13,13 @@ import {
   SortableContext,
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { useCallback, useState, useRef, useLayoutEffect } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { usePreviousDistinct } from "react-use";
 
 import ExplicitSize from "metabase/components/ExplicitSize";
@@ -22,6 +28,7 @@ import { Icon } from "metabase/ui";
 import type { TabListProps } from "../TabList/TabList";
 
 import { ScrollButton, TabList } from "./TabRow.styled";
+import { tabsCollisionDetection } from "./collision-detection";
 
 interface TabRowProps<T> extends TabListProps<T> {
   width?: number | null;
@@ -103,6 +110,7 @@ function TabRowInner<T>({
         onDragEnd={onDragEnd}
         modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
         sensors={[pointerSensor, mouseSensor]}
+        collisionDetection={tabsCollisionDetection}
       >
         <SortableContext
           items={itemIds ?? []}
@@ -121,10 +129,9 @@ function TabRowInner<T>({
   );
 }
 
-const TabRowInnerWithSize = ExplicitSize()(TabRowInner);
-export function TabRow<T>(props: TabRowProps<T>) {
-  return <TabRowInnerWithSize {...props} />;
-}
+export const TabRow = ExplicitSize<TabRowProps<unknown>>()(TabRowInner) as <T>(
+  props: TabRowProps<T>,
+) => ReactNode;
 
 interface ScrollArrowProps {
   direction: "left" | "right";

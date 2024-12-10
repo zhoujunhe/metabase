@@ -12,9 +12,9 @@ import {
   isDateParameter,
 } from "metabase-lib/v1/parameters/utils/parameter-type";
 import {
-  setStartingFrom,
   EXCLUDE_OPTIONS,
   EXCLUDE_UNITS,
+  setStartingFrom,
 } from "metabase-lib/v1/queries/utils/query-time";
 import { isTemplateTagReference } from "metabase-lib/v1/references";
 import { isDimensionTarget } from "metabase-types/guards";
@@ -48,38 +48,48 @@ const timeParameterValueDeserializers = [
   {
     testRegex: /^past([0-9]+)([a-z]+)s-from-([0-9]+)([a-z]+)s$/,
     deserialize: (matches, fieldRef) => {
-      const base = [
-        "time-interval",
+      const base = ["time-interval", fieldRef, -Number(matches[0]), matches[1]];
+      return setStartingFrom(base, Number(matches[2]), matches[3]);
+    },
+    deserializeMBQL: (matches, fieldRef) => {
+      return [
+        "relative-time-interval",
         fieldRef,
-        -parseInt(matches[0]),
+        -Number(matches[0]),
         matches[1],
+        -Number(matches[2]),
+        matches[3],
       ];
-      return setStartingFrom(base, parseInt(matches[2]), matches[3]);
     },
   },
   {
     testRegex: /^past([0-9]+)([a-z]+)s(~)?$/,
     deserialize: (matches, fieldRef) =>
-      ["time-interval", fieldRef, -parseInt(matches[0]), matches[1]].concat(
+      ["time-interval", fieldRef, -Number(matches[0]), matches[1]].concat(
         matches[2] ? [{ "include-current": true }] : [],
       ),
   },
   {
     testRegex: /^next([0-9]+)([a-z]+)s-from-([0-9]+)([a-z]+)s$/,
     deserialize: (matches, fieldRef) => {
-      const base = [
-        "time-interval",
+      const base = ["time-interval", fieldRef, Number(matches[0]), matches[1]];
+      return setStartingFrom(base, -Number(matches[2]), matches[3]);
+    },
+    deserializeMBQL: (matches, fieldRef) => {
+      return [
+        "relative-time-interval",
         fieldRef,
-        parseInt(matches[0]),
+        Number(matches[0]),
         matches[1],
+        Number(matches[2]),
+        matches[3],
       ];
-      return setStartingFrom(base, -parseInt(matches[2]), matches[3]);
     },
   },
   {
     testRegex: /^next([0-9]+)([a-z]+)s(~)?$/,
     deserialize: (matches, fieldRef) =>
-      ["time-interval", fieldRef, parseInt(matches[0]), matches[1]].concat(
+      ["time-interval", fieldRef, Number(matches[0]), matches[1]].concat(
         matches[2] ? [{ "include-current": true }] : [],
       ),
   },
@@ -131,7 +141,14 @@ const timeParameterValueDeserializers = [
   },
 ];
 
-export function dateParameterValueToMBQL(parameterValue, fieldRef) {
+// legacy `DatePicker` relies on the broken MBQL produced by `deserialize`
+// we fix relative date filters with a new `deserializeMBQL` function and
+// `isDatePicker` flag
+export function dateParameterValueToMBQL(
+  parameterValue,
+  fieldRef,
+  isDatePicker = true,
+) {
   const deserializer = timeParameterValueDeserializers.find(des =>
     des.testRegex.test(parameterValue),
   );
@@ -140,21 +157,30 @@ export function dateParameterValueToMBQL(parameterValue, fieldRef) {
     const substringMatches = deserializer.testRegex
       .exec(parameterValue)
       .splice(1);
-    return deserializer.deserialize(substringMatches, fieldRef);
+    const deserialize = isDatePicker
+      ? deserializer.deserialize
+      : (deserializer.deserializeMBQL ?? deserializer.deserialize);
+    return deserialize(substringMatches, fieldRef);
   } else {
     return null;
   }
 }
 
 export function stringParameterValueToMBQL(parameter, fieldRef) {
-  const parameterValue = parameter.value;
+  const parameterValue = Array.isArray(parameter.value)
+    ? parameter.value
+    : [parameter.value];
   const operator = deriveFieldOperatorFromParameter(parameter);
   const subtype = getParameterSubType(parameter);
   const operatorName = getParameterOperatorName(subtype);
+  const operatorOptions = operator?.optionsDefaults;
+  const hasMultipleValues = parameterValue.length > 1;
 
-  return [operatorName, fieldRef]
+  return [operatorName]
+    .concat(hasMultipleValues && operatorOptions ? operatorOptions : [])
+    .concat([fieldRef])
     .concat(parameterValue)
-    .concat(operator?.optionsDefaults ?? []);
+    .concat(!hasMultipleValues && operatorOptions ? operatorOptions : []);
 }
 
 export function numberParameterValueToMBQL(parameter, fieldRef) {
@@ -163,7 +189,10 @@ export function numberParameterValueToMBQL(parameter, fieldRef) {
   const operatorName = getParameterOperatorName(subtype);
 
   return [operatorName, fieldRef].concat(
-    [].concat(parameterValue).map(v => parseFloat(v)),
+    [].concat(parameterValue).map(value => {
+      const number = parseFloat(value);
+      return isNaN(number) ? null : number;
+    }),
   );
 }
 
@@ -198,7 +227,7 @@ function filterParameterToMBQL(query, stageIndex, parameter) {
   const fieldRef = Lib.legacyRef(query, stageIndex, column);
 
   if (isDateParameter(parameter)) {
-    return dateParameterValueToMBQL(parameter.value, fieldRef);
+    return dateParameterValueToMBQL(parameter.value, fieldRef, false);
   } else if (Lib.isNumeric(column)) {
     return numberParameterValueToMBQL(parameter, fieldRef);
   } else {

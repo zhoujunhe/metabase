@@ -10,7 +10,6 @@
    [metabase.api.ldap :as api.ldap]
    [metabase.api.session :as api.session]
    [metabase.config :as config]
-   [metabase.email.messages :as messages]
    [metabase.events :as events]
    [metabase.integrations.google :as google]
    [metabase.models.collection :as collection :refer [Collection]]
@@ -23,9 +22,7 @@
    [metabase.plugins.classloader :as classloader]
    [metabase.public-settings :as public-settings]
    [metabase.public-settings.premium-features :as premium-features]
-   [metabase.server.middleware.offset-paging :as mw.offset-paging]
-   [metabase.server.middleware.session :as mw.session]
-   [metabase.server.request.util :as req.util]
+   [metabase.request.core :as request]
    [metabase.util :as u]
    [metabase.util.i18n :refer [deferred-tru tru]]
    [metabase.util.malli.schema :as ms]
@@ -61,7 +58,7 @@
   [user-id]
   {:pre [(integer? user-id)]}
   (api/check (not= user-id config/internal-mb-user-id)
-           [400 (tru "Not able to modify the internal user")]))
+             [400 (tru "Not able to modify the internal user")]))
 
 (defn- fetch-user [& query-criteria]
   (apply t2/select-one (vec (cons :model/User user/admin-or-self-visible-columns)) query-criteria))
@@ -133,14 +130,14 @@
   "Columns of user table visible to current caller of API."
   []
   (cond
-   api/*is-superuser?*
-   user/admin-or-self-visible-columns
+    api/*is-superuser?*
+    user/admin-or-self-visible-columns
 
-   api/*is-group-manager?*
-   user/group-manager-visible-columns
+    api/*is-group-manager?*
+    user/group-manager-visible-columns
 
-   :else
-   user/non-admin-or-self-visible-columns))
+    :else
+    user/non-admin-or-self-visible-columns))
 
 (defn- user-clauses
   "Honeysql clauses for filtering on users
@@ -160,8 +157,8 @@
                                                         [:= :core_user.id :permissions_group_membership.user_id])
     (some? group_ids)                                  (sql.helpers/where
                                                         [:in :permissions_group_membership.group_id group_ids])
-    (some? mw.offset-paging/*limit*)                   (sql.helpers/limit mw.offset-paging/*limit*)
-    (some? mw.offset-paging/*offset*)                  (sql.helpers/offset mw.offset-paging/*offset*)))
+    (some? (request/limit))                            (sql.helpers/limit (request/limit))
+    (some? (request/offset))                           (sql.helpers/offset (request/offset))))
 
 (defn- filter-clauses-without-paging
   "Given a where clause, return a clause that can be used to count."
@@ -220,8 +217,8 @@
                          (filter-clauses-without-paging clauses)))
                  first
                  :count)
-     :limit  mw.offset-paging/*limit*
-     :offset mw.offset-paging/*offset*}))
+     :limit  (request/limit)
+     :offset (request/offset)}))
 
 (defn- same-groups-user-ids
   "Return a list of all user-ids in the same group with the user with id `user-id`.
@@ -249,20 +246,20 @@
                                     (sql.helpers/order-by [:%lower.last_name :asc] [:%lower.first_name :asc]))]
                     {:data   (t2/select (vec (cons :model/User (user-visible-columns))) clauses)
                      :total  (t2/count :model/User (filter-clauses-without-paging clauses))
-                     :limit  mw.offset-paging/*limit*
-                     :offset mw.offset-paging/*offset*}))
+                     :limit  (request/limit)
+                     :offset (request/offset)}))
           (within-group [] (let [user-ids (same-groups-user-ids api/*current-user-id*)
                                  clauses  (cond-> (user-clauses nil nil nil nil)
                                             (seq user-ids) (sql.helpers/where [:in :core_user.id user-ids])
                                             true           (sql.helpers/order-by [:%lower.last_name :asc] [:%lower.first_name :asc]))]
                              {:data   (t2/select (vec (cons :model/User (user-visible-columns))) clauses)
                               :total  (t2/count :model/User (filter-clauses-without-paging clauses))
-                              :limit  mw.offset-paging/*limit*
-                              :offset mw.offset-paging/*offset*}))
+                              :limit  (request/limit)
+                              :offset (request/offset)}))
           (just-me [] {:data   [(fetch-user :id api/*current-user-id*)]
                        :total  1
-                       :limit  mw.offset-paging/*limit*
-                       :offset mw.offset-paging/*offset*})]
+                       :limit  (request/limit)
+                       :offset (request/offset)})]
     (cond
       ;; if they're sandboxed OR if they're a superuser, ignore the setting and just give them nothing or everything,
       ;; respectively.
@@ -296,16 +293,21 @@
     user))
 
 (defn- add-has-question-and-dashboard
-  "True when the user has permissions for at least one un-archived question and one un-archived dashboard."
+  "True when the user has permissions for at least one un-archived question and one un-archived dashboard, excluding
+  internal/automatically-loaded content."
   [user]
-  (let [coll-ids-filter (collection/visible-collection-ids->honeysql-filter-clause
-                          :collection_id
-                          (collection/permissions-set->visible-collection-ids @api/*current-user-permissions-set*))
-        perms-query {:where [:and
-                             [:= :archived false]
-                             coll-ids-filter]}]
-    (assoc user :has_question_and_dashboard (and (t2/exists? :model/Card perms-query)
-                                                 (t2/exists? :model/Dashboard perms-query)))))
+  (let [collection-filter (collection/visible-collection-filter-clause)
+        entity-exists? (fn [model & additional-clauses] (t2/exists? model
+                                                                    {:where (into [:and
+                                                                                   [:= :archived false]
+                                                                                   collection-filter
+                                                                                   (mi/exclude-internal-content-hsql model)]
+                                                                                  additional-clauses)}))]
+    (-> user
+        (assoc :has_question_and_dashboard
+               (and (entity-exists? :model/Card)
+                    (entity-exists? :model/Dashboard)))
+        (assoc :has_model (entity-exists? :model/Card [:= :type "model"])))))
 
 (defn- add-first-login
   "Adds `first_login` key to the `User` with the oldest timestamp from that user's login history. Otherwise give the current time, as it's the user's first login."
@@ -342,9 +344,9 @@
   [id]
   {id ms/PositiveInt}
   (try
-   (check-self-or-superuser id)
-   (catch clojure.lang.ExceptionInfo _e
-     (validation/check-group-manager)))
+    (check-self-or-superuser id)
+    (catch clojure.lang.ExceptionInfo _e
+      (validation/check-group-manager)))
   (-> (api/check-404 (fetch-user :id id))
       (t2/hydrate :user_group_memberships)))
 
@@ -362,19 +364,20 @@
    login_attributes       [:maybe user/LoginAttributes]}
   (api/check-superuser)
   (api/checkp (not (t2/exists? :model/User :%lower.email (u/lower-case-en email)))
-    "email" (tru "Email address already in use."))
+              "email" (tru "Email address already in use."))
   (t2/with-transaction [_conn]
     (let [new-user-id (u/the-id (user/create-and-invite-user!
                                  (u/select-keys-when body
-                                   :non-nil [:first_name :last_name :email :password :login_attributes])
+                                                     :non-nil [:first_name :last_name :email :password :login_attributes])
                                  @api/*current-user*
                                  false))]
       (maybe-set-user-group-memberships! new-user-id user_group_memberships)
-      (snowplow/track-event! ::snowplow/invite-sent api/*current-user-id* {:invited-user-id new-user-id
-                                                                           :source          "admin"})
+      (snowplow/track-event! ::snowplow/invite
+                             {:event           :invite-sent
+                              :invited-user-id new-user-id
+                              :source          "admin"})
       (-> (fetch-user :id new-user-id)
           (t2/hydrate :user_group_memberships)))))
-
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                      Updating a User -- PUT /api/user/:id                                      |
@@ -428,13 +431,13 @@
     ;; SSO users (JWT, SAML, LDAP, Google) can't change their first/last names
     (when (contains? body :first_name)
       (api/checkp (valid-name-update? user-before-update :first_name first_name)
-        "first_name" (tru "Editing first name is not allowed for SSO users.")))
+                  "first_name" (tru "Editing first name is not allowed for SSO users.")))
     (when (contains? body :last_name)
       (api/checkp (valid-name-update? user-before-update :last_name last_name)
-        "last_name" (tru "Editing last name is not allowed for SSO users.")))
+                  "last_name" (tru "Editing last name is not allowed for SSO users.")))
     ;; can't change email if it's already taken BY ANOTHER ACCOUNT
     (api/checkp (not (t2/exists? :model/User, :%lower.email (if email (u/lower-case-en email) email), :id [:not= id]))
-      "email" (tru "Email address already associated to another user."))
+                "email" (tru "Email address already associated to another user."))
     (t2/with-transaction [_conn]
       ;; only superuser or self can update user info
       ;; implicitly prevent group manager from updating users' info
@@ -442,10 +445,10 @@
                 api/*is-superuser?*)
         (when-let [changes (not-empty
                             (u/select-keys-when body
-                              :present (cond-> #{:first_name :last_name :locale}
-                                         api/*is-superuser?* (conj :login_attributes))
-                              :non-nil (cond-> #{:email}
-                                         api/*is-superuser?* (conj :is_superuser))))]
+                                                :present (cond-> #{:first_name :last_name :locale}
+                                                           api/*is-superuser?* (conj :login_attributes))
+                                                :non-nil (cond-> #{:email}
+                                                           api/*is-superuser?* (conj :is_superuser))))]
           (t2/update! :model/User id changes)
           (events/publish-event! :event/user-update {:object (t2/select-one :model/User :id id)
                                                      :previous-object user-before-update
@@ -484,7 +487,7 @@
     (api/check-404 user)
     ;; Can only reactivate inactive users
     (api/check (not (:is_active user))
-      [400 {:message (tru "Not able to reactivate an active user")}])
+               [400 {:message (tru "Not able to reactivate an active user")}])
     (events/publish-event! :event/user-reactivated {:object user :user-id api/*current-user-id*})
     (reactivate-user! (dissoc user [:email :first_name :last_name]))))
 
@@ -511,10 +514,10 @@
     (user/set-password! id password)
     ;; after a successful password update go ahead and offer the client a new session that they can use
     (when (= id api/*current-user-id*)
-      (let [{session-uuid :id, :as session} (api.session/create-session! :password user (req.util/device-info request))
+      (let [{session-uuid :id, :as session} (api.session/create-session! :password user (request/device-info request))
             response                        {:success    true
                                              :session_id (str session-uuid)}]
-        (mw.session/set-session-cookies request response session (t/zoned-date-time (t/zone-id "GMT")))))))
+        (request/set-session-cookies request response session (t/zoned-date-time (t/zone-id "GMT")))))))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                             Deleting (Deactivating) a User -- DELETE /api/user/:id                             |
@@ -533,7 +536,7 @@
   {:success true})
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
-;;; |                  Other Endpoints -- PUT /api/user/:id/qpnewb, POST /api/user/:id/send_invite                   |
+;;; |                                             Other Endpoints                                                    |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
 ;; TODO - This could be handled by PUT /api/user/:id, we don't need a separate endpoint
@@ -550,19 +553,6 @@
                               {:modal modal
                                :allowable-modals #{"qbnewb" "datasetnewb"}})))]
     (api/check-500 (pos? (t2/update! :model/User id {:type :personal} {k false}))))
-  {:success true})
-
-(api/defendpoint POST "/:id/send_invite"
-  "Resend the user invite email for a given user."
-  [id]
-  {id ms/PositiveInt}
-  (api/check-superuser)
-  (check-not-internal-user id)
-  (when-let [user (t2/select-one :model/User :id id, :is_active true, :type :personal)]
-    (let [reset-token (user/set-password-reset-token! id)
-          ;; NOTE: the new user join url is just a password reset with an indicator that this is a first time user
-          join-url    (str (user/form-password-reset-url reset-token) "#new")]
-      (messages/send-new-user-email! user @api/*current-user* join-url false)))
   {:success true})
 
 (api/define-routes)

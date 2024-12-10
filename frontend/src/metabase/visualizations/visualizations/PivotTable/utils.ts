@@ -1,83 +1,96 @@
-import { getIn } from "icepick";
 import { t } from "ttag";
 import _ from "underscore";
 
+import { DEFAULT_METABASE_COMPONENT_THEME } from "embedding-sdk/lib/theme";
 import { sumArray } from "metabase/lib/arrays";
 import { isPivotGroupColumn } from "metabase/lib/data_grid";
 import { measureText } from "metabase/lib/measure-text";
 import type StructuredQuery from "metabase-lib/v1/queries/StructuredQuery";
+import { migratePivotColumnSplitSetting } from "metabase-lib/v1/queries/utils/pivot";
 import type {
-  Card,
+  ColumnNameColumnSplitSetting,
   DatasetColumn,
   DatasetData,
-  FieldReference,
+  PivotTableColumnSplitSetting,
   VisualizationSettings,
 } from "metabase-types/api";
 
 import {
-  ROW_TOGGLE_ICON_WIDTH,
-  CELL_PADDING,
-  MIN_HEADER_CELL_WIDTH,
-  MAX_HEADER_CELL_WIDTH,
-  PIVOT_TABLE_FONT_SIZE,
-  MAX_ROWS_TO_MEASURE,
-  LEFT_HEADER_LEFT_SPACING,
   CELL_HEIGHT,
+  CELL_PADDING,
   DEFAULT_CELL_WIDTH,
+  LEFT_HEADER_LEFT_SPACING,
+  MAX_HEADER_CELL_WIDTH,
+  MAX_ROWS_TO_MEASURE,
+  MIN_HEADER_CELL_WIDTH,
+  ROW_TOGGLE_ICON_WIDTH,
 } from "./constants";
 import { partitions } from "./partitions";
-import type { PivotSetting, HeaderItem, CustomColumnWidth } from "./types";
+import type { CustomColumnWidth, HeaderItem } from "./types";
 
 // adds or removes columns from the pivot settings based on the current query
 export function updateValueWithCurrentColumns(
-  storedValue: PivotSetting,
+  storedValue: PivotTableColumnSplitSetting,
   columns: DatasetColumn[],
-) {
-  const currentQueryFieldRefs = columns.map(c => JSON.stringify(c.field_ref));
-  const currentSettingFieldRefs = Object.values(storedValue).flatMap(
-    (fieldRefs: FieldReference[]) =>
-      fieldRefs.map((field_ref: FieldReference) => JSON.stringify(field_ref)),
+): PivotTableColumnSplitSetting {
+  const migratedValue = migratePivotColumnSplitSetting(storedValue, columns);
+  const currentQueryColumnNames = columns.map(c => c.name);
+  const currentSettingColumnNames = Object.values(migratedValue).flatMap(
+    columnNames => columnNames ?? [],
   );
-  const toAdd = _.difference(currentQueryFieldRefs, currentSettingFieldRefs);
-  const toRemove = _.difference(currentSettingFieldRefs, currentQueryFieldRefs);
+  const toAdd = _.difference(
+    currentQueryColumnNames,
+    currentSettingColumnNames,
+  );
+  const toRemove = _.difference(
+    currentSettingColumnNames,
+    currentQueryColumnNames,
+  );
+  // if there are no modifications, it's important to return the original,
+  // potentially legacy settings that use field refs. If the migrated settings
+  // are returned here it would make all saved legacy questions become ad-hoc,
+  // which we should avoid.
+  if (toAdd.length === 0 && toRemove.length === 0) {
+    return storedValue;
+  }
 
   // remove toRemove
-  const value = _.mapObject(storedValue, (fieldRefs: FieldReference[]) =>
-    fieldRefs.filter(
-      (field_ref: FieldReference) =>
-        !toRemove.includes(JSON.stringify(field_ref)),
-    ),
+  const value: ColumnNameColumnSplitSetting = _.mapObject(
+    migratedValue,
+    columnNames =>
+      columnNames?.filter(columnName => !toRemove.includes(columnName)),
   );
 
   // add toAdd to first partitions where it matches the filter
-  for (const fieldRef of toAdd) {
+  for (const columnName of toAdd) {
     for (const { columnFilter: filter, name } of partitions) {
-      const column = columns.find(
-        c => JSON.stringify(c.field_ref) === fieldRef,
-      );
-      if (filter == null || filter(column)) {
-        value[name].push(column?.field_ref as FieldReference);
+      const column = columns.find(c => c.name === columnName);
+      if (column != null && (filter == null || filter(column))) {
+        value[name] = value[name] ?? [];
+        value[name].push(column.name);
         break;
       }
     }
   }
+
   return value;
 }
 
 // This is a hack. We need to pass pivot_rows and pivot_cols on each query.
 // When a breakout is added to the query, we need to partition it before getting the rows.
 // We pretend the breakouts are columns so we can partition the new breakout.
-export function addMissingCardBreakouts(setting: PivotSetting, card: Card) {
-  const breakouts = getIn(card, ["dataset_query", "query", "breakout"]) || [];
-  if (breakouts.length <= setting.columns.length + setting.rows.length) {
+export function addMissingCardBreakouts(
+  setting: PivotTableColumnSplitSetting,
+  availableColumns: DatasetColumn[],
+): PivotTableColumnSplitSetting {
+  const { rows = [], columns = [] } = setting;
+  const breakoutColumns = availableColumns.filter(
+    column => column.source === "breakout",
+  );
+  if (breakoutColumns.length <= columns.length + rows.length) {
     return setting;
   }
-  const breakoutFieldRefs = breakouts.map((field_ref: any) => ({ field_ref }));
-  const { columns, rows } = updateValueWithCurrentColumns(
-    setting,
-    breakoutFieldRefs,
-  );
-  return { ...setting, columns, rows };
+  return updateValueWithCurrentColumns(setting, availableColumns);
 }
 
 export function isColumnValid(col: DatasetColumn) {
@@ -96,15 +109,20 @@ interface GetLeftHeaderWidthsProps {
   rowIndexes: number[];
   getColumnTitle: (columnIndex: number) => string;
   leftHeaderItems?: HeaderItem[];
-  fontFamily?: string;
+  font: { fontFamily?: string; fontSize?: string };
 }
 
 export function getLeftHeaderWidths({
   rowIndexes,
   getColumnTitle,
   leftHeaderItems = [],
-  fontFamily = "Lato",
+  font,
 }: GetLeftHeaderWidthsProps) {
+  const {
+    fontFamily = "var(--mb-default-font-family)",
+    fontSize = DEFAULT_METABASE_COMPONENT_THEME.pivotTable.cell.fontSize,
+  } = font ?? {};
+
   const cellValues = getColumnValues(leftHeaderItems);
 
   const widths = rowIndexes.map((rowIndex, depthIndex) => {
@@ -112,7 +130,7 @@ export function getLeftHeaderWidths({
       measureText(getColumnTitle(rowIndex), {
         weight: "bold",
         family: fontFamily,
-        size: PIVOT_TABLE_FONT_SIZE,
+        size: fontSize,
       }).width + ROW_TOGGLE_ICON_WIDTH,
     );
 
@@ -124,7 +142,7 @@ export function getLeftHeaderWidths({
             measureText(value, {
               weight: "normal",
               family: fontFamily,
-              size: PIVOT_TABLE_FONT_SIZE,
+              size: fontSize,
             }).width +
             (cellValues[rowIndex]?.hasSubtotal ? ROW_TOGGLE_ICON_WIDTH : 0),
         ) ?? [0]),
@@ -201,15 +219,8 @@ function databaseSupportsPivotTables(query: StructuredQuery) {
   return database.supportsPivots();
 }
 
-export function isSensible(
-  { cols }: { cols: DatasetColumn[] },
-  query: StructuredQuery,
-) {
-  return (
-    cols.length >= 2 &&
-    cols.every(isColumnValid) &&
-    databaseSupportsPivotTables(query)
-  );
+export function isSensible({ cols }: { cols: DatasetColumn[] }) {
+  return cols.length >= 2 && cols.every(isColumnValid);
 }
 
 export function checkRenderable(
@@ -271,8 +282,8 @@ export const topHeaderCellSizeAndPositionGetter = (
 
 export const getWidthForRange = (
   widths: CustomColumnWidth,
-  start: number,
-  end: number,
+  start?: number,
+  end?: number,
 ) => {
   let total = 0;
   for (let i = start ?? 0; i < (end ?? Object.keys(widths).length); i++) {

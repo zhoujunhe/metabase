@@ -4,7 +4,7 @@ import { t } from "ttag";
 import _ from "underscore";
 
 import CS from "metabase/css/core/index.css";
-import type Filter from "metabase-lib/v1/queries/structured/Filter";
+import type { FilterMBQL } from "metabase-lib/v1/queries/structured/Filter";
 import {
   getAfterDateFilter,
   getBeforeDateFilter,
@@ -41,8 +41,8 @@ export type DateOperator = {
   name: string;
   displayName: string;
   displayPrefix?: string;
-  init: (filter: Filter) => any[];
-  test: (filter: Filter) => boolean;
+  init: (filter: FilterMBQL) => any[];
+  test: (filter: FilterMBQL) => boolean;
   widget: any;
   group?: DatePickerGroup;
   options?: any;
@@ -117,14 +117,14 @@ export const DATE_OPERATORS: DateOperator[] = [
   },
 ];
 
-export function getOperator(filter: Filter, operators = DATE_OPERATORS) {
+export function getOperator(filter: FilterMBQL, operators = DATE_OPERATORS) {
   return _.find(operators, o => o.test(filter));
 }
 
 type Props = {
   className?: string;
 
-  filter: Filter;
+  filter: FilterMBQL;
   dateShortcutOptions?: DateShortcutOptions;
   operators?: DateOperator[];
 
@@ -134,7 +134,6 @@ type Props = {
   disableChangingDimension?: boolean;
   supportsExpressions?: boolean;
 
-  primaryColor?: string;
   minWidth?: number | null;
   maxWidth?: number | null;
 
@@ -152,7 +151,6 @@ const DatePicker: React.FC<React.PropsWithChildren<Props>> = props => {
     disableOperatorSelection,
     disableChangingDimension,
     supportsExpressions,
-    primaryColor,
     onCommit,
     children,
     hideTimeSelectors,
@@ -182,7 +180,6 @@ const DatePicker: React.FC<React.PropsWithChildren<Props>> = props => {
       {!operator || showShortcuts ? (
         <DatePickerShortcuts
           className={CS.p2}
-          primaryColor={primaryColor}
           dateShortcutOptions={dateShortcutOptions}
           onFilterChange={filter => {
             setShowShortcuts(false);
@@ -199,7 +196,6 @@ const DatePicker: React.FC<React.PropsWithChildren<Props>> = props => {
               filter={filter}
               onBack={onBack}
               operators={operators}
-              primaryColor={primaryColor}
               onFilterChange={onFilterChange}
             />
           ) : null}
@@ -209,9 +205,8 @@ const DatePicker: React.FC<React.PropsWithChildren<Props>> = props => {
               className={cx(CS.flexFull, CS.p2)}
               filter={filter}
               onCommit={onCommit}
-              primaryColor={primaryColor}
               supportsExpressions={supportsExpressions}
-              onFilterChange={(filter: Filter) => {
+              onFilterChange={(filter: FilterMBQL) => {
                 if (!isStartingFrom(filter) && operator && operator.init) {
                   onFilterChange(operator.init(filter));
                 } else {
@@ -222,7 +217,6 @@ const DatePicker: React.FC<React.PropsWithChildren<Props>> = props => {
           )}
           <DatePickerFooter
             filter={filter}
-            primaryColor={primaryColor}
             onFilterChange={onFilterChange}
             hideTimeSelectors={hideTimeSelectors}
           >

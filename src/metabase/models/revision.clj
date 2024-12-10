@@ -1,12 +1,12 @@
 (ns metabase.models.revision
   (:require
-   [cheshire.core :as json]
    [clojure.data :as data]
    [metabase.config :as config]
    [metabase.models.interface :as mi]
    [metabase.models.revision.diff :refer [diff-strings*]]
    [metabase.util :as u]
    [metabase.util.i18n :refer [deferred-tru tru]]
+   [metabase.util.json :as json]
    [metabase.util.malli :as mu]
    [methodical.core :as methodical]
    [toucan2.core :as t2]
@@ -36,7 +36,12 @@
 
 (defmethod revert-to-revision! :default
   [model id _user-id serialized-instance]
-  (t2/update! model id serialized-instance))
+  (let [valid-columns   (keys (t2/select-one (t2/table-name model) :id id))
+        ;; Only include fields that we know are on the model in the current version of Metabase! Otherwise we'll get
+        ;; an error if a field in an earlier version has since been dropped, but is still present in the revision.
+        ;; This is best effort — other kinds of schema changes could still break the ability to revert successfully.
+        revert-instance (select-keys serialized-instance valid-columns)]
+    (t2/update! model id revert-instance)))
 
 (defmulti diff-map
   "Return a map describing the difference between `object-1` and `object-2`."
@@ -71,7 +76,8 @@
 (methodical/defmethod t2/table-name :model/Revision [_model] :revision)
 
 (doto :model/Revision
-  (derive :metabase/model))
+  (derive :metabase/model)
+  (derive :hook/search-index))
 
 (t2/deftransforms :model/Revision
   {:object mi/transform-json})
@@ -79,7 +85,7 @@
 (t2/define-before-insert :model/Revision
   [revision]
   (assoc revision
-         :timestamp :%now
+         :timestamp (or (:timestamp revision) :%now)
          :metabase_version config/mb-version-string
          :most_recent true))
 
@@ -196,8 +202,8 @@
     ;; even though we call `post-select` on the `object`, the nested object might not be transformed correctly
     ;; E.g: Cards inside Dashboard will not be transformed
     ;; so to be safe, we'll just compare them as string
-    (when-not (= (json/generate-string serialized-object)
-                 (json/generate-string last-object))
+    (when-not (= (json/encode serialized-object)
+                 (json/encode last-object))
       (t2/insert! Revision
                   :model        entity-name
                   :model_id     id

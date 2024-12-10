@@ -1,4 +1,4 @@
-import type { Story } from "@storybook/react";
+import type { StoryFn } from "@storybook/react";
 
 import {
   SdkVisualizationWrapper,
@@ -9,7 +9,7 @@ import { registerVisualization } from "metabase/visualizations";
 import Visualization from "metabase/visualizations/components/Visualization";
 
 import { SmartScalar } from "./SmartScalar";
-import { mockSeries } from "./test-mocks";
+import { mockSeries } from "./tests/test-mocks";
 
 export default {
   title: "viz/SmartScalar",
@@ -29,21 +29,21 @@ const MOCK_SERIES = mockSeries({
   insights: [{ unit: "month", col: "Count" }],
 });
 
-export const Default: Story = () => (
+export const Default: StoryFn = () => (
   <VisualizationWrapper>
     <Visualization rawSeries={MOCK_SERIES} width={500} />
   </VisualizationWrapper>
 );
 
 // Example of how themes can be applied in the SDK.
-export const EmbeddingTemplate: Story = () => {
+export const EmbeddingTheme: StoryFn = () => {
   const theme: MetabaseTheme = {
     colors: {
       positive: "#4834d4",
       negative: "#e84118",
     },
     components: {
-      scalar: {
+      number: {
         value: { fontSize: "24px", lineHeight: "20px" },
       },
     },

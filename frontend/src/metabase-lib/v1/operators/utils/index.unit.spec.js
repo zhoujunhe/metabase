@@ -1,20 +1,19 @@
 import _ from "underscore";
 
 import {
-  isEqualsOperator,
   doesOperatorExist,
-  getOperatorByTypeAndName,
-  getFilterOperators,
-  getSupportedAggregationOperators,
   getAggregationOperators,
+  getOperatorByTypeAndName,
+  getSupportedAggregationOperators,
+  isEqualsOperator,
   isFuzzyOperator,
 } from "metabase-lib/v1/operators/utils/index";
 import {
-  TYPE,
-  NUMBER,
   COORDINATE,
-  PRIMARY_KEY,
   FOREIGN_KEY,
+  NUMBER,
+  PRIMARY_KEY,
+  TYPE,
 } from "metabase-lib/v1/types/constants";
 
 describe("metabase-lib/v1/operators/utils", () => {
@@ -75,56 +74,6 @@ describe("metabase-lib/v1/operators/utils", () => {
         validArgumentsFilters: [expect.any(Function), expect.any(Function)],
         verboseName: "Between",
       });
-    });
-  });
-
-  describe("getFilterOperators", () => {
-    it("should return proper filter operators for text/Integer primary key", () => {
-      expect(
-        getFilterOperators({
-          effective_type: TYPE.Integer,
-          semantic_type: TYPE.PK,
-        }).map(op => op.name),
-      ).toEqual([
-        "=",
-        "!=",
-        ">",
-        "<",
-        "between",
-        ">=",
-        "<=",
-        "is-null",
-        "not-null",
-      ]);
-    });
-
-    it("should return proper filter operators for type/Text primary key", () => {
-      expect(
-        getFilterOperators({
-          effective_type: TYPE.Text,
-          semantic_type: TYPE.PK,
-        }).map(op => op.name),
-      ).toEqual([
-        "=",
-        "!=",
-        "contains",
-        "does-not-contain",
-        "is-null",
-        "not-null",
-        "is-empty",
-        "not-empty",
-        "starts-with",
-        "ends-with",
-      ]);
-    });
-
-    it("should return proper filter operators for type/TextLike foreign key", () => {
-      expect(
-        getFilterOperators({
-          effective_type: TYPE.TextLike,
-          semantic_type: TYPE.FK,
-        }).map(op => op.name),
-      ).toEqual(["=", "!=", "is-null", "not-null", "is-empty", "not-empty"]);
     });
   });
 

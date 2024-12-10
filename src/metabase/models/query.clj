@@ -1,7 +1,6 @@
 (ns metabase.models.query
   "Functions related to the 'Query' model, which records stuff such as average query execution time."
   (:require
-   [cheshire.core :as json]
    [clojure.walk :as walk]
    [metabase.db :as mdb]
    [metabase.lib.core :as lib]
@@ -10,6 +9,7 @@
    [metabase.lib.util :as lib.util]
    [metabase.models.interface :as mi]
    [metabase.util.honey-sql-2 :as h2x]
+   [metabase.util.json :as json]
    [metabase.util.malli :as mu]
    [metabase.util.malli.registry :as mr]
    [metabase.util.malli.schema :as ms]
@@ -28,7 +28,7 @@
 (methodical/defmethod t2.model/primary-keys :model/Query [_model] [:query_hash])
 
 (t2/deftransforms :model/Query
- {:query mi/transform-json})
+  {:query mi/transform-json})
 
 (derive :model/Query :metabase/model)
 
@@ -63,7 +63,7 @@
      ;; new entries, so at some point in the future we can take this out, and save a DB call.
      (pos? (t2/update! Query
                        {:query_hash query-hash, :query nil}
-                       {:query                 (json/generate-string query)
+                       {:query                 (json/encode query)
                         :average_execution_time avg-execution-time}))
      ;; if query is already set then just update average_execution_time. (We're doing this separate call to avoid
      ;; updating query on every single UPDATE)
@@ -100,7 +100,7 @@
    [:database-id ::lib.schema.id/database]
    [:table-id    [:maybe ::lib.schema.id/table]]])
 
-(mu/defn ^:private pmbql-query->database-and-table-ids :- ::database-and-table-ids
+(mu/defn- pmbql-query->database-and-table-ids :- ::database-and-table-ids
   [{database-id :database, :as query} :- [:map
                                           [:lib/type [:= :mbql/query]]]]
   (if-let [source-card-id (lib.util/source-card-id query)]
@@ -110,7 +110,7 @@
       {:database-id database-id
        :table-id    table-id})))
 
-(mu/defn ^:private legacy-query->database-and-table-ids :- ::database-and-table-ids
+(mu/defn- legacy-query->database-and-table-ids :- ::database-and-table-ids
   [{database-id :database, query-type :type, {:keys [source-table source-query]} :query} :- [:map
                                                                                              [:type [:enum :query :native]]]]
   (cond

@@ -1,34 +1,27 @@
+import { H } from "e2e/support";
 import {
-  ORDERS_QUESTION_ID,
   ORDERS_DASHBOARD_ID,
+  ORDERS_QUESTION_ID,
 } from "e2e/support/cypress_sample_instance_data";
-import {
-  restore,
-  popover,
-  visitDashboard,
-  visitQuestion,
-  setTokenFeatures,
-  openStaticEmbeddingModal,
-  modal,
-} from "e2e/support/helpers";
 
-import { getEmbeddingJsCode, IFRAME_CODE } from "./shared/embedding-snippets";
+import { IFRAME_CODE, getEmbeddingJsCode } from "./shared/embedding-snippets";
 
 const features = ["none", "all"];
 
 features.forEach(feature => {
-  describe("scenarios > embedding > code snippets", () => {
+  describe(`[tokenFeatures=${feature}] scenarios > embedding > code snippets`, () => {
     beforeEach(() => {
-      restore();
+      H.restore();
       cy.signInAsAdmin();
-      setTokenFeatures(feature);
+      H.setTokenFeatures(feature);
     });
 
     it("dashboard should have the correct embed snippet", () => {
-      visitDashboard(ORDERS_DASHBOARD_ID);
-      openStaticEmbeddingModal({ acceptTerms: false });
+      const defaultDownloadsValue = feature === "all" ? true : undefined;
+      H.visitDashboard(ORDERS_DASHBOARD_ID);
+      H.openStaticEmbeddingModal({ acceptTerms: false });
 
-      modal().within(() => {
+      H.modal().within(() => {
         cy.findByText(
           "To embed this dashboard in your application you’ll just need to publish it, and paste these code snippets in the proper places in your app.",
         );
@@ -42,7 +35,11 @@ features.forEach(feature => {
           .invoke("text")
           .should(
             "match",
-            getEmbeddingJsCode({ type: "dashboard", id: ORDERS_DASHBOARD_ID }),
+            getEmbeddingJsCode({
+              type: "dashboard",
+              id: ORDERS_DASHBOARD_ID,
+              downloads: defaultDownloadsValue,
+            }),
           );
 
         cy.findAllByTestId("embed-backend-select-button")
@@ -50,7 +47,7 @@ features.forEach(feature => {
           .click();
       });
 
-      popover()
+      H.popover()
         .should("contain", "Node.js")
         .and("contain", "Ruby")
         .and("contain", "Python")
@@ -58,27 +55,22 @@ features.forEach(feature => {
 
       cy.get(".ace_content").last().should("have.text", IFRAME_CODE);
 
-      modal()
+      H.modal()
         .findAllByTestId("embed-frontend-select-button")
         .should("contain", "Pug / Jade")
         .click();
 
-      popover()
+      H.popover()
         .should("contain", "Mustache")
         .and("contain", "Pug / Jade")
         .and("contain", "ERB")
         .and("contain", "JSX");
 
-      modal().within(() => {
-        cy.findByRole("tab", { name: "Appearance" }).click();
-
-        // No download button for dashboards even for pro/enterprise users metabase#23477
-        cy.findByLabelText(
-          "Enable users to download data from this embed",
-        ).should("not.exist");
+      H.modal().within(() => {
+        cy.findByRole("tab", { name: "Look and Feel" }).click();
 
         // set transparent background metabase#23477
-        cy.findByText("Transparent").click();
+        cy.findByText("Dashboard background").click();
         cy.get(".ace_content")
           .first()
           .invoke("text")
@@ -87,17 +79,36 @@ features.forEach(feature => {
             getEmbeddingJsCode({
               type: "dashboard",
               id: ORDERS_DASHBOARD_ID,
-              theme: "transparent",
+              background: false,
+              downloads: defaultDownloadsValue,
             }),
           );
+
+        if (feature === "all") {
+          cy.findByText("Download buttons").click();
+
+          cy.get(".ace_content")
+            .first()
+            .invoke("text")
+            .should(
+              "match",
+              getEmbeddingJsCode({
+                type: "dashboard",
+                id: ORDERS_DASHBOARD_ID,
+                background: false,
+                downloads: false,
+              }),
+            );
+        }
       });
     });
 
     it("question should have the correct embed snippet", () => {
-      visitQuestion(ORDERS_QUESTION_ID);
-      openStaticEmbeddingModal({ acceptTerms: false });
+      const defaultDownloadsValue = feature === "all" ? true : undefined;
+      H.visitQuestion(ORDERS_QUESTION_ID);
+      H.openStaticEmbeddingModal({ acceptTerms: false });
 
-      modal().within(() => {
+      H.modal().within(() => {
         cy.findByText(
           "To embed this question in your application you’ll just need to publish it, and paste these code snippets in the proper places in your app.",
         );
@@ -110,30 +121,18 @@ features.forEach(feature => {
           .invoke("text")
           .should(
             "match",
-            getEmbeddingJsCode({ type: "question", id: ORDERS_QUESTION_ID }),
-          );
-
-        cy.findByRole("tab", { name: "Appearance" }).click();
-
-        // set transparent background metabase#23477
-        cy.findByText("Transparent").click();
-        cy.get(".ace_content")
-          .first()
-          .invoke("text")
-          .should(
-            "match",
             getEmbeddingJsCode({
               type: "question",
               id: ORDERS_QUESTION_ID,
-              theme: "transparent",
+              downloads: defaultDownloadsValue,
             }),
           );
 
+        cy.findByRole("tab", { name: "Look and Feel" }).click();
+
         // hide download button for pro/enterprise users metabase#23477
         if (feature === "all") {
-          cy.findByText(
-            "Enable users to download data from this embed",
-          ).click();
+          cy.findByText("Download buttons").click();
 
           cy.get(".ace_content")
             .first()
@@ -143,8 +142,7 @@ features.forEach(feature => {
               getEmbeddingJsCode({
                 type: "question",
                 id: ORDERS_QUESTION_ID,
-                theme: "transparent",
-                hideDownloadButton: true,
+                downloads: false,
               }),
             );
         }
@@ -154,7 +152,7 @@ features.forEach(feature => {
           .click();
       });
 
-      popover()
+      H.popover()
         .should("contain", "Node.js")
         .and("contain", "Ruby")
         .and("contain", "Python")

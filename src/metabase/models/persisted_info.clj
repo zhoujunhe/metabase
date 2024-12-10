@@ -5,7 +5,7 @@
    [metabase.lib.schema.common :as lib.schema.common]
    [metabase.lib.schema.metadata :as lib.schema.metadata]
    [metabase.models.interface :as mi]
-   [metabase.public-settings.premium-features :as premium-features :refer [defenterprise]]
+   [metabase.public-settings.premium-features :refer [defenterprise]]
    [metabase.query-processor.util :as qp.util]
    [metabase.util :as u]
    [metabase.util.malli :as mu]
@@ -176,11 +176,11 @@
    Will ignore explicitly set `off` models."
   [database-id]
   (t2/query-one
-    {:update [:persisted_info]
-     :where [:and
-             [:= :database_id database-id]
-             [:= :state "deletable"]]
-     :set {:active false,
-           :state "creating",
-           :state_change_at :%now}})
+   {:update [:persisted_info]
+    :where [:and
+            [:= :database_id database-id]
+            [:= :state "deletable"]]
+    :set {:active false,
+          :state "creating",
+          :state_change_at :%now}})
   (ready-unpersisted-models! database-id))

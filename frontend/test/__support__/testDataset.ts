@@ -1,6 +1,6 @@
 import type { DatasetColumn, DatasetData } from "metabase-types/api";
 import { createMockDatasetData } from "metabase-types/api/mocks";
-import { PRODUCTS_ID, PRODUCTS } from "metabase-types/api/mocks/presets";
+import { PRODUCTS, PRODUCTS_ID } from "metabase-types/api/mocks/presets";
 
 const testColumns: DatasetColumn[] = [
   {
@@ -265,7 +265,7 @@ export const testDataset: DatasetData = createMockDatasetData({
     [
       "2",
       "7663515285824",
-      "Small Marble Shoes",
+      "Small Marble Shoes ".repeat(20), // long description
       "Doohickey",
       "Balistreri-Ankunding",
       70.07989613071763,

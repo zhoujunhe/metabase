@@ -2,11 +2,12 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { t } from "ttag";
 
-import Input from "metabase/core/components/Input/Input";
+import CS from "metabase/css/core/index.css";
 import { isNotNull } from "metabase/lib/types";
-import { Button } from "metabase/ui";
+import { Button, TextInput } from "metabase/ui";
 import * as Lib from "metabase-lib";
 import { isExpression } from "metabase-lib/v1/expressions";
+import type { ErrorWithMessage } from "metabase-lib/v1/expressions/types";
 import type { Expression } from "metabase-types/api";
 
 import {
@@ -15,7 +16,10 @@ import {
 } from "../../analytics";
 
 import { CombineColumns, hasCombinations } from "./CombineColumns";
-import { ExpressionEditorTextfield } from "./ExpressionEditorTextfield";
+import {
+  ExpressionEditorTextfield,
+  type SuggestionShortcut,
+} from "./ExpressionEditorTextfield";
 import {
   ActionButtonsWrapper,
   Container,
@@ -43,10 +47,10 @@ export type ExpressionWidgetProps<Clause = Lib.ExpressionClause> = {
   clause?: Clause | undefined;
   name?: string;
   withName?: boolean;
-  startRule?: string;
+  startRule?: "expression" | "aggregation" | "boolean";
   reportTimezone?: string;
   header?: ReactNode;
-  expressionPosition?: number;
+  expressionIndex?: number;
 
   onChangeExpression?: (name: string, expression: Expression) => void;
   onChangeClause?: (
@@ -70,7 +74,7 @@ export const ExpressionWidget = <Clause extends object = Lib.ExpressionClause>(
     startRule,
     reportTimezone,
     header,
-    expressionPosition,
+    expressionIndex,
     onChangeExpression,
     onChangeClause,
     onRemoveExpression,
@@ -116,6 +120,12 @@ export const ExpressionWidget = <Clause extends object = Lib.ExpressionClause>(
     if (isValidExpressionClause) {
       onChangeClause?.(name, clause);
       onClose?.();
+    }
+  };
+
+  const handleError = (error: ErrorWithMessage | string | null) => {
+    if (error) {
+      setError(typeof error === "string" ? error : error.message);
     }
   };
 
@@ -199,8 +209,12 @@ export const ExpressionWidget = <Clause extends object = Lib.ExpressionClause>(
         </FieldLabel>
         <ExpressionEditorTextfield
           expression={expression}
-          expressionPosition={expressionPosition}
-          clause={clause}
+          expressionIndex={expressionIndex}
+          /**
+           * TODO: Ideally ExpressionEditorTextfield should be generic and support all
+           * three: Lib.ExpressionClause, Lib.AggregationClause, and Lib.FilterableClause.
+           */
+          clause={clause as Lib.ExpressionClause | null}
           startRule={startRule}
           name={name}
           query={query}
@@ -209,7 +223,7 @@ export const ExpressionWidget = <Clause extends object = Lib.ExpressionClause>(
           textAreaId="expression-content"
           onChange={handleExpressionChange}
           onCommit={handleCommit}
-          onError={(errorMessage: string) => setError(errorMessage)}
+          onError={handleError}
           shortcuts={[
             !startRule &&
               hasCombinations(query, stageIndex) && {
@@ -227,21 +241,27 @@ export const ExpressionWidget = <Clause extends object = Lib.ExpressionClause>(
                 group: "shortcuts",
                 action: () => setIsExtractingColumn(true),
               },
-          ].filter(Boolean)}
+          ].filter((shortcut): shortcut is SuggestionShortcut => {
+            return Boolean(shortcut);
+          })}
         />
       </ExpressionFieldWrapper>
       {withName && (
         <FieldWrapper>
           <FieldLabel htmlFor="expression-name">{t`Name`}</FieldLabel>
-          <Input
+          <TextInput
+            classNames={{
+              input: CS.textBold,
+            }}
             id="expression-name"
             data-testid="expression-name"
             type="text"
             value={name}
             placeholder={t`Something nice and descriptive`}
-            fullWidth
+            w="100%"
+            radius="md"
             onChange={event => setName(event.target.value)}
-            onKeyPress={e => {
+            onKeyDown={e => {
               if (e.key === "Enter") {
                 handleCommit(expression, clause);
               }

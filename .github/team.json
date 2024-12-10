@@ -1,39 +1,42 @@
 {
   "teams": [
     {
-      "name": "Querying Components",
-      "label": ".Team/QueryingComponents",
+      "name": "Querying",
+      "label": ".Team/Querying",
+      "projectUrl": "https://github.com/orgs/metabase/projects/97/views/1",
       "members": [
         "ranquild",
-        "uladzimirdev",
         "kamilmielnik",
-        "nemanjaglumac",
-        "romeovs"
+        "romeovs",
+        "bshepherdson",
+        "metamben",
+        "lbrdnk",
+        "appleby",
+        "uladzimirdev",
+        "wzimrin"
       ]
+    },
+    {
+      "name": "Drivers",
+      "label": ".Team/Drivers",
+      "members": ["snoe"]
     },
     {
       "name": "Embedding",
       "label": ".Team/Embedding",
       "projectUrl": "https://github.com/orgs/metabase/projects/88/views/1",
-      "members": ["WiNloSt", "deniskaber", "oisincoveney", "npretto", "heypoom"]
+      "members": ["WiNloSt", "oisincoveney", "npretto", "heypoom"]
     },
     {
-      "name": "BEC",
-      "label": ".Team/BackendComponents",
+      "name": "Workflows",
+      "label": ".Team/Workflows",
       "projectUrl": "https://github.com/orgs/metabase/projects/50/views/1",
       "members": [
-        "tsmacdonald",
         "qnkhuat",
-        "calherries",
         "piranha",
-        "crisptrutski"
+        "crisptrutski",
+        "deniskaber"
       ]
-    },
-    {
-      "name": "Query Processor",
-      "label": ".Team/QueryProcessor",
-      "projectUrl": "https://github.com/orgs/metabase/projects/83/views/8",
-      "members": ["camsaul", "snoe", "bshepherdson", "metamben", "lbrdnk"]
     },
     {
       "name": "Admin Webapp",
@@ -44,7 +47,9 @@
         "npfitz",
         "johnswanson",
         "rafpaf",
-        "sloansparger"
+        "sloansparger",
+        "iethree",
+        "nvoxland"
       ]
     },
     {
@@ -52,17 +57,16 @@
       "label": ".Team/DashViz",
       "members": [
         "alxnddr",
-        "EmmadUsmani",
-        "JesseSDevaney",
         "kulyk",
-        "adam-james-v"
+        "adam-james-v",
+        "tsplude"
       ]
     },
     {
       "name": "DevEx",
       "label": ".Team/DevEx",
       "members": [
-        "iethree"
+        "camsaul"
       ]
     }
   ]

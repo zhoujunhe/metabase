@@ -2,7 +2,6 @@
   "Snowflake Driver."
   (:require
    [buddy.core.codecs :as codecs]
-   [cheshire.core :as json]
    [clojure.java.jdbc :as jdbc]
    [clojure.set :as set]
    [clojure.string :as str]
@@ -37,6 +36,7 @@
    [metabase.util.date-2 :as u.date]
    [metabase.util.honey-sql-2 :as h2x]
    [metabase.util.i18n :refer [tru]]
+   [metabase.util.json :as json]
    [metabase.util.log :as log]
    [ring.util.codec :as codec])
   (:import
@@ -54,6 +54,7 @@
                               :connection-impersonation-requires-role true
                               :convert-timezone                       true
                               :datetime-diff                          true
+                              :identifiers-with-spaces                true
                               :now                                    true}]
   (defmethod driver/database-supports? [:snowflake feature] [_driver _feature _db] supported?))
 
@@ -96,30 +97,28 @@
   Setting the Snowflake driver property privatekey would be easier, but that doesn't work
   because clojure.java.jdbc (properly) converts the property values into strings while the
   Snowflake driver expects a java.security.PrivateKey instance."
-  [{:keys [user password account private-key-path]
+  [{:keys [user password account private-key-options]
     :as   details}]
-  (let [base-details (apply dissoc details (vals (secret/get-sub-props "private-key")))]
-    (cond
-      password
-      details
+  (if password
+    details
+    (let [base-details (apply dissoc details (vals (secret/->sub-props "private-key")))
+          secret-map   (secret/db-details-prop->secret-map details "private-key")
+          private-key-file (cond
+                             ;; Local file path
+                             (= private-key-options "local")
+                             (secret/value->file! secret-map :snowflake)
 
-      private-key-path
-      (let [secret-map       (secret/db-details-prop->secret-map details "private-key")
-            private-key-file (when (some? (:value secret-map))
-                               (secret/value->file! secret-map :snowflake))]
-        (cond-> base-details
-          private-key-file (handle-conn-uri user account private-key-file)))
-
-      :else
-      ;; Why setting `:private-key-options` to "uploaded"? To fix the issue #41852. Snowflake's database edit gui
-      ;; is designed in a way, that `:private-key-options` are not sent if `hosting` enterprise feature is enabled.
-      ;; The option must be set to "uploaded" for base64 decoding to happen. Setting that option at this point is fine
-      ;; because the alternative ("local") is ruled out already in this `cond` branch.
-      (let [decoded (secret/get-secret-string (assoc details :private-key-options "uploaded") "private-key")
-            file    (secret/value->file! {:connection-property-name "private-key-file"
-                                          :value                    decoded})]
-        (assoc (handle-conn-uri base-details user account file)
-               :private_key_file file)))))
+                             ;; Uploaded file stored in `secrets` table
+                             :else
+                             ;; Why setting `:private-key-options` to "uploaded"? To fix the issue #41852. Snowflake's database edit gui
+                             ;; is designed in a way, that `:private-key-options` are not sent if `hosting` enterprise feature is enabled.
+                             ;; The option must be set to "uploaded" for base64 decoding to happen. Setting that option at this point is fine
+                             ;; because the alternative ("local") is ruled out already in this `cond` branch.
+                             (let [decoded (secret/get-secret-string (assoc details :private-key-options "uploaded") "private-key")]
+                               (secret/value->file! {:connection-property-name "private-key-file"
+                                                     :value                    decoded})))]
+      (assoc (handle-conn-uri base-details user account private-key-file)
+             :private_key_file private-key-file))))
 
 (defn- quote-name
   [raw-name]
@@ -145,9 +144,6 @@
            (not (contains? (connection-str->parameters (:connection-uri spec)) "ROLE")))
     (let [role-opts-str (sql-jdbc.common/additional-opts->string :url {:role (codec/url-encode (:role details))})]
       (-> spec
-          ;; It is advised to use either connection property or url parameter, not both. Eg. in the following link.
-          ;; https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html#getConnection-java.lang.String-java.util.Properties-
-          (dissoc :role)
           (update :connection-uri sql-jdbc.common/conn-str-with-additional-opts :url role-opts-str)))
     spec))
 
@@ -188,7 +184,7 @@
                      (update :db quote-name))
                    ;; see https://github.com/metabase/metabase/issues/9511
                    (update :warehouse upcase-not-nil)
-                   (update :schema upcase-not-nil)
+                   (m/update-existing :schema upcase-not-nil)
                    resolve-private-key
                    (dissoc :host :port :timezone)))
         (sql-jdbc.common/handle-additional-options details)
@@ -197,7 +193,7 @@
         (maybe-add-role-to-spec-url details))))
 
 (defmethod sql-jdbc.sync/database-type->base-type :snowflake
-  [_ base-type]
+  [_driver base-type]
   ({:NUMBER                     :type/Number
     :DECIMAL                    :type/Decimal
     :NUMERIC                    :type/Number
@@ -228,12 +224,13 @@
     :TIMESTAMP                  :type/DateTime
     ;; This is a weird one. A timestamp with local time zone, stored without time zone but treated as being in the
     ;; Session time zone for filtering purposes etc.
-    :TIMESTAMPLTZ               :type/DateTime
+    :TIMESTAMPLTZ               :type/DateTimeWithTZ
     ;; timestamp with no time zone
     :TIMESTAMPNTZ               :type/DateTime
     ;; timestamp with time zone normalized to UTC, similar to Postgres
     :TIMESTAMPTZ                :type/DateTimeWithLocalTZ
-    :VARIANT                    :type/*
+    ;; `VARIANT` is allowed to be any type. See https://docs.snowflake.com/en/sql-reference/data-types-semistructured
+    :VARIANT                    :type/SnowflakeVariant
     ;; Maybe also type *
     :OBJECT                     :type/Dictionary
     :ARRAY                      :type/*} base-type))
@@ -300,9 +297,8 @@
   [_driver _unit expr]
   (if (= (h2x/database-type expr) "date")
     expr
-    (date-trunc :day expr))
-  (-> [:to_date (date-trunc :day expr)]
-      (h2x/with-database-type-info "date")))
+    (-> [:to_date [:to_timestamp_ltz expr]]
+        (h2x/with-database-type-info "date"))))
 
 ;; these don't need to be adjusted for start of week, since we're Setting the WEEK_START connection parameter
 (defmethod sql.qp/date [:snowflake :week]
@@ -323,13 +319,17 @@
   ;; TODO -- what about the `weekofyear()` or `week()` functions in Snowflake? Would that do what we want?
   ;; https://docs.snowflake.com/en/sql-reference/functions/year
   (throw (ex-info (tru "Snowflake doesn''t support extract us week")
-          {:driver driver
-           :form   expr
-           :type   qp.error-type/invalid-query})))
+                  {:driver driver
+                   :form   expr
+                   :type   qp.error-type/invalid-query})))
 
 (defmethod sql.qp/date [:snowflake :day-of-week]
   [_driver _unit expr]
   (extract :dayofweek expr))
+
+(defmethod sql.qp/date [:snowflake :day-of-week-iso]
+  [_driver _unit expr]
+  (extract :dayofweekiso expr))
 
 (defn- time-zoned-datediff
   "Same as snowflake's `datediff` but converts the args to the results time zone
@@ -479,7 +479,9 @@
 
 (defmethod sql.qp/->honeysql [:snowflake :relative-datetime]
   [driver [_ amount unit]]
-  (qp.relative-datetime/maybe-cacheable-relative-datetime-honeysql driver unit amount))
+  (qp.relative-datetime/maybe-cacheable-relative-datetime-honeysql
+   driver unit amount
+   sql.qp/*parent-honeysql-col-type-info*))
 
 (defmethod sql.qp/->honeysql [:snowflake LocalDate]
   [_driver t]
@@ -497,9 +499,9 @@
   (sql.qp/->honeysql driver (t/local-time (t/with-offset-same-instant t (t/zone-offset 0)))))
 
 (defmethod sql.qp/->honeysql [:snowflake LocalDateTime]
- [_driver t]
- (-> [:raw (format "'%s'::timestamp_ntz" (u.date/format "yyyy-MM-dd HH:mm:ss.SSS" t))]
-     (h2x/with-database-type-info "timestampntz")))
+  [_driver t]
+  (-> [:raw (format "'%s'::timestamp_ntz" (u.date/format "yyyy-MM-dd HH:mm:ss.SSS" t))]
+      (h2x/with-database-type-info "timestampntz")))
 
 (defmethod sql.qp/->honeysql [:snowflake OffsetDateTime]
   [_driver t]
@@ -587,8 +589,8 @@
          {:connection conn}
          [(format "SHOW DYNAMIC TABLES LIKE '%s' IN SCHEMA \"%s\".\"%s\";"
                   table-name db-name schema-name)])
-     first
-     some?)
+        first
+        some?)
     (catch SnowflakeSQLException e
       (log/warn e "Failed to check if table is dynamic")
       ;; query will fail if schema doesn't exist
@@ -694,7 +696,7 @@
   [_ database]
   (if-not (str/blank? (-> database :details :regionid))
     (-> (update-in database [:details :account] #(str/join "." [% (-> database :details :regionid)]))
-      (m/dissoc-in [:details :regionid]))
+        (m/dissoc-in [:details :regionid]))
     database))
 
 ;;; If you try to read a Snowflake `timestamptz` as a String with `.getString` it always comes back in
@@ -722,16 +724,16 @@
   [_ {{:keys [context executed-by card-id pulse-id dashboard-id query-hash]} :info,
       query-type :type,
       database-id :database}]
-  (json/generate-string {:client      "Metabase"
-                         :context     context
-                         :queryType   query-type
-                         :userId      executed-by
-                         :pulseId     pulse-id
-                         :cardId      card-id
-                         :dashboardId dashboard-id
-                         :databaseId  database-id
-                         :queryHash   (when (bytes? query-hash) (codecs/bytes->hex query-hash))
-                         :serverId    (public-settings/site-uuid)}))
+  (json/encode {:client      "Metabase"
+                :context     context
+                :queryType   query-type
+                :userId      executed-by
+                :pulseId     pulse-id
+                :cardId      card-id
+                :dashboardId dashboard-id
+                :databaseId  database-id
+                :queryHash   (when (bytes? query-hash) (codecs/bytes->hex query-hash))
+                :serverId    (public-settings/site-uuid)}))
 
 ;;; ------------------------------------------------- User Impersonation --------------------------------------------------
 

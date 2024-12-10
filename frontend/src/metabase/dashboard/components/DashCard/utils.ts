@@ -10,18 +10,16 @@ import {
 import type { ParameterMappingOption as ParameterMappingOption } from "metabase/parameters/utils/mapping-options";
 import * as Lib from "metabase-lib";
 import type Question from "metabase-lib/v1/Question";
-import {
-  getParameterColumns,
-  isParameterVariableTarget,
-} from "metabase-lib/v1/parameters/utils/targets";
+import { getParameterColumns } from "metabase-lib/v1/parameters/utils/targets";
 import { normalize } from "metabase-lib/v1/queries/utils/normalize";
+import { isTemplateTagReference } from "metabase-lib/v1/references";
 import type {
   BaseDashboardCard,
   DashboardCard,
-  ParameterTarget,
-  QuestionDashboardCard,
   DimensionReference,
   Parameter,
+  ParameterTarget,
+  QuestionDashboardCard,
 } from "metabase-types/api";
 
 const VIZ_WITH_CUSTOM_MAPPING_UI = ["placeholder", "link"];
@@ -61,10 +59,6 @@ export function getMappingOptionByTarget<T extends DashboardCard>(
     ? isNativeDashCard(dashcard)
     : false;
 
-  if (!isNative && isParameterVariableTarget(target)) {
-    return;
-  }
-
   const isVirtual = isVirtualDashCard(dashcard);
   const normalizedTarget = normalize(target);
   const matchedMappingOptions = mappingOptions.filter(mappingOption =>
@@ -79,37 +73,48 @@ export function getMappingOptionByTarget<T extends DashboardCard>(
     return matchedMappingOptions[0];
   }
   if (!question) {
-    return;
+    return undefined;
   }
 
-  const { query, stageIndex, columns } = getParameterColumns(
-    question,
-    parameter,
-  );
+  // a parameter mapping could have been created for a SQL query which got
+  // reverted to an MBQL query via revision history.
+  // `Lib.findColumnIndexesFromLegacyRefs` throws for non-MBQL references, so we
+  // need to ignore such references here
   const fieldRef = normalizedTarget[1];
-
-  const [columnByTargetIndex] = Lib.findColumnIndexesFromLegacyRefs(
-    query,
-    stageIndex,
-    columns,
-    [fieldRef],
-  );
-
-  // target not found - no need to look further
-  if (columnByTargetIndex === -1) {
-    return;
+  if (isTemplateTagReference(fieldRef)) {
+    return undefined;
   }
 
-  const mappingColumnIndexes = Lib.findColumnIndexesFromLegacyRefs(
-    query,
-    stageIndex,
-    columns,
-    mappingOptions.map(({ target }) => target[1] as DimensionReference),
-  );
+  const { query, columns } = getParameterColumns(question, parameter);
+  const stageIndexes = _.uniq(columns.map(({ stageIndex }) => stageIndex));
 
-  const mappingIndex = mappingColumnIndexes.indexOf(columnByTargetIndex);
+  for (const stageIndex of stageIndexes) {
+    const stageColumns = columns
+      .filter(column => column.stageIndex === stageIndex)
+      .map(({ column }) => column);
 
-  if (mappingIndex >= 0) {
-    return mappingOptions[mappingIndex];
+    const [columnByTargetIndex] = Lib.findColumnIndexesFromLegacyRefs(
+      query,
+      stageIndex,
+      stageColumns,
+      [fieldRef],
+    );
+
+    if (columnByTargetIndex !== -1) {
+      const mappingColumnIndexes = Lib.findColumnIndexesFromLegacyRefs(
+        query,
+        stageIndex,
+        stageColumns,
+        mappingOptions.map(({ target }) => target[1] as DimensionReference),
+      );
+
+      const mappingIndex = mappingColumnIndexes.indexOf(columnByTargetIndex);
+
+      if (mappingIndex >= 0) {
+        return mappingOptions[mappingIndex];
+      }
+    }
   }
+
+  return undefined;
 }

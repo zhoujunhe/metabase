@@ -1,17 +1,20 @@
 import { t } from "ttag";
 
 import { NULL_DISPLAY_VALUE } from "metabase/lib/constants";
-import { X_AXIS_DATA_KEY } from "metabase/visualizations/echarts/cartesian/constants/dataset";
+import {
+  IS_WATERFALL_TOTAL_DATA_KEY,
+  X_AXIS_DATA_KEY,
+} from "metabase/visualizations/echarts/cartesian/constants/dataset";
 import {
   replaceValues,
   replaceZeroesForLogScale,
 } from "metabase/visualizations/echarts/cartesian/model/dataset";
 import type {
-  DataKey,
   ChartDataset,
+  DataKey,
   Datum,
-  WaterfallXAxisModel,
   NumericAxisScaleTransforms,
+  WaterfallXAxisModel,
 } from "metabase/visualizations/echarts/cartesian/model/types";
 import {
   WATERFALL_DATA_KEYS,
@@ -119,6 +122,7 @@ export const extendOriginalDatasetWithTotalDatum = (
   const totalDatum: Datum = {
     [seriesDataKey]: waterfallDatasetTotalDatum[WATERFALL_TOTAL_KEY],
     [X_AXIS_DATA_KEY]: t`Total`,
+    [IS_WATERFALL_TOTAL_DATA_KEY]: true,
   };
 
   return [...dataset, totalDatum];

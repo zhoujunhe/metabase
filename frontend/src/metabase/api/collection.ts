@@ -1,27 +1,31 @@
 import type {
-  ListCollectionItemsRequest,
-  ListCollectionItemsResponse,
-  UpdateCollectionRequest,
   Collection,
   CreateCollectionRequest,
+  DeleteCollectionRequest,
+  ListCollectionItemsRequest,
+  ListCollectionItemsResponse,
   ListCollectionsRequest,
   ListCollectionsTreeRequest,
-  DeleteCollectionRequest,
+  UpdateCollectionRequest,
   getCollectionRequest,
 } from "metabase-types/api";
 
 import { Api } from "./api";
 import {
-  provideCollectionItemListTags,
-  provideCollectionTags,
-  provideCollectionListTags,
+  idTag,
   invalidateTags,
   listTag,
-  idTag,
+  provideCollectionItemListTags,
+  provideCollectionListTags,
+  provideCollectionTags,
 } from "./tags";
 
 export const collectionApi = Api.injectEndpoints({
   endpoints: builder => ({
+    /**
+     * @deprecated This endpoint is extremely slow on large instances, it should not be used
+     * you probably only need a few collections, just fetch those
+     */
     listCollections: builder.query<Collection[], ListCollectionsRequest>({
       query: params => ({
         method: "GET",
@@ -56,11 +60,11 @@ export const collectionApi = Api.injectEndpoints({
         provideCollectionItemListTags(response?.data ?? [], models),
     }),
     getCollection: builder.query<Collection, getCollectionRequest>({
-      query: ({ id, ...body }) => {
+      query: ({ id, ...params }) => {
         return {
           method: "GET",
           url: `/api/collection/${id}`,
-          body,
+          params,
         };
       },
       providesTags: collection =>

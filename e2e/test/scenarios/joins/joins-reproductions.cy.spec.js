@@ -1,30 +1,6 @@
+import { H } from "e2e/support";
 import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
 import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
-import {
-  assertJoinValid,
-  assertQueryBuilderRowCount,
-  popover,
-  restore,
-  selectSavedQuestionsToJoin,
-  startNewQuestion,
-  visualize,
-  visitQuestionAdhoc,
-  cartesianChartCircle,
-  dashboardGrid,
-  getDashboardCards,
-  entityPickerModal,
-  entityPickerModalTab,
-  getNotebookStep,
-  queryBuilderHeader,
-  openProductsTable,
-  queryBuilderMain,
-  openOrdersTable,
-  summarize,
-  enterCustomColumnDetails,
-  visitDashboard,
-  chartPathWithFillColor,
-  echartsContainer,
-} from "e2e/support/helpers";
 
 const {
   ORDERS,
@@ -95,8 +71,9 @@ describe("issue 12928", () => {
       ],
     },
   };
+
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
@@ -107,15 +84,15 @@ describe("issue 12928", () => {
       idAlias: "joinedQuestionId",
     });
 
-    startNewQuestion();
-    selectSavedQuestionsToJoin(SOURCE_QUESTION_NAME, JOINED_QUESTION_NAME);
-    popover().findByText("Products → Category").click();
-    popover().findByText("Products → Category").click();
+    H.startNewQuestion();
+    H.selectSavedQuestionsToJoin(SOURCE_QUESTION_NAME, JOINED_QUESTION_NAME);
+    H.popover().findByText("Products → Category").click();
+    H.popover().findByText("Products → Category").click();
 
-    visualize();
+    H.visualize();
 
     cy.get("@joinedQuestionId").then(joinedQuestionId => {
-      assertJoinValid({
+      H.assertJoinValid({
         lhsTable: SOURCE_QUESTION_NAME,
         rhsTable: JOINED_QUESTION_NAME,
         lhsSampleColumn: "Products → Category",
@@ -123,7 +100,7 @@ describe("issue 12928", () => {
       });
     });
 
-    assertQueryBuilderRowCount(20);
+    H.assertQueryBuilderRowCount(20);
   });
 });
 
@@ -156,20 +133,21 @@ describe("issue 14793", () => {
     },
     display: "line",
   };
+
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
     cy.intercept("GET", "/api/automagic-dashboards/adhoc/**").as("xray");
     cy.intercept("POST", "/api/dataset").as("postDataset");
   });
 
   it("x-rays should work on explicit joins when metric is for the joined table (metabase#14793)", () => {
-    visitQuestionAdhoc(QUESTION_DETAILS);
+    H.visitQuestionAdhoc(QUESTION_DETAILS);
 
-    cartesianChartCircle().eq(2).click({ force: true });
+    H.cartesianChartCircle().eq(2).click({ force: true });
 
-    popover().findByText("Automatic insights…").click();
-    popover().findByText("X-ray").click();
+    H.popover().findByText("Automatic insights…").click();
+    H.popover().findByText("X-ray").click();
 
     cy.wait("@xray").then(xhr => {
       for (let i = 0; i < XRAY_DATASETS; ++i) {
@@ -179,7 +157,7 @@ describe("issue 14793", () => {
       expect(xhr.response.body.cause).not.to.exist;
     });
 
-    dashboardGrid()
+    H.dashboardGrid()
       .findByText("How this metric is distributed across different numbers")
       .should("exist");
 
@@ -187,38 +165,39 @@ describe("issue 14793", () => {
       .findByText(/^A closer look at/)
       .should("be.visible");
 
-    getDashboardCards().should("have.length", 18);
+    H.getDashboardCards().should("have.length", 18);
   });
 });
 
 describe("issue 15342", { tags: "@external" }, () => {
   const MYSQL_DB_NAME = "QA MySQL8";
+
   beforeEach(() => {
-    restore("mysql-8");
+    H.restore("mysql-8");
     cy.signInAsAdmin();
 
     cy.viewport(4000, 1200); // huge width required so three joined tables can fit
   });
 
   it("should correctly order joins for MySQL queries (metabase#15342)", () => {
-    startNewQuestion();
-    entityPickerModal().within(() => {
-      entityPickerModalTab("Tables").click();
+    H.startNewQuestion();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
       cy.findByText(MYSQL_DB_NAME).click();
       cy.findByText("People").click();
     });
 
     cy.icon("join_left_outer").click();
-    entityPickerModal().findByText("Orders").click();
-    getNotebookStep("join").findByLabelText("Right column").click();
-    popover().findByText("Product ID").click();
+    H.entityPickerModal().findByText("Orders").click();
+    H.getNotebookStep("join").findByLabelText("Right column").click();
+    H.popover().findByText("Product ID").click();
 
     cy.icon("join_left_outer").last().click();
-    entityPickerModal().findByText("Products").click();
-    getNotebookStep("join").icon("join_left_outer").click();
-    popover().findByText("Inner join").click();
+    H.entityPickerModal().findByText("Products").click();
+    H.getNotebookStep("join").icon("join_left_outer").click();
+    H.popover().findByText("Inner join").click();
 
-    visualize();
+    H.visualize();
 
     cy.findByTestId("query-visualization-root").within(() => {
       cy.findByText("Email"); // from People table
@@ -230,8 +209,9 @@ describe("issue 15342", { tags: "@external" }, () => {
 
 describe("issue 15578", () => {
   const JOINED_QUESTION_NAME = "15578";
+
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
     cy.intercept("POST", "/api/dataset").as("dataset");
 
@@ -249,24 +229,24 @@ describe("issue 15578", () => {
   });
 
   it("joining on a question with remapped values should work (metabase#15578)", () => {
-    openProductsTable({ mode: "notebook" });
+    H.openProductsTable({ mode: "notebook" });
 
     cy.button("Join data").click();
-    entityPickerModal().within(() => {
-      entityPickerModalTab("Saved questions").click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Saved questions").click();
       cy.findByText(JOINED_QUESTION_NAME).click();
     });
 
-    visualize();
+    H.visualize();
 
-    queryBuilderHeader()
+    H.queryBuilderHeader()
       .findByTestId("question-table-badges")
       .within(() => {
         cy.findByText("Products").should("be.visible");
         cy.findByText(JOINED_QUESTION_NAME).should("be.visible");
       });
 
-    queryBuilderMain().within(() => {
+    H.queryBuilderMain().within(() => {
       cy.findByText("Category").should("be.visible");
       cy.findByText(`${JOINED_QUESTION_NAME} → ID`).should("be.visible");
     });
@@ -276,34 +256,32 @@ describe("issue 15578", () => {
 describe("issue 17710", () => {
   beforeEach(() => {
     cy.intercept("POST", "/api/dataset").as("dataset");
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
   it("should remove only invalid join clauses (metabase#17710)", () => {
-    openOrdersTable({ mode: "notebook" });
+    H.openOrdersTable({ mode: "notebook" });
 
     cy.button("Join data").click();
-    entityPickerModal().within(() => {
-      entityPickerModalTab("Tables").click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
       cy.findByText("Products").click();
     });
 
-    getNotebookStep("join").icon("add").click();
+    H.getNotebookStep("join").icon("add").click();
 
     // Close the LHS column popover that opens automatically
-    getNotebookStep("join").parent().click();
+    H.getNotebookStep("join").parent().click();
 
-    visualize();
+    H.visualize();
 
-    cy.icon("notebook")
-      .click()
-      .then(() => {
-        cy.findByTestId("step-join-0-0").within(() => {
-          cy.findByText("ID");
-          cy.findByText("Product ID");
-        });
-      });
+    H.openNotebook();
+
+    cy.findByTestId("step-join-0-0").within(() => {
+      cy.findByText("ID");
+      cy.findByText("Product ID");
+    });
   });
 });
 
@@ -319,28 +297,29 @@ describe("issue 17767", () => {
       limit: 2,
     },
   };
+
   beforeEach(() => {
     cy.intercept("POST", "/api/dataset").as("dataset");
 
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
   it("should be able to do subsequent joins on question with the aggregation that uses implicit joins (metabase#17767)", () => {
     cy.createQuestion(questionDetails, { visitQuestion: true });
 
-    cy.icon("notebook").click();
+    H.openNotebook();
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Join data").click();
 
     // Join "Previous results" with
-    entityPickerModal().within(() => {
-      entityPickerModalTab("Tables").click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
       cy.findByText("Reviews").click();
     });
 
-    visualize(response => {
+    H.visualize(response => {
       expect(response.body.error).to.not.exist;
     });
 
@@ -351,29 +330,29 @@ describe("issue 17767", () => {
 
 describe("issue 17968", () => {
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
   it("should show 'Previous results' instead of a table name for non-field dimensions (metabase#17968)", () => {
-    openOrdersTable({ mode: "notebook" });
+    H.openOrdersTable({ mode: "notebook" });
 
-    summarize({ mode: "notebook" });
-    popover().findByText("Count of rows").click();
+    H.summarize({ mode: "notebook" });
+    H.popover().findByText("Count of rows").click();
 
-    getNotebookStep("summarize")
+    H.getNotebookStep("summarize")
       .findByText("Pick a column to group by")
       .click();
-    popover().findByText("Created At").click();
+    H.popover().findByText("Created At").click();
 
     cy.findAllByTestId("action-buttons").last().button("Join data").click();
-    entityPickerModal().within(() => {
-      entityPickerModalTab("Tables").click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
       cy.findByText("Products").click();
     });
-    popover().findByText("Count").click();
+    H.popover().findByText("Count").click();
 
-    getNotebookStep("join", { stage: 1 })
+    H.getNotebookStep("join", { stage: 1 })
       .findByLabelText("Left column")
       .findByText("Previous results");
   });
@@ -398,7 +377,7 @@ describe("issue 18502", () => {
 
   beforeEach(() => {
     cy.intercept("POST", "/api/dataset").as("dataset");
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
@@ -408,15 +387,15 @@ describe("issue 18502", () => {
     cy.createQuestion(question1);
     cy.createQuestion(question2);
 
-    startNewQuestion();
-    selectSavedQuestionsToJoin("18502#1", "18502#2");
+    H.startNewQuestion();
+    H.selectSavedQuestionsToJoin("18502#1", "18502#2");
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("Created At").click();
+    cy.findByText("Created At: Month").click();
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("Birth Date").click();
+    cy.findByText("Birth Date: Month").click();
 
-    visualize(response => {
+    H.visualize(response => {
       expect(response.body.error).to.not.exist;
     });
 
@@ -468,7 +447,7 @@ describe("issue 18512", () => {
   beforeEach(() => {
     cy.intercept("POST", "/api/dataset").as("dataset");
 
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
@@ -476,51 +455,51 @@ describe("issue 18512", () => {
     cy.createQuestion(question1);
     cy.createQuestion(question2);
 
-    startNewQuestion();
-    selectSavedQuestionsToJoin("18512#1", "18512#2");
+    H.startNewQuestion();
+    H.selectSavedQuestionsToJoin("18512#1", "18512#2");
 
-    popover().findByText("Products → Created At").click();
-    popover().findByText("Products → Created At").click();
+    H.popover().findByText("Products → Created At: Month").click();
+    H.popover().findByText("Products → Created At: Month").click();
 
-    visualize(response => {
+    H.visualize(response => {
       expect(response.body.error).to.not.exist;
     });
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.contains("Products → Created At");
+    cy.contains("Products → Created At: Month");
   });
 });
 
 describe("issue 18589", () => {
   function joinTable(table) {
     cy.findByText("Join data").click();
-    entityPickerModal().within(() => {
-      entityPickerModalTab("Tables").click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
       cy.findByText(table).click();
     });
   }
 
   function selectFromDropdown(option, clickOpts) {
-    popover().findByText(option).click(clickOpts);
+    H.popover().findByText(option).click(clickOpts);
   }
 
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
     cy.intercept("POST", "/api/dataset").as("dataset");
   });
 
   it("should not bin numeric fields in join condition by default (metabase#18589)", () => {
-    openOrdersTable({ mode: "notebook" });
+    H.openOrdersTable({ mode: "notebook" });
 
     joinTable("Reviews");
     selectFromDropdown("Quantity");
     selectFromDropdown("Rating");
 
-    summarize({ mode: "notebook" });
+    H.summarize({ mode: "notebook" });
     selectFromDropdown("Count of rows");
 
-    visualize();
+    H.visualize();
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("2,860,368");
@@ -529,7 +508,7 @@ describe("issue 18589", () => {
 
 describe("issue 18630", () => {
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
@@ -592,7 +571,7 @@ describe("issue 18630", () => {
 describe("issue 18818", () => {
   beforeEach(() => {
     cy.intercept("POST", "/api/dataset").as("dataset");
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
@@ -620,7 +599,7 @@ describe("issue 18818", () => {
       { visitQuestion: true },
     );
 
-    cy.icon("notebook").click();
+    H.openNotebook();
     cy.findAllByText("CC Rating");
   });
 });
@@ -651,28 +630,31 @@ describe("issue 20519", () => {
       limit: 2,
     },
   };
+
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
 
     cy.createQuestion(questionDetails, { visitQuestion: true });
-    cy.icon("notebook").click();
+    H.openNotebook();
   });
 
   // Tightly related issue: metabase#17767
   it("should allow subsequent joins and nested query after summarizing on the implicit joins (metabase#20519)", () => {
-    cy.icon("add_data").last().click();
+    cy.findAllByLabelText("Custom column").last().click();
 
-    enterCustomColumnDetails({
+    H.enterCustomColumnDetails({
       formula: "1 + 1",
       name: "Two",
     });
 
     cy.button("Done").click();
 
-    getNotebookStep("expression", { stage: 1 }).contains("Two").should("exist");
+    H.getNotebookStep("expression", { stage: 1 })
+      .contains("Two")
+      .should("exist");
 
-    visualize(response => {
+    H.visualize(response => {
       expect(response.body.error).not.to.exist;
     });
 
@@ -710,7 +692,7 @@ describe("issue 22859 - multiple levels of nesting", () => {
   }
 
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
 
     cy.createQuestion(questionDetails, { wrapId: true, idAlias: "q1Id" });
@@ -765,13 +747,13 @@ describe("issue 22859 - multiple levels of nesting", () => {
   });
 
   it("third level of nesting with joins should result in proper column aliasing (metabase#22859-2)", () => {
-    startNewQuestion();
-    entityPickerModal().within(() => {
-      entityPickerModalTab("Saved questions").click();
+    H.startNewQuestion();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Saved questions").click();
       cy.findByText("22859-Q2").click();
     });
 
-    visualize();
+    H.visualize();
 
     getJoinedTableColumnHeader();
   });
@@ -796,21 +778,21 @@ describe("issue 23293", () => {
   }
 
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
 
     cy.intercept("POST", "/api/card").as("saveQuestion");
   });
 
   it("should retain the filter when drilling through the dashboard card with implicitly added column (metabase#23293)", () => {
-    openOrdersTable();
+    H.openOrdersTable();
 
     cy.findByTestId("viz-settings-button").click();
     modifyColumn("Product ID", "remove");
     modifyColumn("Category", "add");
     cy.wait("@dataset");
 
-    queryBuilderHeader().button("Save").click();
+    H.queryBuilderHeader().button("Save").click();
     cy.findByTestId("save-question-modal").within(modal => {
       cy.findByText("Save").click();
     });
@@ -838,13 +820,13 @@ describe("issue 23293", () => {
 
       cy.createQuestionAndDashboard({ questionDetails }).then(
         ({ body: { dashboard_id } }) => {
-          visitDashboard(dashboard_id);
+          H.visitDashboard(dashboard_id);
         },
       );
 
       // Click on the first bar
-      chartPathWithFillColor("#509EE3").first().realClick();
-      popover()
+      H.chartPathWithFillColor("#509EE3").first().realClick();
+      H.popover()
         .findByText(/^See these/)
         .click();
 
@@ -869,7 +851,7 @@ describe("issue 27380", () => {
   beforeEach(() => {
     cy.intercept("POST", "/api/dataset").as("dataset");
 
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
@@ -890,21 +872,21 @@ describe("issue 27380", () => {
     };
     cy.createQuestionAndDashboard({ questionDetails }).then(
       ({ body: { dashboard_id } }) => {
-        visitDashboard(dashboard_id);
+        H.visitDashboard(dashboard_id);
       },
     );
 
     // Doesn't really matter which 'circle" we click on the graph
-    cartesianChartCircle().last().click();
+    H.cartesianChartCircle().last().click();
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("See this month by week").click();
     cy.wait("@dataset");
 
     // Graph should still exist
     // Checks the y-axis label
-    echartsContainer().findByText("Count");
+    H.echartsContainer().findByText("Count");
 
-    cy.icon("notebook").click();
+    H.openNotebook();
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Pick a column to group by").should("not.exist");
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
@@ -940,14 +922,15 @@ describe("issue 27873", () => {
     },
     display: "table",
   };
+
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
   it("should show a group by column from the joined field in the summarize sidebar (metabase#27873)", () => {
-    visitQuestionAdhoc(questionDetails);
-    summarize();
+    H.visitQuestionAdhoc(questionDetails);
+    H.summarize();
 
     cy.findByTestId("aggregation-item").should("have.text", "Count");
     cy.findByTestId("pinned-dimensions")
@@ -958,7 +941,7 @@ describe("issue 27873", () => {
 
 describe("issue 29795", () => {
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
@@ -973,24 +956,24 @@ describe("issue 29795", () => {
       { loadMetadata: true },
     );
 
-    openOrdersTable({ mode: "notebook", limit: LIMIT });
+    H.openOrdersTable({ mode: "notebook", limit: LIMIT });
 
     cy.icon("join_left_outer").click();
 
-    entityPickerModal().within(() => {
-      entityPickerModalTab("Saved questions").click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Saved questions").click();
       cy.findByText(NATIVE_QUESTION).click();
     });
 
-    popover().within(() => {
+    H.popover().within(() => {
       cy.findByRole("option", { name: "ID" }).click();
     });
 
-    popover().within(() => {
+    H.popover().within(() => {
       cy.findByRole("option", { name: "USER_ID" }).click();
     });
 
-    visualize(() => {
+    H.visualize(() => {
       cy.findAllByText(/User ID/i).should("have.length", 2);
     });
   });
@@ -1020,20 +1003,21 @@ describe("issue 30743", () => {
       },
     },
   };
+
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
 
-    visitQuestionAdhoc(query, { mode: "notebook" });
+    H.visitQuestionAdhoc(query, { mode: "notebook" });
   });
 
   it("should be possible to sort on the breakout column (metabase#30743)", () => {
     cy.findByLabelText("Sort").click();
-    popover().contains("Category").click();
+    H.popover().contains("Category").click();
 
-    visualize();
+    H.visualize();
     // Check bars count
-    chartPathWithFillColor("#509EE3").should("have.length", 4);
+    H.chartPathWithFillColor("#509EE3").should("have.length", 4);
   });
 });
 
@@ -1077,25 +1061,26 @@ describe("issue 31769", () => {
     aggregation: [["count"]],
     breakout: [["field", PRODUCTS.CATEGORY, { "base-type": "type/Text" }]],
   };
+
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
 
     cy.createQuestion({ name: "Q1", query: Q1 }).then(() => {
       cy.createQuestion({ name: "Q2", query: Q2 }).then(response => {
         cy.wrap(response.body.id).as("card_id_q2");
-        startNewQuestion();
+        H.startNewQuestion();
       });
     });
   });
 
   it("shouldn't drop joins using MLv2 format (metabase#31769)", () => {
-    selectSavedQuestionsToJoin("Q1", "Q2");
+    H.selectSavedQuestionsToJoin("Q1", "Q2");
 
-    popover().findByText("Products → Category").click();
-    popover().findByText("Category").click();
+    H.popover().findByText("Products → Category").click();
+    H.popover().findByText("Category").click();
 
-    visualize();
+    H.visualize();
 
     // Asserting there're two columns from Q1 and two columns from Q2
     cy.findAllByTestId("header-cell").should("have.length", 4);
@@ -1109,5 +1094,317 @@ describe("issue 31769", () => {
     cy.findByTestId("TableInteractive-root")
       .findByText("Products → Category")
       .should("exist");
+  });
+});
+
+describe("issue 39448", () => {
+  beforeEach(() => {
+    H.restore();
+    cy.signInAsNormalUser();
+  });
+
+  it("should load joined table metadata for suggested join conditions (metabase#39448)", () => {
+    H.openOrdersTable({ mode: "notebook" });
+    cy.findByTestId("action-buttons").button("Join data").click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
+      cy.findByText("Products").click();
+    });
+    H.getNotebookStep("join").within(() => {
+      cy.findByLabelText("Right table").should("have.text", "Products");
+      cy.findByLabelText("Left column")
+        .findByText("Product ID")
+        .should("be.visible");
+      cy.findByLabelText("Right column").findByText("ID").should("be.visible");
+      cy.findByLabelText("Change operator").should("have.text", "=");
+    });
+  });
+});
+
+// See TODO inside this test when unskipping
+describe.skip("issue 27521", () => {
+  beforeEach(() => {
+    H.restore();
+    cy.signInAsNormalUser();
+  });
+
+  it("correctly displays joined question's column names (metabase#27521)", () => {
+    cy.visit("/");
+
+    cy.log("Create Q1");
+    H.openOrdersTable({ mode: "notebook" });
+
+    H.getNotebookStep("data").button("Pick columns").click();
+    H.popover().findByText("Select none").click();
+
+    H.join();
+
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
+      cy.findByText("Orders").click();
+    });
+
+    H.popover().findByText("ID").click();
+    H.popover().findByText("ID").click();
+
+    H.getNotebookStep("join", { stage: 0, index: 0 })
+      .button("Pick columns")
+      .click();
+    H.popover().within(() => {
+      cy.findByText("Select none").click();
+      cy.findByText("ID").click();
+    });
+
+    H.visualize();
+    assertTableHeader(0, "ID");
+    assertTableHeader(1, "Orders → ID");
+
+    H.saveQuestion("Q1");
+
+    assertTableHeader(0, "ID");
+    assertTableHeader(1, "Orders → ID");
+
+    cy.log("Create second question (Products + Q1)");
+    H.newButton("Question").click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
+      cy.findByText("People").click();
+    });
+
+    H.getNotebookStep("data").button("Pick columns").click();
+    H.popover().findByText("Select none").click();
+
+    H.join();
+
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Saved questions").click();
+      cy.findByText("Q1").click();
+    });
+
+    H.popover().findByText("ID").click();
+    H.popover().findByText("Orders → ID").should("be.visible").click();
+    H.getNotebookStep("join")
+      .findByLabelText("Right column")
+      .findByText("Orders → ID")
+      .should("be.visible")
+      .click();
+    H.popover().findByText("ID").should("be.visible").click();
+
+    H.visualize();
+
+    assertTableHeader(0, "ID");
+    assertTableHeader(1, "Q1 → ID");
+    assertTableHeader(2, "Q1 → Orders → ID");
+
+    cy.findByTestId("viz-settings-button").click();
+    cy.findByTestId("chartsettings-sidebar").within(() => {
+      cy.findAllByText("ID").should("have.length", 1);
+      cy.findAllByText("Q1 → ID").should("have.length", 1);
+      cy.findAllByText("Q1 → Orders → ID").should("have.length", 1);
+
+      cy.findByRole("button", { name: "Add or remove columns" }).click();
+      cy.findAllByText("ID").should("have.length", 2);
+      cy.findAllByText("Orders → ID").should("have.length", 1);
+
+      // TODO: add assertions for what happens when toggling all the columns here
+      // See https://github.com/metabase/metabase/issues/27521#issuecomment-1948658757
+    });
+  });
+
+  function assertTableHeader(index, name) {
+    cy.findAllByTestId("header-cell").eq(index).should("have.text", name);
+  }
+});
+
+describe("issue 42385", { tags: "@external" }, () => {
+  beforeEach(() => {
+    H.restore("postgres-12");
+    cy.signInAsAdmin();
+  });
+
+  it("should remove invalid draft join clause when query database changes (metabase#42385)", () => {
+    H.openOrdersTable({ mode: "notebook" });
+    H.join();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
+      cy.findByText("Reviews").click();
+    });
+
+    H.getNotebookStep("data").findByTestId("data-step-cell").click();
+    H.entityPickerModal().within(() => {
+      cy.findByText("QA Postgres12").click();
+      cy.findByText("Reviews").click();
+    });
+
+    H.getNotebookStep("join").within(() => {
+      cy.findByLabelText("Right table")
+        .findByText("Pick data…")
+        .should("be.visible");
+      cy.findByLabelText("Left column").should("not.exist");
+      cy.findByLabelText("Right column").should("not.exist");
+    });
+  });
+
+  it("should remove invalid join clause in incomplete draft state when query database changes (metabase#42385)", () => {
+    H.openOrdersTable({ mode: "notebook" });
+    H.join();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
+      cy.findByText("Products").click();
+    });
+
+    H.getNotebookStep("join")
+      .findByLabelText("Right table")
+      .findByText("Products")
+      .click();
+
+    H.entityPickerModal().findByText("Reviews").click();
+
+    H.getNotebookStep("data").findByTestId("data-step-cell").click();
+    H.entityPickerModal().within(() => {
+      cy.findByText("QA Postgres12").click();
+      cy.findByText("Reviews").click();
+    });
+
+    H.getNotebookStep("join").should("not.exist");
+  });
+});
+
+describe("issue 45300", () => {
+  beforeEach(() => {
+    H.restore();
+    cy.signInAsNormalUser();
+  });
+
+  it("joins using the foreign key only should not break the filter modal (metabase#45300)", () => {
+    H.visitQuestionAdhoc({
+      dataset_query: {
+        database: SAMPLE_DB_ID,
+        type: "query",
+        query: {
+          "source-table": REVIEWS_ID,
+          joins: [
+            {
+              fields: "all",
+              strategy: "left-join",
+              alias: "Orders - Product",
+              condition: [
+                "=",
+                ["field", REVIEWS.PRODUCT_ID, { "base-type": "type/Integer" }],
+                [
+                  "field",
+                  ORDERS.PRODUCT_ID,
+                  {
+                    "base-type": "type/Integer",
+                    "join-alias": "Orders - Product",
+                  },
+                ],
+              ],
+              "source-table": ORDERS_ID,
+            },
+          ],
+        },
+        parameters: [],
+      },
+    });
+
+    H.filter();
+
+    H.modal().within(() => {
+      // sidebar
+      cy.findByRole("tablist").within(() => {
+        cy.findAllByRole("tab", { name: "Product" }).eq(0).click();
+      });
+
+      // main panel
+      cy.findAllByTestId("filter-column-Category")
+        .should("have.length", 1)
+        .within(() => {
+          cy.findByText("Doohickey").click();
+        });
+
+      cy.button("Apply filters").click();
+      cy.wait("@dataset");
+    });
+
+    cy.findByTestId("filter-pill").should(
+      "have.text",
+      "Product → Category is Doohickey",
+    );
+  });
+});
+
+describe("issue 46675", () => {
+  const questionDetails = {
+    query: {
+      "source-table": ORDERS_ID,
+    },
+  };
+
+  beforeEach(() => {
+    H.restore();
+    cy.signInAsNormalUser();
+
+    cy.log("create draft state with a rhs table and a lhs column");
+    H.createQuestion(questionDetails, { visitQuestion: true });
+    H.openNotebook();
+    H.getNotebookStep("data").findByLabelText("Join data").click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
+      cy.findByText("Reviews").click();
+    });
+    H.popover().findByText("ID").click();
+  });
+
+  it("should reset the draft join state when the source table changes (metabase#46675)", () => {
+    cy.log("change the source table and verify that the state was reset");
+    H.getNotebookStep("data").findByText("Orders").click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
+      cy.findByText("Products").click();
+    });
+    H.getNotebookStep("join").within(() => {
+      cy.findByLabelText("Left table").should("have.text", "Products");
+      cy.findByLabelText("Right table").should("have.text", "Pick data…");
+      cy.findByLabelText("Left column").should("not.exist");
+    });
+
+    cy.log("complete the join and make sure the query can be executed");
+    H.getNotebookStep("join")
+      .findByLabelText("Right table")
+      .findByText("Pick data…")
+      .click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
+      cy.findByText("Orders").click();
+    });
+    H.visualize();
+    H.tableInteractive().should("be.visible");
+  });
+
+  it("should reset the draft join state when the source table changes (metabase#46675)", () => {
+    cy.log("change the rhs table and verify that the state was reset");
+    H.getNotebookStep("join")
+      .findByLabelText("Right table")
+      .findByText("Reviews")
+      .click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
+      cy.findByText("Orders").click();
+    });
+    H.getNotebookStep("join").within(() => {
+      cy.findByLabelText("Left table").should("have.text", "Orders");
+      cy.findByLabelText("Right table").should("have.text", "Orders");
+      cy.findByLabelText("Left column").should(
+        "contain.text",
+        "Pick a column…",
+      );
+    });
+
+    cy.log("complete the join and make sure the query can be executed");
+    H.popover().findByText("ID").click();
+    H.popover().findByText("ID").click();
+    H.visualize();
+    H.tableInteractive().should("be.visible");
   });
 });

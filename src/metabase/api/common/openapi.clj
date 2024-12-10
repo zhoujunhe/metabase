@@ -56,30 +56,37 @@
     :else
     param))
 
-;; TODO: unify this with `fix-type` somehow, but `:required` is making this hard
-(defn- fix-schema
-  "Change type of request body to make it more understandable to Rapidoc."
-  [{:keys [required] :as schema}]
-  (let [not-required (atom #{})]
-    (-> schema
-        (update :properties (fn [props]
-                              (into {}
-                                    (for [[k v] props]
-                                      [k
-                                       (cond
-                                         (and (:oneOf v)
-                                              (= (second (:oneOf v)) {:type "null"}))
-                                         (do
-                                           (swap! not-required conj k)
-                                           (merge (first (:oneOf v))
-                                                  (select-keys v [:description :default])))
+(let [file-schema (json-schema-transform ms/File)]
+  ;; TODO: unify this with `fix-type` somehow, but `:required` is making this hard
+  (defn- fix-schema
+    "Change type of request body to make it more understandable to Rapidoc."
+    [{:keys [required] :as schema}]
+    (let [not-required (atom #{})]
+      (-> schema
+          (update :properties (fn [props]
+                                (into {}
+                                      (for [[k v] props]
+                                        [k
+                                         (cond
+                                           (and (:oneOf v)
+                                                (= (second (:oneOf v)) {:type "null"}))
+                                           (do
+                                             (swap! not-required conj k)
+                                             (merge (first (:oneOf v))
+                                                    (select-keys v [:description :default])))
 
-                                         (= (:enum v) ["true" "false" true false])
-                                         (-> (dissoc v :enum) (assoc :type "boolean"))
+                                           (= (select-keys v (keys file-schema)) file-schema)
+                                           ;; I got this from StackOverflow and docs are not in agreement, but RapiDoc
+                                           ;; shows file input, so... :)
+                                           (merge {:type "string" :format "binary"}
+                                                  (select-keys v [:description :default]))
 
-                                         :else
-                                         v)]))))
-        (assoc :required (vec (remove @not-required required))))))
+                                           (= (:enum v) ["true" "false" true false])
+                                           (-> (dissoc v :enum) (assoc :type "boolean"))
+
+                                           :else
+                                           v)]))))
+          (assoc :required (vec (remove @not-required required)))))))
 
 (defn- path->openapi [path]
   (str/replace path #":([^/]+)" "{$1}"))
@@ -117,20 +124,22 @@
           (= :as x)   (recur (nnext args)
                              (into params (when (map? y)
                                             (let [qp (:query-params (set/map-invert y))]
-                                              ;; {c :count :keys [a b}} ; => [count a b]
-                                              (flatten (vals qp))))))
+                                              (when (map? qp)
+                                                ;; {c :count :keys [a b}} ; => [count a b]
+                                                (flatten (vals qp)))))))
           (symbol? x) (recur (next args)
                              (conj params x)))))))
 
 (defn- compojure-renames
   "Find out everything that's renamed in Compojure routes"
   [args]
-  (let [idx (inc (.indexOf ^PersistentVector args :as))]
-    (when (pos? idx)
-      (let [req-bindings (get args idx)
-            renames      (->> (keys req-bindings) ; {{c :count} :query-params} ; => [{c :count}]
-                              (filter map?)       ; no stuff like {:keys [a]}
-                              (apply merge))]
+  (let [idx          (inc (.indexOf ^PersistentVector args :as))
+        req-bindings (get args idx)]
+    (when (and (pos? idx)
+               (map? req-bindings))
+      (let [renames (->> (keys req-bindings) ; {{c :count} :query-params} ; => [{c :count}]
+                         (filter map?)       ; no stuff like {:keys [a]}
+                         (apply merge))]
         (update-keys renames keyword)))))
 
 (defn- schema->params
@@ -167,7 +176,7 @@
         ctype                     (if (:multipart (meta handler-var))
                                     "multipart/form-data"
                                     "application/json")]
-    ;; summary is the string in the sidebar of rapidoc
+    ;; summary is the string in the sidebar of Scalar
     {method (cond-> {:summary     (str (u/upper-case-en (name method)) " " full-path)
                      :description (or (:orig-doc data)
                                       (:doc data))
@@ -196,4 +205,9 @@
 (comment
   ;; See what is the result of generation, could be helpful debugging what's wrong with display in rapidoc
   ;; `resolve` is to appease clj-kondo which will complain for #'
-  (defendpoint->path-item nil "/path" (resolve 'metabase-enterprise.serialization.api/POST_export)))
+  (defendpoint->path-item nil "/path" (resolve 'metabase-enterprise.serialization.api/POST_export))
+  (openapi-object (resolve 'metabase.api.pulse/routes))
+  (->> (openapi-object (resolve 'metabase.api.routes/routes))
+       :paths
+       (map #(second (str/split (key %) #"/")))
+       set))

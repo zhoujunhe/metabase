@@ -10,10 +10,9 @@
    [metabase.models.task-history :as task-history]
    [metabase.plugins.classloader :as classloader]
    [metabase.public-settings.premium-features
-    :as premium-features
     :refer [defenterprise]]
    [metabase.task :as task]
-   [metabase.util.i18n :as i18n :refer [deferred-tru]]
+   [metabase.util.i18n :refer [deferred-tru]]
    [metabase.util.log :as log]
    [toucan2.core :as t2]))
 
@@ -116,7 +115,7 @@ If set to 0, Metabase will keep all rows.")
                  (triggers/with-identity (triggers/key truncate-audit-tables-trigger-key))
                  (triggers/start-now)
                  (triggers/with-schedule
-                   (cron/schedule
-                    (cron/cron-schedule truncate-audit-tables-cron)
-                    (cron/with-misfire-handling-instruction-do-nothing))))]
+                  (cron/schedule
+                   (cron/cron-schedule truncate-audit-tables-cron)
+                   (cron/with-misfire-handling-instruction-do-nothing))))]
     (task/schedule-task! job trigger)))

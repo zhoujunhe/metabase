@@ -10,8 +10,7 @@ export const ACCENT_COUNT = 8;
 // NOTE: KEEP SYNCRONIZED WITH:
 // frontend/src/metabase/css/core/colors.module.css
 // frontend/src/metabase/styled-components/containers/GlobalStyles/GlobalStyles.tsx
-// enterprise/frontend/src/embedding-sdk/components/private/SdkContentWrapper.tsx
-// .storybook/preview-head.html
+// frontend/src/metabase/styled-components/theme/css-variables.ts
 export const colors = {
   brand: "#509EE3",
   summarize: "#88BF4D",
@@ -24,6 +23,9 @@ export const colors = {
   accent5: "#F2A86F",
   accent6: "#98D9D9",
   accent7: "#7172AD",
+  "accent-gray": "#F3F3F4", // Orion 10 (--mb-base-color-orion-10)
+  "accent-gray-light": "#FAFAFB", // Orion 5 (--mb-base-color-orion-5)
+  "accent-gray-dark": "#DCDFE0", // Orion 20 (--mb-base-color-orion-20)
   "admin-navbar": "#7172AD",
   white: "#FFFFFF",
   success: "#84BB4C",
@@ -56,14 +58,14 @@ export const colors = {
 
 export const originalColors = { ...colors };
 
-const aliases: Record<string, (palette: ColorPalette) => string> = {
+export const aliases: Record<string, (palette: ColorPalette) => string> = {
   dashboard: palette => color("brand", palette),
   nav: palette => color("bg-white", palette),
   content: palette => color("bg-light", palette),
   database: palette => color("accent2", palette),
   pulse: palette => color("accent4", palette),
 
-  "brand-light": palette => lighten(color("brand", palette), 0.532), // #F9FBFC
+  "brand-light": palette => lighten(color("brand", palette), 0.532), // #DDECFA
   "brand-lighter": palette => lighten(color("brand", palette), 0.598), // #EEF6FC for brand
   focus: palette => getFocusColor("brand", palette),
 

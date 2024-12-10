@@ -9,7 +9,7 @@
    [metabase.util.date-2 :as u.date]
    [metabase.util.log :as log]
    [toucan2.connection :as t2.connection]
-   #_{:clj-kondo/ignore [:discouraged-namespace]}
+   ^{:clj-kondo/ignore [:discouraged-namespace]}
    [toucan2.core :as t2])
   (:import
    (java.sql Connection PreparedStatement ResultSet Types)))
@@ -22,21 +22,20 @@
 (defn- seconds-ago [n]
   (ms-ago (long (* 1000 n))))
 
-(def ^:private ^{:arglists '([])} cached-results-query-sql
-  ;; this is memoized for a given application DB so we can deliver cached results EXTRA FAST and not have to spend an
-  ;; extra microsecond compiling the same exact query every time. :shrug:
-  ;;
-  ;; Since application DB can change at run time (during tests) it's not just a plain delay
-  (let [f (memoize (fn [_db-type]
-                     (first (mdb.query/compile {:select   [:results]
-                                                :from     [:query_cache]
-                                                :where    [:and
-                                                           [:= :query_hash [:raw "?"]]
-                                                           [:>= :updated_at [:raw "?"]]]
-                                                :order-by [[:updated_at :desc]]
-                                                :limit    [:inline 1]}))))]
-    (fn []
-      (f (mdb/db-type)))))
+;; this is memoized for a given application DB so we can deliver cached results EXTRA FAST and not have to spend an
+;; extra microsecond compiling the same exact query every time. :shrug:
+;;
+;; Since application DB can change at run time (during tests) it's not just a plain delay
+(let [f (memoize (fn [_db-type]
+                   (first (mdb.query/compile {:select   [:results]
+                                              :from     [:query_cache]
+                                              :where    [:and
+                                                         [:= :query_hash [:raw "?"]]
+                                                         [:>= :updated_at [:raw "?"]]]
+                                              :order-by [[:updated_at :desc]]
+                                              :limit    [:inline 1]}))))]
+  (defn- cached-results-query-sql []
+    (f (mdb/db-type))))
 
 (defn prepare-statement
   "Create a prepared statement to query cache"
@@ -56,14 +55,13 @@
         (.close stmt)
         (throw e)))))
 
-
 (defn fetch-cache-stmt-ttl
   "Make a prepared statement for :ttl caching strategy"
   ^PreparedStatement [strategy query-hash ^Connection conn]
   (if-not (:avg-execution-ms strategy)
     (log/debugf "Caching strategy %s needs :avg-execution-ms to work" (pr-str strategy))
     (let [max-age-ms     (* (:multiplier strategy)
-                        (:avg-execution-ms strategy))
+                            (:avg-execution-ms strategy))
           invalidated-at (t/max (ms-ago max-age-ms) (:invalidated-at strategy))]
       (prepare-statement conn query-hash invalidated-at))))
 

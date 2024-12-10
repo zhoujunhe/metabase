@@ -3,7 +3,6 @@
   (:require
    [buddy.core.codecs :as codecs]
    [buddy.sign.jwt :as jwt]
-   [cheshire.core :as json]
    [clojure.string :as str]
    [hiccup.core :refer [html]]
    [metabase.config :as config]
@@ -12,6 +11,7 @@
    [metabase.public-settings.premium-features :as premium-features]
    [metabase.util :as u]
    [metabase.util.i18n :refer [deferred-tru trs tru]]
+   [metabase.util.json :as json]
    [ring.util.codec :as codec]))
 
 (set! *warn-on-reflection* true)
@@ -54,24 +54,24 @@
                   :height      height
                   :frameborder 0}]))
 
-
 ;;; ----------------------------------------------- EMBEDDING UTIL FNS -----------------------------------------------
 
 (defsetting embedding-secret-key
   (deferred-tru "Secret key used to sign JSON Web Tokens for requests to `/api/embed` endpoints.")
+  :encryption :when-encryption-key-set
   :visibility :admin
   :audit :no-value
   :setter (fn [new-value]
             (when (seq new-value)
               (assert (u/hexadecimal-string? new-value)
-                (tru "Invalid embedding-secret-key! Secret key must be a hexadecimal-encoded 256-bit key (i.e., a 64-character string).")))
+                      (tru "Invalid embedding-secret-key! Secret key must be a hexadecimal-encoded 256-bit key (i.e., a 64-character string).")))
             (setting/set-value-of-type! :string :embedding-secret-key new-value)))
 
 (defn- jwt-header
   "Parse a JWT `message` and return the header portion."
   [^String message]
   (let [[header] (str/split message #"\.")]
-    (json/parse-string (codecs/bytes->str (codec/base64-decode header)) keyword)))
+    (json/decode+kw (codecs/bytes->str (codec/base64-decode header)))))
 
 (defn- check-valid-alg
   "Check that the JWT `alg` isn't `none`. `none` is valid per the standard, but for obvious reasons we want to make sure
@@ -121,6 +121,6 @@
   :default true
   :export? true
   :getter  (fn []
-              (if-not (and config/ee-available? (:valid (premium-features/token-status)))
-                (setting/get-value-of-type :boolean :show-static-embed-terms)
-                false)))
+             (if-not (and config/ee-available? (:valid (premium-features/token-status)))
+               (setting/get-value-of-type :boolean :show-static-embed-terms)
+               false)))

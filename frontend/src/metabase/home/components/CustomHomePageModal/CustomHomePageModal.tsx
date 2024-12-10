@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 import { t } from "ttag";
 
 import { trackCustomHomepageDashboardEnabled } from "metabase/admin/settings/analytics";
@@ -59,7 +59,7 @@ export const CustomHomePageModal = ({
         icon: "info",
         timeout: 10000,
         id,
-        actions: [dismissUndo(id)],
+        actions: [dismissUndo({ undoId: id })],
         actionLabel: "Got it",
         canDismiss: false,
       }),

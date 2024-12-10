@@ -15,7 +15,7 @@ export default class Revision extends Component {
     objectName: PropTypes.string.isRequired,
     revision: PropTypes.object.isRequired,
     currentUser: PropTypes.object.isRequired,
-    tableMetadata: PropTypes.object.isRequired,
+    tableId: PropTypes.number.isRequired,
   };
 
   getAction() {
@@ -33,7 +33,7 @@ export default class Revision extends Component {
           return t`edited the title`;
         case "description":
           return t`edited the description`;
-        case "defintion":
+        case "definition":
           return t`edited the ` + objectName;
       }
     }
@@ -53,7 +53,7 @@ export default class Revision extends Component {
   }
 
   render() {
-    const { revision, tableMetadata, userColor } = this.props;
+    const { revision, userColor, tableId } = this.props;
 
     let message = revision.message;
     let diffKeys = Object.keys(revision.diff || {});
@@ -75,7 +75,7 @@ export default class Revision extends Component {
             style={{ borderWidth: 2 }}
           />
         </div>
-        <div className={cx(CS.flexFull, CS.mt1, CS.mb4)}>
+        <div className={cx(CS.flex1, CS.mt1, CS.mb4)}>
           <div className={cx(CS.flex, CS.mb1, CS.textMedium)}>
             <span>
               <strong>{this.getName()}</strong> {this.getAction()}
@@ -90,7 +90,7 @@ export default class Revision extends Component {
               key={key}
               property={key}
               diff={revision.diff[key]}
-              tableMetadata={tableMetadata}
+              tableId={tableId}
             />
           ))}
         </div>

@@ -3,7 +3,7 @@ import moment from "moment-timezone"; // eslint-disable-line no-restricted-impor
 import { useCallback, useState } from "react";
 
 import Calendar from "metabase/components/Calendar";
-import type Filter from "metabase-lib/v1/queries/structured/Filter";
+import type { FilterMBQL } from "metabase-lib/v1/queries/structured/Filter";
 import {
   clearDateRangeFilterTime,
   getDateRangeFilterValue,
@@ -17,8 +17,7 @@ import SpecificDatePicker from "./SpecificDatePicker";
 
 export interface BetweenPickerProps {
   className?: string;
-  filter: Filter | any[];
-  primaryColor?: string;
+  filter: FilterMBQL | any[];
   hideTimeSelectors?: boolean;
   onFilterChange: (filter: any[]) => void;
 }
@@ -26,7 +25,6 @@ export interface BetweenPickerProps {
 export const BetweenPicker = ({
   className,
   filter,
-  primaryColor,
   hideTimeSelectors,
   onFilterChange,
 }: BetweenPickerProps) => {
@@ -80,7 +78,6 @@ export const BetweenPicker = ({
       <DateContainer>
         <SpecificDatePicker
           value={startValue}
-          primaryColor={primaryColor}
           isActive={isStartDateActive}
           hideTimeSelectors={hideTimeSelectors}
           autoFocus
@@ -90,7 +87,6 @@ export const BetweenPicker = ({
         <DateDivider>–</DateDivider>
         <SpecificDatePicker
           value={endValue}
-          primaryColor={primaryColor}
           isActive={!isStartDateActive}
           hideTimeSelectors={hideTimeSelectors}
           onFocus={handleEndDateFocus}
@@ -101,7 +97,6 @@ export const BetweenPicker = ({
       <div>
         <Calendar
           isRangePicker
-          primaryColor={primaryColor}
           initial={endValue}
           selected={startValue && moment(startValue)}
           selectedEnd={endValue && moment(endValue)}
