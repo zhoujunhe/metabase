@@ -36,7 +36,7 @@
 
 ;;; --------------------------------------------- Basic CRUD Operations ----------------------------------------------
 
-(def ^:private default-max-field-search-limit 1000)
+(def ^:private default-max-field-search-limit 4000)
 
 (def ^:private FieldVisibilityType
   "Schema for a valid `Field` visibility type."
