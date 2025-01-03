@@ -147,6 +147,29 @@
    new-clause   :- [:maybe mbql.s/Filter]]
   (update outer-query :query add-filter-clause-to-inner-query stage-number new-clause))
 
+(defn- map-stages*
+  "Helper for [[map-stages]]; call that instead."
+  [f {:keys [source-query] :as inner-query}]
+  (if source-query
+    ;; Recursive case: Call `map-stages*` on the `:source-query`, then `f` on this stage. Increment the stage count.
+    (let [[new-source-query stage-count] (map-stages* f source-query)]
+      [(-> (assoc inner-query :source-query new-source-query)
+           (f stage-count))
+       (inc stage-count)])
+    ;; Base case: No `:source-query`, so just call `f` and return a `stage-count` of 1.
+    [(f inner-query 0) 1]))
+
+(defn map-stages
+  "Given a function `(f inner-query stage-number)`, recursively calls it on the stages of this (legacy MBQL)
+  `inner-query`.
+
+  The calls run postorder, that is the earliest/innermost stage first.
+
+  Returns the updated `inner-query`."
+  [f inner-query]
+  (let [[updated-inner-query _stage-count] (map-stages* f inner-query)]
+    updated-inner-query))
+
 (defn desugar-inside
   "Rewrite `:inside` filter clauses as a pair of `:between` clauses."
   [m]
@@ -276,6 +299,24 @@
       [:and
        [:>= col-default-bucket lower-bound]
        [:<  col-default-bucket upper-bound]])))
+
+(defn desugar-if
+  "Transform a `:if` expression to an `:case` expression."
+  [m]
+  (lib.util.match/replace
+    m
+    [:if & args]
+    (into [:case] args)))
+
+(defn desugar-in
+  "Transform `:in` and `:not-in` expressions to `:=` and `:!=` expressions."
+  [m]
+  (lib.util.match/replace m
+    [:in & args]
+    (into [:=] args)
+
+    [:not-in & args]
+    (into [:!=] args)))
 
 (defn desugar-does-not-contain
   "Rewrite `:does-not-contain` filter clauses as simpler `[:not [:contains ...]]` clauses.
@@ -417,6 +458,7 @@
   [filter-clause :- mbql.s/Filter]
   (-> filter-clause
       desugar-current-relative-datetime
+      desugar-in
       desugar-multi-argument-comparisons
       desugar-does-not-contain
       desugar-time-interval
@@ -427,6 +469,7 @@
       simplify-compound-filter
       desugar-temporal-extract
       desugar-during
+      desugar-if
       maybe-desugar-expression))
 
 (defmulti ^:private negate* first)
@@ -791,6 +834,11 @@
 
     :else
     x))
+
+(defn field-options
+  "Returns options in a `:field`, `:expression`, or `:aggregation` clause."
+  [[_ _ opts]]
+  opts)
 
 (mu/defn update-field-options :- mbql.s/Reference
   "Like [[clojure.core/update]], but for the options in a `:field`, `:expression`, or `:aggregation` clause."
