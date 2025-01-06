@@ -999,7 +999,7 @@
 
 (def ^:const result-limit
   "How many results to return when chain filtering"
-  1000)
+  2000)
 
 (defn- get-template-tag
   "Fetch the `:field` clause from `dashcard` referenced by `:template-tag`.
