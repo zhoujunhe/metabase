@@ -55,6 +55,9 @@ Fetch a specific Collection's items with the following options:
                    when `is_not_pinned`, return non pinned objects only.
                    when `all`, return everything. By default returns everything.
 
+  Note that this endpoint should return results in a similar shape to `/api/dashboard/:id/items`, so if this is
+  changed, that should too.
+
 ### PARAMS:
 
 -  **`id`** value must be an integer greater than zero.
@@ -70,6 +73,8 @@ Fetch a specific Collection's items with the following options:
 -  **`sort_direction`** nullable enum of desc, asc.
 
 -  **`official_collections_first`** nullable value must be a valid boolean string ('true' or 'false').
+
+-  **`show_dashboard_questions`** nullable value must be a valid boolean string ('true' or 'false').
 
 ## `GET /api/collection/:id/timelines`
 
@@ -117,6 +122,9 @@ Fetch objects that the current user should see at their root level. As mentioned
   By default, this will show the 'normal' Collections namespace; to view a different Collections namespace, such as
   `snippets`, you can pass the `?namespace=` parameter.
 
+  Note that this endpoint should return results in a similar shape to `/api/dashboard/:id/items`, so if this is
+  changed, that should too.
+
 ### PARAMS:
 
 -  **`models`** nullable vector of enum of dashboard, dataset, no_models, timeline, snippet, collection, pulse, metric, card.
@@ -132,6 +140,8 @@ Fetch objects that the current user should see at their root level. As mentioned
 -  **`sort_direction`** nullable enum of desc, asc.
 
 -  **`official_collections_first`** nullable value must be a valid boolean string ('true' or 'false').
+
+-  **`show_dashboard_questions`** nullable value must be a valid boolean string ('true' or 'false').
 
 ## `GET /api/collection/root/timelines`
 
@@ -223,10 +233,14 @@ Modify an existing Collection, including archiving or unarchiving it, or moving 
 
 ## `PUT /api/collection/graph`
 
-Do a batch update of Collections Permissions by passing in a modified graph.
-  Will overwrite parts of the graph that are present in the request, and leave the rest unchanged.
+Do a batch update of Collections Permissions by passing in a modified graph. Will overwrite parts of the graph that
+  are present in the request, and leave the rest unchanged.
 
-  If the `skip_graph` query parameter is true, it will only return the current revision.
+  If the `force` query parameter is `true`, a `revision` number is not required. The provided graph will be persisted
+  as-is, and has the potential to clobber other writes that happened since the last read.
+
+  If the `skip_graph` query parameter is `true`, it will only return the current revision, not the entire permissions
+  graph.
 
 You must be a superuser to do this.
 
@@ -234,11 +248,13 @@ You must be a superuser to do this.
 
 -  **`namespace`** nullable value must be a non-blank string.
 
--  **`revision`** value must be an integer.
+-  **`revision`** nullable value must be an integer.
 
 -  **`groups`** map.
 
--  **`skip_graph`** nullable value must be a valid boolean string ('true' or 'false').
+-  **`skip-graph`** nullable value must be a valid boolean string ('true' or 'false').
+
+-  **`force`** nullable value must be a valid boolean string ('true' or 'false').
 
 ---
 

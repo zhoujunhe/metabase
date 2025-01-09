@@ -50,7 +50,10 @@ describe("scenarios > filters > sql filters > values source", () => {
       SQLFilter.chooseType("Field Filter");
       FieldFilter.mapTo({ table: "Products", field: "Category" });
       H.setFilterQuestionSource({ question: "MBQL source", field: "Category" });
-      H.saveQuestion("SQL filter");
+      H.saveQuestion("SQL filter", undefined, {
+        tab: "Browse",
+        path: ["Our analytics"],
+      });
 
       FieldFilter.openEntryForm();
       checkFilterValueNotInList("Doohickey");
@@ -73,7 +76,10 @@ describe("scenarios > filters > sql filters > values source", () => {
       );
       H.setDropdownFilterType();
       H.setFilterQuestionSource({ question: "MBQL source", field: "Category" });
-      H.saveQuestion("SQL filter");
+      H.saveQuestion("SQL filter", undefined, {
+        tab: "Browse",
+        path: ["Our analytics"],
+      });
 
       FieldFilter.openEntryForm();
       checkFilterValueNotInList("Doohickey");
@@ -131,7 +137,10 @@ describe("scenarios > filters > sql filters > values source", () => {
       cy.wait("@parameterValues");
       checkFilterValueInList("A");
 
-      H.saveQuestion("SQL filter");
+      H.saveQuestion("SQL filter", undefined, {
+        tab: "Browse",
+        path: ["Our analytics"],
+      });
       FieldFilter.openEntryForm();
       cy.wait("@cardParameterValues");
       checkFilterValueInList("A");
@@ -222,7 +231,10 @@ describe("scenarios > filters > sql filters > values source", () => {
       FieldFilter.mapTo({ table: "Products", field: "Ean" });
       FieldFilter.setWidgetType("String");
       H.setFilterQuestionSource({ question: "SQL source", field: "EAN" });
-      H.saveQuestion("SQL filter");
+      H.saveQuestion("SQL filter", undefined, {
+        tab: "Browse",
+        path: ["Our analytics"],
+      });
 
       FieldFilter.openEntryForm();
       checkFilterValueNotInList("0001664425970");
@@ -304,7 +316,10 @@ describe("scenarios > filters > sql filters > values source", () => {
       FieldFilter.mapTo({ table: "Products", field: "Ean" });
       FieldFilter.setWidgetType("String");
       H.setFilterListSource({ values: ["1018947080336", "7663515285824"] });
-      H.saveQuestion("SQL filter");
+      H.saveQuestion("SQL filter", undefined, {
+        tab: "Browse",
+        path: ["Our analytics"],
+      });
 
       FieldFilter.openEntryForm();
       checkFilterValueNotInList("0001664425970");
@@ -355,7 +370,10 @@ describe("scenarios > filters > sql filters > values source", () => {
       H.setFilterListSource({
         values: [["1018947080336", "Custom Label"], "7663515285824"],
       });
-      H.saveQuestion("SQL filter");
+      H.saveQuestion("SQL filter", undefined, {
+        tab: "Browse",
+        path: ["Our analytics"],
+      });
 
       FieldFilter.openEntryForm();
       checkFilterValueNotInList("0001664425970");
@@ -411,14 +429,17 @@ describe("scenarios > filters > sql filters > values source", () => {
       H.setFilterListSource({
         values: ["1018947080336", "7663515285824"],
       });
-      H.saveQuestion("SQL filter");
+      H.saveQuestion("SQL filter", undefined, {
+        tab: "Browse",
+        path: ["Our analytics"],
+      });
 
       FieldFilter.openEntryForm();
 
-      H.multiAutocompleteInput().type("101");
-      H.popover().last().findByText("1018947080336").click();
+      H.fieldValuesInput().type("101");
+      H.popover().findByText("1018947080336").click();
 
-      H.multiAutocompleteValue(0)
+      H.fieldValuesValue(0)
         .should("be.visible")
         .should("contain", "1018947080336");
       H.popover().button("Add filter").click();
@@ -438,9 +459,9 @@ describe("scenarios > filters > sql filters > values source", () => {
 
       FieldFilter.openEntryForm();
 
-      H.multiAutocompleteInput().type("101");
-      H.popover().last().findByText("1018947080336").click();
-      H.multiAutocompleteValue(0)
+      H.fieldValuesInput().type("101");
+      H.popover().findByText("1018947080336").click();
+      H.fieldValuesValue(0)
         .should("be.visible")
         .should("contain", "1018947080336");
       H.popover().button("Add filter").click();
@@ -460,9 +481,9 @@ describe("scenarios > filters > sql filters > values source", () => {
 
       FieldFilter.openEntryForm();
 
-      H.multiAutocompleteInput().type("101");
-      H.popover().last().findByText("1018947080336").click();
-      H.multiAutocompleteValue(0)
+      H.fieldValuesInput().type("101");
+      H.popover().findByText("1018947080336").click();
+      H.fieldValuesValue(0)
         .should("be.visible")
         .should("contain", "1018947080336");
       H.popover().button("Add filter").click();
@@ -484,14 +505,17 @@ describe("scenarios > filters > sql filters > values source", () => {
       H.setFilterListSource({
         values: [["1018947080336", "Custom Label"], "7663515285824"],
       });
-      H.saveQuestion("SQL filter");
+      H.saveQuestion("SQL filter", undefined, {
+        tab: "Browse",
+        path: ["Our analytics"],
+      });
 
       FieldFilter.openEntryForm();
 
-      H.multiAutocompleteInput().type("Custom Label");
+      H.fieldValuesInput().type("Custom Label");
       H.popover().last().findByText("1018947080336").should("not.exist");
       H.popover().last().findByText("Custom Label").click();
-      H.multiAutocompleteValue(0)
+      H.fieldValuesValue(0)
         .should("be.visible")
         .should("contain", "Custom Label");
       H.popover().button("Add filter").click();
@@ -511,10 +535,10 @@ describe("scenarios > filters > sql filters > values source", () => {
 
       FieldFilter.openEntryForm();
 
-      H.multiAutocompleteInput().type("Custom Label");
+      H.fieldValuesInput().type("Custom Label");
       H.popover().last().findByText("1018947080336").should("not.exist");
       H.popover().last().findByText("Custom Label").click();
-      H.multiAutocompleteValue(0)
+      H.fieldValuesValue(0)
         .should("be.visible")
         .should("contain", "Custom Label");
       H.popover().button("Add filter").click();
@@ -534,10 +558,10 @@ describe("scenarios > filters > sql filters > values source", () => {
 
       FieldFilter.openEntryForm();
 
-      H.multiAutocompleteInput().type("Custom Label");
+      H.fieldValuesInput().type("Custom Label");
       H.popover().last().findByText("1018947080336").should("not.exist");
       H.popover().last().findByText("Custom Label").click();
-      H.multiAutocompleteValue(0)
+      H.fieldValuesValue(0)
         .should("be.visible")
         .should("contain", "Custom Label");
       H.popover().button("Add filter").click();
@@ -623,7 +647,10 @@ describe("scenarios > filters > sql filters > values source > number parameter",
       H.setFilterListSource({
         values: [["10", "Ten"], ["20", "Twenty"], "30"],
       });
-      H.saveQuestion("SQL filter");
+      H.saveQuestion("SQL filter", undefined, {
+        tab: "Browse",
+        path: ["Our analytics"],
+      });
 
       FieldFilter.openEntryForm();
       checkFilterValueNotInList("10");
@@ -685,10 +712,13 @@ describe("scenarios > filters > sql filters > values source > number parameter",
       H.setFilterListSource({
         values: [["10", "Ten"], ["20", "Twenty"], "30"],
       });
-      H.saveQuestion("SQL filter");
+      H.saveQuestion("SQL filter", undefined, {
+        tab: "Browse",
+        path: ["Our analytics"],
+      });
 
       FieldFilter.openEntryForm();
-      H.multiAutocompleteInput().type("Tw");
+      H.fieldValuesInput().type("Tw");
       checkFilterValueNotInList("10");
       checkFilterValueNotInList("20");
       H.popover().last().findByText("Twenty").click();
@@ -762,7 +792,10 @@ describe("scenarios > filters > sql filters > values source > number parameter",
       H.setFilterListSource({
         values: [["10", "Ten"], ["20", "Twenty"], "30"],
       });
-      H.saveQuestion("SQL filter");
+      H.saveQuestion("SQL filter", undefined, {
+        tab: "Browse",
+        path: ["Our analytics"],
+      });
 
       FieldFilter.openEntryForm();
 
@@ -794,7 +827,7 @@ describe("scenarios > filters > sql filters > values source > number parameter",
 
       FieldFilter.openEntryForm();
 
-      H.multiAutocompleteInput().type("Twenty");
+      H.multiAutocompleteInput().type("Tw");
       H.popover().last().findByText("Twenty").click();
       H.multiAutocompleteValue(0)
         .should("be.visible")
@@ -825,7 +858,10 @@ describe("scenarios > filters > sql filters > values source > number parameter",
       cy.button("Add filter").click();
     });
 
-    H.saveQuestion("SQL filter");
+    H.saveQuestion("SQL filter", undefined, {
+      tab: "Browse",
+      path: ["Our analytics"],
+    });
 
     cy.findByLabelText("X").should("contain.text", "Twenty");
     SQLFilter.runQuery("cardQuery");
@@ -840,7 +876,10 @@ describe("scenarios > filters > sql filters > values source > number parameter",
     H.setFilterListSource({
       values: ["Foo", "Bar"],
     });
-    H.saveQuestion("SQL filter");
+    H.saveQuestion("SQL filter", undefined, {
+      tab: "Browse",
+      path: ["Our analytics"],
+    });
 
     SQLFilter.openTypePickerFromSelectedFilterType("Text");
     SQLFilter.chooseType("Number");

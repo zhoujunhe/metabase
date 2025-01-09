@@ -21,6 +21,7 @@
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
    [metabase.util.malli.humanize :as mu.humanize]
+   [metabase.util.malli.registry :as mr]
    [metabase.util.malli.schema :as ms]
    [peridot.multipart]
    [ring.util.codec :as codec])
@@ -370,7 +371,7 @@
   [args]
   (let [parsed (http-client-args-parser args)]
     (when (= parsed :malli.core/invalid)
-      (let [explain-data (mc/explain http-client-args args)]
+      (let [explain-data (mr/explain http-client-args args)]
         (throw (ex-info (str "Invalid http-client args: " (mu.humanize/humanize explain-data))
                         explain-data))))
     (cond-> parsed
@@ -435,7 +436,7 @@
    *  `query-params`         Key-value pairs that will be encoded and added to the URL as query params
 
   Note: One benefit of [[client]] over [[real-client]] is the call site and API execution are on the same thread,
-  so it's possible to run a test inside a transaction and bindings will works."
+  so it's possible to run a test inside a transaction and bindings will work."
   {:arglists '([credentials? method expected-status-code? endpoint request-options? http-body-map? & {:as query-params}])}
   [& args]
   (:body (apply client-full-response args)))

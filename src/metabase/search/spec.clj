@@ -3,11 +3,11 @@
    [clojure.set :as set]
    [clojure.string :as str]
    [clojure.walk :as walk]
-   [malli.core :as mc]
    [malli.error :as me]
    [metabase.config :as config]
    [metabase.search.config :as search.config]
    [metabase.util :as u]
+   [metabase.util.malli.registry :as mr]
    [toucan2.core :as t2]
    [toucan2.tools.transformed :as t2.transformed]))
 
@@ -23,6 +23,26 @@
   - vector: calculated by the given expression
   - map: a sub-select"
   [:union :boolean :keyword vector? :map])
+
+(def attr-types
+  "The abstract types of each attribute."
+  {:archived            :boolean
+   :collection-id       :pk
+   :created-at          :timestamp
+   :creator-id          :pk
+   :dashboardcard-count :int
+   :database-id         :pk
+   :id                  :pk
+   :last-edited-at      :timestamp
+   :last-editor-id      :pk
+   :last-viewed-at      :timestamp
+   :name                :text
+   :native-query        nil
+   :official-collection :boolean
+   :pinned              :boolean
+   :updated-at          :timestamp
+   :verified            :boolean
+   :view-count          :int})
 
 (def ^:private explicit-attrs
   "These attributes must be explicitly defined, omitting them could be a source of bugs."
@@ -53,6 +73,9 @@
 (def ^:private attr-keys
   "Keys of a search-model that correspond to concrete columns in the index"
   (into explicit-attrs optional-attrs))
+
+;; Make sure to keep attr-types up to date
+(assert (= (set (keys attr-types)) (set attr-keys)))
 
 (def attr-columns
   "Columns of an ingestion query that correspond to concrete columns in the index"
@@ -127,8 +150,9 @@
 (defn- find-fields-kw [kw]
   ;; Filter out SQL functions
   (when-not (str/starts-with? (name kw) "%")
-    (let [table (get-table kw)]
-      (list [(or table :this) (remove-table table kw)]))))
+    (when-not (#{:else :integer :float} kw)
+      (let [table (get-table kw)]
+        (list [(or table :this) (remove-table table kw)])))))
 
 (defn- find-fields-expr [expr]
   (cond
@@ -236,7 +260,7 @@
 (defn validate-spec!
   "Check whether a given specification is valid"
   [spec]
-  (when-let [info (mc/explain Specification spec)]
+  (when-let [info (mr/explain Specification spec)]
     (throw (ex-info (str "Invalid search specification for " (:name spec) ": " (me/humanize info)) info)))
   (doseq [table (keys (find-fields spec))
           :when (not= :this table)]

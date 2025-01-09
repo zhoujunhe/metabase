@@ -61,7 +61,7 @@ describe("issue 13289", () => {
     cy.button("Done").click();
   });
 
-  it("should allow 'zoom in' drill-through when grouped by custom column (metabase#13289) (metabase#13289)", () => {
+  it("should allow 'zoom in' drill-through when grouped by custom column (metabase#13289)", () => {
     H.summarize({ mode: "notebook" });
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Count of rows").click();
@@ -288,7 +288,7 @@ describe("issue 18747", () => {
   function addValueToParameterFilter() {
     H.filterWidget().click();
     H.popover().within(() => {
-      cy.findByRole("searchbox").type("14");
+      H.fieldValuesInput().type("14");
       cy.button("Add filter").click();
     });
   }
@@ -402,53 +402,21 @@ describe("issue 19744", () => {
     },
     display: "bar",
   };
-  function saveQuestion(name) {
-    cy.intercept("POST", "/api/card").as("saveQuestion");
-
-    cy.findByText("Save").click();
-    cy.findByLabelText("Name").type(name);
-
-    H.modal().button("Save").click();
-
-    cy.findByText("Not now").click();
-
-    cy.wait("@saveQuestion").then(({ response: { body } }) => {
-      cy.wrap(body.id).as("questionId");
-    });
-  }
-
-  function addQuestionToDashboardAndVisit() {
-    cy.createDashboard().then(({ body: { id: dashboard_id } }) => {
-      cy.get("@questionId").then(card_id => {
-        H.addOrUpdateDashboardCard({
-          card_id,
-          dashboard_id,
-          card: { size_x: 21, size_y: 10 },
-        });
-      });
-
-      H.visitDashboard(dashboard_id);
-    });
-  }
 
   beforeEach(() => {
     H.restore();
     cy.signInAsAdmin();
-
-    // For this specific repro, it's crucial to first visit the question in order to load the `results_metadata`...
-    H.visitQuestionAdhoc(questionDetails);
-    // ...and then to save it using the UI
-    saveQuestion("19744");
-
-    addQuestionToDashboardAndVisit();
   });
 
   it("custom column after aggregation shouldn't limit or change the behavior of dashboard filters (metabase#19744)", () => {
-    H.editDashboard();
+    // For this specific repro, it's crucial to first visit the question in order to load the `results_metadata`...
+    H.visitQuestionAdhoc(questionDetails);
+    // ...and then to save it using the UI
+    H.saveQuestion("19744");
 
     H.setFilter("Date picker", "All Options");
 
-    cy.findByTestId("dashcard-container").contains("Select…").click();
+    H.getDashboardCard(1).findByText("Select…").click();
     H.popover().contains("Created At");
   });
 });
@@ -498,7 +466,7 @@ describe("issue 19745", () => {
         H.openNotebook();
         updateExpressions();
         H.visualize();
-        cy.findByTestId("viz-settings-button").click();
+        H.openVizSettingsSidebar();
         cy.findByRole("button", { name: "Add or remove columns" }).click();
         cy.findByLabelText("Count").should("not.be.checked").click();
         updateQuestion();
@@ -829,7 +797,7 @@ describe.skip("issue 25189", () => {
   });
 });
 
-["postgres", "mysql"].forEach(dialect => {
+["postgres" /*, "mysql" */].forEach(dialect => {
   describe(`issue 27745 (${dialect})`, { tags: "@external" }, () => {
     const tableName = "colors27745";
 
@@ -846,6 +814,7 @@ describe.skip("issue 25189", () => {
       H.startNewQuestion();
 
       H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Collections").click();
         cy.findByPlaceholderText("Search this collection or everywhere…").type(
           "colors",
         );

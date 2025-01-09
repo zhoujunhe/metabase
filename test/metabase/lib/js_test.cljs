@@ -2,7 +2,6 @@
   (:require
    [clojure.test :refer [are deftest is testing]]
    [goog.object :as gobject]
-   [malli.core :as mc]
    [medley.core :as m]
    [metabase.lib.convert :as lib.convert]
    [metabase.lib.core :as lib]
@@ -12,7 +11,9 @@
    [metabase.lib.test-metadata :as meta]
    [metabase.lib.test-util :as lib.tu]
    [metabase.test-runner.assert-exprs.approximately-equal]
-   [metabase.test.util.js :as test.js]))
+   [metabase.test.util.js :as test.js]
+   [metabase.util :as u]
+   [metabase.util.malli.registry :as mr]))
 
 (deftest ^:parallel query=-test
   (doseq [q1 [nil js/undefined]
@@ -56,6 +57,36 @@
       (is (lib.js/query= q1 q2))
       (is (not (lib.js/query= q1 q3)))
       (is (not (lib.js/query= q2 q3))))))
+
+(deftest ^:parallel query=-idents-test
+  (testing "idents are ignored for query="
+    (testing "on legacy queries"
+      (let [q1 #js {"query" #js {"source-table"       1
+                                 "aggregation"        #js [#js ["count"]]
+                                 "aggregation-idents" #js {"0" (u/generate-nano-id)}
+                                 "breakout"           #js [#js ["field" 3 nil]]
+                                 "breakout-idents"    #js {"0" (u/generate-nano-id)}
+                                 "expressions"        #js {"some_expr" #js ["field" 12 nil]}
+                                 "expression-idents"  #js {"some_expr" (u/generate-nano-id)}}}
+            ;; Same query, but idents will be different.
+            q2 #js {"query" #js {"source-table"       1
+                                 "aggregation"        #js [#js ["count"]]
+                                 "aggregation-idents" #js {"0" (u/generate-nano-id)}
+                                 "breakout"           #js [#js ["field" 3 nil]]
+                                 "breakout-idents"    #js {"0" (u/generate-nano-id)}
+                                 "expressions"        #js {"some_expr" #js ["field" 12 nil]}
+                                 "expression-idents"  #js {"some_expr" (u/generate-nano-id)}}}]
+        (is (lib.js/query= q1 q2))))
+    (testing "on pMBQL queries"
+      (let [q1 (-> (lib/query meta/metadata-provider (meta/table-metadata :orders))
+                   (lib/expression "some_expr" (lib/+ (meta/field-metadata :orders :subtotal) 1))
+                   (lib/aggregate (lib/count))
+                   (lib/breakout (meta/field-metadata :products :category)))
+            q2 (-> (lib/query meta/metadata-provider (meta/table-metadata :orders))
+                   (lib/expression "some_expr" (lib/+ (meta/field-metadata :orders :subtotal) 1))
+                   (lib/aggregate (lib/count))
+                   (lib/breakout (meta/field-metadata :products :category)))]
+        (is (lib.js/query= q1 q2))))))
 
 (deftype FakeJoin [guts]
   Object
@@ -387,7 +418,7 @@
 
 (deftest ^:parallel expression-clause-normalization-test
   (are [x y] (do
-               (is (mc/validate :metabase.lib.schema.expression/expression y))
+               (is (mr/validate :metabase.lib.schema.expression/expression y))
                (is (=? x y)))
 
     [:time-interval {} [:field {} int?] :current :day]

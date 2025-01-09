@@ -53,6 +53,9 @@ on:
         description: Apply to OSS
         type: boolean
         default: true
+      dot-x-tag:
+        type: boolean
+        default: false
 
 jobs:
   green-check-stub:
@@ -101,21 +104,14 @@ jobs:
             oss: getCanonicalVersion(version, 'oss'),
           };
 
-          const ossReleased = await hasBeenReleased({
+          const released = await hasBeenReleased({
             github,
             owner: context.repo.owner,
             repo: context.repo.repo,
             version: versions.oss,
           });
 
-          const eeReleased = await hasBeenReleased({
-            github,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            version: versions.ee,
-          });
-
-          if (!ossReleased || !eeReleased) {
+          if (!released) {
             throw new Error("This version has not been released yet!", version);
           }
 
@@ -281,25 +277,24 @@ jobs:
       with:
         fetch-depth: 0 # we want all branches and tags
         fetch-tags: true
-    - name: Add and push git tag
+    - name: Add and push git tag for nightly/beta/latest
+      if: ${{ !inputs.dot-x-tag }}
       run: | # sh
-
         if [[ "${{ matrix.edition }}" == "ee" ]]; then
-          git tag -f ${{ inputs.tag_name }}-ee ${{ needs.check-version.outputs.ee }}
+          git tag -f ${{ inputs.tag_name }}-ee ${{ needs.check-version.outputs.oss }}
           git push origin -f ${{ inputs.tag_name }}-ee
         elif [[ "${{ matrix.edition }}" == "oss" ]]; then
           git tag -f ${{ inputs.tag_name }}-oss ${{ needs.check-version.outputs.oss }}
           git push origin -f ${{ inputs.tag_name }}-oss
         fi
-
-  update-release-log:
-    needs: check-version
-    uses: ./.github/workflows/release-log.yml
-    with:
-      version: ${{ fromJSON(vars.CURRENT_VERSION) }} # cast string to number
-    secrets: inherit
+    - name: Add and push git tag for dot X tags
+      if: ${{ inputs.dot-x-tag }}
+      run: | # sh
+        git tag -f ${{ inputs.tag_name }} ${{ needs.check-version.outputs.oss }}
+        git push origin -f ${{ inputs.tag_name }}
 
   update-version-info:
+    if: ${{ !inputs.dot-x-tag }}
     runs-on: ubuntu-22.04
     needs: check-version
     timeout-minutes: 5

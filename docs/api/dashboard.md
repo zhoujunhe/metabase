@@ -62,6 +62,14 @@ Get Dashboard with ID.
 
 -  **`dashboard-load-id`**
 
+## `GET /api/dashboard/:id/items`
+
+Get Dashboard with ID.
+
+### PARAMS:
+
+-  **`id`** value must be an integer greater than zero.
+
 ## `GET /api/dashboard/:id/params/:param-key/search/:query`
 
 Fetch possible values of the parameter whose ID is `:param-key` that contain `:query`. Optionally restrict
@@ -220,7 +228,9 @@ Run the query associated with a Saved Question (`Card`) in the context of a `Das
 
 -  **`parameters`** nullable value must be a valid JSON string.
 
--  **`format_rows`** nullable boolean.
+-  **`format_rows`** nullable value must be a valid boolean string ('true' or 'false').
+
+-  **`pivot_results`** nullable value must be a valid boolean string ('true' or 'false').
 
 -  **`request-parameters`**
 

@@ -21,8 +21,8 @@
    [metabase.notification.core :as notification]
    [metabase.plugins :as plugins]
    [metabase.plugins.classloader :as classloader]
+   [metabase.premium-features.core :as premium-features :refer [defenterprise]]
    [metabase.public-settings :as public-settings]
-   [metabase.public-settings.premium-features :as premium-features :refer [defenterprise]]
    [metabase.sample-data :as sample-data]
    [metabase.server.core :as server]
    [metabase.setup :as setup]
@@ -153,7 +153,7 @@
     (init-status/set-progress! 0.8))
 
   (ensure-audit-db-installed!)
-  (notification/truncate-then-seed-notification!)
+  (notification/seed-notification!)
   (init-status/set-progress! 0.9)
 
   (embed.settings/check-and-sync-settings-on-startup! env/env)

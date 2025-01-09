@@ -33,6 +33,7 @@ For an introduction to expressions, check out the [overview of custom expression
     - [between](#between)
     - [case](./expressions/case.md)
     - [coalesce](./expressions/coalesce.md)
+    - [if](./expressions/case.md)
     - [isnull](./expressions/isnull.md)
     - [notnull](#notnull)
 
@@ -55,6 +56,7 @@ For an introduction to expressions, check out the [overview of custom expression
     - [domain](#domain)
     - [endsWith](#endswith)
     - [host](#host)
+    - [in](#in)
     - [isempty](./expressions/isempty.md)
     - [ltrim](#ltrim)
     - [length](#length)
@@ -92,6 +94,7 @@ For an introduction to expressions, check out the [overview of custom expression
     - [year](#year)
 
   - [Window functions](#window-functions)
+
     - [Offset](./expressions/offset.md)
     - [CumulativeCount](./expressions/cumulative.md)
     - [CumulativeSum](./expressions/cumulative.md)
@@ -243,7 +246,7 @@ Related: [interval](#interval).
 
 ### [case](./expressions/case.md)
 
-Tests an expression against a list of cases and returns the corresponding value of the first matching case, with an optional default value if nothing else is met.
+`case` (alias `if`) tests an expression against a list of cases and returns the corresponding value of the first matching case, with an optional default value if nothing else is met.
 
 Syntax: `case(condition, output, …)`
 
@@ -256,6 +259,14 @@ Looks at the values in each argument in order and returns the first non-null val
 Syntax: `coalesce(value1, value2, …)`
 
 Example: `coalesce([Comments], [Notes], "No comments")`. If both the `Comments` and `Notes` columns are null for that row, the expression will return the string "No comments".
+
+### [if](./expressions/case.md)
+
+`if` is an alias for [case](./expressions/case.md). Tests an expression against a list of conditionals and returns the corresponding value of the first matching case, with an optional default value if nothing else is met.
+
+Syntax: `if(condition, output, ...)`
+
+Example: `if([Weight] > 200, "Large", [Weight] > 150, "Medium", "Small")` If a `Weight` is 250, the expression would return "Large". In this case, the default value is "Small", so any `Weight` 150 or less would return "Small".
 
 ### [isnull](./expressions/isnull.md)
 
@@ -439,6 +450,20 @@ Syntax: `host(urlOrEmail)`.
 Example: `host([Page URL])`. If the `[Page URL]` column had a value of `https://www.metabase.com`, `host([Page URL])` would return `metabase.com`. `host([Email])` would extract `metabase.com` from `hello@metabase.com`.
 
 Related: [domain](#domain), [subdomain](#subdomain).
+
+### [in](./expressions/in.md)
+
+Returns true if `value1` equals `value2` (or `value3`, etc., if specified).
+
+```
+in(value1, value2, ...)
+```
+
+`value1` is the column or value to check.
+
+`value2, ...` is the list of columns or values to check.
+
+Related: [contains](#contains), [startsWith](#startswith), [endsWith](#endswith).
 
 ### [isempty](./expressions/isempty.md)
 

@@ -23,6 +23,7 @@
    [metabase.legacy-mbql.util :as mbql.u]
    [metabase.plugins.classloader :as classloader]
    [metabase.util :as u]
+   [metabase.util.encryption :as encryption]
    [metabase.util.i18n :refer [trs]]
    [metabase.util.log :as log]))
 
@@ -144,13 +145,6 @@
   (println "Language:"        (System/getProperty "user.language"))
   (println "File encoding:"   (System/getProperty "file.encoding")))
 
-(defn ^:command api-documentation
-  "Generate a markdown file containing documentation for all API endpoints. This is written to a file called
-  `docs/api-documentation.md`."
-  []
-  (classloader/require 'metabase.cmd.endpoint-dox)
-  ((resolve 'metabase.cmd.endpoint-dox/generate-dox!)))
-
 (defn ^:command environment-variables-documentation
   "Generates a markdown file containing documentation for environment variables relevant to configuring Metabase.
   The command only includes environment variables registered as defsettings.
@@ -158,6 +152,13 @@
   []
   (classloader/require 'metabase.cmd.env-var-dox)
   ((resolve 'metabase.cmd.env-var-dox/generate-dox!)))
+
+(defn ^:command config-template
+  "Generates a markdown file with some documentation and an example configuration file in YAML. The YAML template includes Metabase settings and their defaults.
+   Metabase will save the template as `docs/configuring-metabase/config-template.md`."
+  []
+  (classloader/require 'metabase.cmd.config-file-gen)
+  ((resolve 'metabase.cmd.config-file-gen/generate-config-file-doc!)))
 
 (defn ^:command driver-methods
   "Print a list of all multimethods available for a driver to implement, optionally with their docstrings."
@@ -250,6 +251,22 @@
     (system-exit! 0)
     (catch Throwable e
       (log/error e "ERROR ROTATING KEY.")
+      (system-exit! 1))))
+
+(defn ^:command remove-encryption
+  "Decrypts data in the metabase database. The MB_ENCRYPTION_SECRET_KEY environment variable has to be set to
+  the current key"
+  []
+  (classloader/require 'metabase.cmd.remove-encryption)
+  (when-not (encryption/default-encryption-enabled?)
+    (log/error "MB_ENCRYPTION_SECRET_KEY environment variable has not been set")
+    (system-exit! 1))
+  (try
+    ((resolve 'metabase.cmd.remove-encryption/remove-encryption!))
+    (log/info "Encryption removed OK.")
+    (system-exit! 0)
+    (catch Throwable e
+      (log/error e "ERROR REMOVING ENCRYPTION.")
       (system-exit! 1))))
 
 ;;; ------------------------------------------------ Validate Commands ----------------------------------------------

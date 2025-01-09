@@ -9,7 +9,7 @@
    [metabase.models.interface :as mi]
    [metabase.models.setting :as setting :refer [defsetting]]
    [metabase.plugins.classloader :as classloader]
-   [metabase.public-settings.premium-features :as premium-features]
+   [metabase.premium-features.core :as premium-features]
    [metabase.util :as u]
    [metabase.util.fonts :as u.fonts]
    [metabase.util.i18n
@@ -226,7 +226,7 @@ x.com")
   "In the interest of respecting everyone's privacy and keeping things as anonymous as possible we have a *different*
   site-wide UUID that we use for the EE/premium features token feature check API calls. It works in fundamentally the
   same way as [[site-uuid]] but should only be used by the token check logic
-  in [[metabase.public-settings.premium-features/fetch-token-status]]. (`site-uuid` is used for anonymous
+  in [[metabase.premium-features.core/fetch-token-status]]. (`site-uuid` is used for anonymous
   analytics/stats and if we sent it along with the premium features token check API request it would no longer be
   anonymous.)"
   :encryption :when-encryption-key-set
@@ -710,6 +710,7 @@ See [fonts](../configuring-metabase/fonts.md).")
   :visibility :public
   :type       :string
   :audit      :getter
+  :default   "https://www.metabase.com/help/premium"
   :feature    :whitelabel
   :setter     (fn [new-value]
                 (let [new-value-string (str new-value)]

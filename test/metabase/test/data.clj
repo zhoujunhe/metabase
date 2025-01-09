@@ -151,8 +151,9 @@
    (as-> inner-query <>
      (mbql-query-impl/parse-tokens table-name <>)
      (mbql-query-impl/maybe-add-source-table <> table-name)
+     (mbql-query-impl/wrap-populate-idents <>)
      (mbql-query-impl/wrap-inner-query <>)
-     (vary-meta <> assoc :type :mbql))))
+     (vary-meta <> assoc :type :mbql-query))))
 
 (defmacro query
   "Like `mbql-query`, but operates on an entire 'outer' query rather than the 'inner' MBQL query. Like `mbql-query`,
@@ -165,10 +166,12 @@
   ([table-name outer-query]
    {:pre [(map? outer-query)]}
    (merge
+    ^{:type :mbql-query}
     {:database `(id)
      :type     :query}
     (cond-> (mbql-query-impl/parse-tokens table-name outer-query)
-      (not (:native outer-query)) (update :query mbql-query-impl/maybe-add-source-table table-name)))))
+      (not (:native outer-query)) (-> (update :query mbql-query-impl/maybe-add-source-table table-name)
+                                      (update :query mbql-query-impl/wrap-populate-idents))))))
 
 (defmacro native-query
   "Like `mbql-query`, but for native queries."
@@ -266,7 +269,7 @@
   [& body]
   `(data.impl/do-with-temp-copy-of-db (^:once fn* [] ~@body)))
 
-;;; TODO FIXME -- rename this to `with-empty-h2-app-db`
+;;; TODO FIXME -- rename this to `with-empty-h2-app-db!`
 #_{:clj-kondo/ignore [:metabase/test-helpers-use-non-thread-safe-functions]}
 (defmacro with-empty-h2-app-db
   "Runs `body` under a new, blank, H2 application database (randomly named), in which all model tables have been

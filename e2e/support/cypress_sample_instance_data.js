@@ -111,6 +111,10 @@ export const NODATA_USER_ID = _.findWhere(SAMPLE_INSTANCE_DATA.users, {
   email: "nodata@metabase.test",
 }).id;
 
+export const IMPERSONATED_USER_ID = _.findWhere(SAMPLE_INSTANCE_DATA.users, {
+  email: "impersonated@metabase.test",
+}).id;
+
 export const ADMINISTRATORS_GROUP_ID = _.findWhere(
   SAMPLE_INSTANCE_DATA.groups,
   { name: "Administrators" },
@@ -135,3 +139,5 @@ export const NOSQL_GROUP_ID = _.findWhere(SAMPLE_INSTANCE_DATA.groups, {
 export const READONLY_GROUP_ID = _.findWhere(SAMPLE_INSTANCE_DATA.groups, {
   name: "readonly",
 }).id;
+
+export const LOGIN_CACHE = SAMPLE_INSTANCE_DATA.loginCache;

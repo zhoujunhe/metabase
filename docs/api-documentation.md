@@ -7,7 +7,7 @@ title: "Metabase API documentation"
 _These reference files were generated from source comments by running:_
 
 ```
-clojure -M:ee:run api-documentation
+clojure -M:ee:doc api-documentation
 ```
 
 ## About the Metabase API
@@ -17,11 +17,15 @@ clojure -M:ee:run api-documentation
 
 ## API tutorial
 
-Check out an introduction to the [Metabase API](https://www.metabase.com/learn/metabase-basics/administration/administration-and-operation//metabase-api).
+Check out an introduction to the [Metabase API](https://www.metabase.com/learn/administration/metabase-api.html).
 
 ## API keys
 
 Create keys to authenticate programmatic requests to your Metabase. See [API keys](./people-and-groups/api-keys.md).
+
+## API changelog
+
+For breaking changes, see the API [changelog](./developers-guide/api-changelog.md).
 
 ## API endpoints
 
@@ -40,6 +44,7 @@ _* indicates endpoints used for features available on [paid plans](https://www.m
 - [Bookmark](api/bookmark.md)
 - [Cache](api/cache.md)
 - [Card](api/card.md)
+- [Cards](api/cards.md)
 - [Channel](api/channel.md)
 - [Cloud migration](api/cloud-migration.md)
 - [Collection](api/collection.md)
@@ -89,4 +94,5 @@ _* indicates endpoints used for features available on [paid plans](https://www.m
 - [Timeline event](api/timeline-event.md)
 - [Upload management*](api/ee/upload-management.md)
 - [User](api/user.md)
+- [User key value](api/user-key-value.md)
 - [Util](api/util.md)

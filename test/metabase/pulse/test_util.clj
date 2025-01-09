@@ -9,8 +9,7 @@
    [metabase.query-processor.test-util :as qp.test-util]
    [metabase.test :as mt]
    [metabase.test.data.users :as test.users]
-   [metabase.util :as u]
-   [toucan2.tools.with-temp :as t2.with-temp]))
+   [metabase.util :as u]))
 
 (set! *warn-on-reflection* true)
 
@@ -18,10 +17,10 @@
   "Create a Pulse with `:creator_id` of `user-kw`, and simulate sending it, executing it and returning the results."
   [user-kw card]
   (notification.tu/with-notification-testing-setup
-    (t2.with-temp/with-temp [:model/Pulse     pulse {:creator_id (test.users/user->id user-kw)
-                                                     :alert_condition "rows"}
-                             :model/PulseChannel _   {:pulse_id (:id pulse), :channel_type :email}
-                             :model/PulseCard _     {:pulse_id (:id pulse), :card_id (u/the-id card)}]
+    (mt/with-temp [:model/Pulse     pulse {:creator_id (test.users/user->id user-kw)
+                                           :alert_condition "rows"}
+                   :model/PulseChannel _   {:pulse_id (:id pulse), :channel_type :email}
+                   :model/PulseCard _     {:pulse_id (:id pulse), :card_id (u/the-id card)}]
       (let [pulse-result      (atom nil)
             orig-execute-card @#'notification.payload.execute/execute-card]
         (with-redefs [channel/send!                             (constantly :noop)
@@ -37,21 +36,15 @@
   "Basic query that will return results for an alert"
   [query-map]
   {:name          card-name
-   :dataset_query {:database (mt/id)
-                   :type     :query
-                   :query    (merge {:source-table (mt/id :checkins)
-                                     :aggregation  [["count"]]}
-                                    query-map)}})
+   :dataset_query query-map})
 
 (defmacro checkins-query-card [query]
-  `(checkins-query-card* (mt/$ids ~'checkins ~query)))
+  `(checkins-query-card* (mt/mbql-query ~'checkins ~(merge {:aggregation [["count"]]} query))))
 
 (defn venues-query-card [aggregation-op]
   {:name          card-name
-   :dataset_query {:database (mt/id)
-                   :type     :query
-                   :query    {:source-table (mt/id :venues)
-                              :aggregation  [[aggregation-op (mt/id :venues :price)]]}}})
+   :dataset_query (mt/mbql-query venues
+                    {:aggregation  [[aggregation-op $price]]})})
 
 (defn rasta-id []
   (mt/user->id :rasta))

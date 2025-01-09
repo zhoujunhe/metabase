@@ -3,7 +3,10 @@ import type {
   CardId,
   CardQueryMetadata,
   CardQueryRequest,
+  CollectionItem,
+  CreateCardFromCsvRequest,
   CreateCardRequest,
+  DashboardId,
   Dataset,
   GetCardRequest,
   GetEmbeddableCard,
@@ -88,10 +91,35 @@ export const cardApi = Api.injectEndpoints({
         }),
         invalidatesTags: (_, error) => invalidateTags(error, [listTag("card")]),
       }),
+      createCardFromCsv: builder.mutation<Card, CreateCardFromCsvRequest>({
+        query: ({ file, collection_id }) => {
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("collection_id", String(collection_id));
+
+          return {
+            method: "POST",
+            url: "/api/card/from-csv",
+            body: { formData },
+            formData: true,
+            fetch: true,
+          };
+        },
+        invalidatesTags: (_, error) =>
+          invalidateTags(error, [
+            listTag("card"),
+            listTag("schema"),
+            listTag("table"),
+          ]),
+      }),
       updateCard: builder.mutation<Card, UpdateCardRequest>({
-        query: ({ id, ...body }) => ({
+        query: ({ id, delete_old_dashcards, ...body }) => ({
           method: "PUT",
-          url: `/api/card/${id}`,
+          url:
+            `/api/card/${id}` +
+            (delete_old_dashcards !== undefined
+              ? `?delete_old_dashcards=${delete_old_dashcards}`
+              : ""),
           body,
         }),
         invalidatesTags: (_, error, { id }) =>
@@ -220,6 +248,30 @@ export const cardApi = Api.injectEndpoints({
         updateCardPropertyMutation<"enable_embedding">(),
       updateCardEmbeddingParams:
         updateCardPropertyMutation<"embedding_params">(),
+      getCardDashboards: builder.query<
+        { id: DashboardId; name: string }[],
+        Pick<Card, "id">
+      >({
+        query: ({ id }) => ({
+          method: "GET",
+          url: `/api/card/${id}/dashboards`,
+        }),
+        forceRefetch: () => true,
+      }),
+      getMultipleCardsDashboards: builder.query<
+        {
+          card_id: CollectionItem["id"];
+          dashboards: { id: DashboardId; name: string; error?: string }[];
+        }[],
+        { card_ids: CollectionItem["id"][] }
+      >({
+        query: body => ({
+          method: "POST",
+          url: `/api/cards/dashboards`,
+          body,
+        }),
+        forceRefetch: () => true,
+      }),
     };
   },
 });
@@ -242,10 +294,13 @@ export const {
   useDeleteCardPublicLinkMutation,
   useUpdateCardEmbeddingParamsMutation,
   useUpdateCardEnableEmbeddingMutation,
+  useGetCardDashboardsQuery,
+  useGetMultipleCardsDashboardsQuery,
   endpoints: {
     createCardPublicLink,
     deleteCardPublicLink,
     updateCardEnableEmbedding,
     updateCardEmbeddingParams,
+    getCardDashboards,
   },
 } = cardApi;

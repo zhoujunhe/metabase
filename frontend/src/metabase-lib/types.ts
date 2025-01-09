@@ -11,7 +11,6 @@ import type {
   TemporalUnit,
 } from "metabase-types/api";
 
-import type { DEFAULT_FILTER_OPERATORS } from "./constants";
 import type { ColumnExtractionTag } from "./extractions";
 
 /**
@@ -339,8 +338,7 @@ export type ExcludeDateFilterOperator = "!=" | "is-null" | "not-null";
 
 export type TimeFilterOperator = ">" | "<" | "between" | "is-null" | "not-null";
 
-export type DefaultFilterOperatorName =
-  (typeof DEFAULT_FILTER_OPERATORS)[number];
+export type DefaultFilterOperator = "is-null" | "not-null";
 
 export type RelativeDateFilterUnit =
   | "minute"
@@ -446,7 +444,7 @@ export type TimeFilterParts = {
 };
 
 export type DefaultFilterParts = {
-  operator: DefaultFilterOperatorName;
+  operator: DefaultFilterOperator;
   column: ColumnMetadata;
 };
 
@@ -476,7 +474,6 @@ export type DrillThruType =
   | "drill-thru/column-extract"
   | "drill-thru/column-filter"
   | "drill-thru/combine-columns"
-  | "drill-thru/compare-aggregations"
   | "drill-thru/distribution"
   | "drill-thru/fk-details"
   | "drill-thru/fk-filter"
@@ -509,9 +506,6 @@ export type ColumnExtractDrillThruInfo =
     displayName: string;
     extractions: ColumnExtractionInfo[];
   };
-
-export type CompareAggregationsDrillThruInfo =
-  BaseDrillThruInfo<"drill-thru/compare-aggregations">;
 
 export type CombineColumnsDrillThruInfo =
   BaseDrillThruInfo<"drill-thru/combine-columns">;
@@ -582,7 +576,6 @@ export type ZoomTimeseriesDrillThruInfo =
 export type DrillThruDisplayInfo =
   | ColumnExtractDrillThruInfo
   | CombineColumnsDrillThruInfo
-  | CompareAggregationsDrillThruInfo
   | QuickFilterDrillThruInfo
   | PKDrillThruInfo
   | ZoomDrillThruInfo
@@ -601,16 +594,6 @@ export type FilterDrillDetails = {
   query: Query;
   stageIndex: number;
   column: ColumnMetadata;
-};
-
-export type CombineColumnsDrillDetails = {
-  query: Query;
-  stageIndex: number;
-  column: ColumnMetadata;
-};
-
-export type AggregationDrillDetails = {
-  aggregation: AggregationClause;
 };
 
 export type PivotType = "category" | "location" | "time";
