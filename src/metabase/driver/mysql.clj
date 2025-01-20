@@ -923,7 +923,7 @@
               (update :pk? #(if (boolean? %) % (pos? %)))
               (update :database-position int) ;; Comes in as biginteger
               (update :database-required #(if (boolean? %) % (pos? %)))
-              (update :database-is-auto-increment #(if (boolean? %) % (pos? %)))))
+              (update :database-is-auto-increment #(if (boolean? %) % (pos? %))))))
    (apply (get-method driver/describe-fields :sql-jdbc) driver database args)))
 
 (defmethod sql-jdbc.sync/describe-fields-sql :mysql
