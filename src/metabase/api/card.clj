@@ -4,13 +4,12 @@
    [clojure.java.io :as io]
    [compojure.core :refer [DELETE GET POST PUT]]
    [medley.core :as m]
-   [metabase.analyze :as analyze]
+   [metabase.analyze.core :as analyze]
    [metabase.api.common :as api]
    [metabase.api.common.validation :as validation]
    [metabase.api.dataset :as api.dataset]
    [metabase.api.field :as api.field]
    [metabase.api.query-metadata :as api.query-metadata]
-   [metabase.compatibility :as compatibility]
    [metabase.driver.util :as driver.u]
    [metabase.events :as events]
    [metabase.lib.convert :as lib.convert]
@@ -248,7 +247,7 @@
 (defn- dataset-query->query
   "Convert the `dataset_query` column of a Card to a MLv2 pMBQL query."
   [metadata-provider dataset-query]
-  (let [pMBQL-query (-> dataset-query compatibility/normalize-dataset-query lib.convert/->pMBQL)]
+  (let [pMBQL-query (-> dataset-query card.metadata/normalize-dataset-query lib.convert/->pMBQL)]
     (lib/query metadata-provider pMBQL-query)))
 
 (defn- card-columns-from-names
@@ -303,6 +302,7 @@
 
 (defmulti series-are-compatible?
   "Check if the `second-card` is compatible to be used as series of `card`."
+  {:arglists '([card second-card database-id->metadata-provider])}
   (fn [card _second-card _database-id->metadata-provider]
     (:display card)))
 
@@ -328,7 +328,7 @@
 (def ^:private supported-series-display-type (set (keys (methods series-are-compatible?))))
 
 (defn- fetch-compatible-series*
-  "Implementaiton of `fetch-compatible-series`.
+  "Implementation of `fetch-compatible-series`.
 
   Provide `page-size` to limit the number of cards returned, it does not guaranteed to return exactly `page-size` cards.
   Use `fetch-compatible-series` for that."
@@ -406,7 +406,7 @@
 
 #_{:clj-kondo/ignore [:deprecated-var]}
 (api/defendpoint GET "/:id/series"
-  "Fetches a list of comptatible series with the card with id `card_id`.
+  "Fetches a list of compatible series with the card with id `card_id`.
 
   - `last_cursor` with value is the id of the last card from the previous page to fetch the next page.
   - `query` to search card by name.
@@ -534,7 +534,7 @@
 (defn- check-allowed-to-modify-query
   "If the query is being modified, check that we have data permissions to run the query."
   [card-before-updates card-updates]
-  (let [card-updates (m/update-existing card-updates :dataset_query compatibility/normalize-dataset-query)]
+  (let [card-updates (m/update-existing card-updates :dataset_query card.metadata/normalize-dataset-query)]
     (when (api/column-will-change? :dataset_query card-before-updates card-updates)
       (check-permissions-for-query (:dataset_query card-updates)))))
 
