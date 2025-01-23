@@ -1,10 +1,12 @@
 
-针对AnalyticDB for mysql 分析数据库编译的metabase版本，AnalyticDB for mysql 不兼容 mariadb-connector-j 驱动程序，找阿里无解的情况下，修改了mariadb-connector-j驱动，主要是修改了AnalyticDB for mysql 不支持的类型，然后重新编译打包，使用上和官方用法一样。
+~~针对AnalyticDB for mysql 分析数据库编译的metabase版本，AnalyticDB for mysql 不兼容 mariadb-connector-j 驱动程序，找阿里无解的情况下，修改了mariadb-connector-j驱动，主要是修改了AnalyticDB for mysql 不支持的类型，然后重新编译打包，使用上和官方用法一样。~~
 
-docker image 地址：https://hub.docker.com/r/zhoujunhe/metabase
+~~docker image 地址：https://hub.docker.com/r/zhoujunhe/metabase~~
 
-打包版本地址：https://github.com/zhoujunhe/metabase/releases
+~~打包版本地址：https://github.com/zhoujunhe/metabase/releases~~
 
+经过和阿里云的多沟通，阿里云也在积极的兼容标准mysql语法，目前大部份类型和语法都兼容了，后续不在更新AnalyticDB for mysql 的版本进行编译了，在配置连接AnalyticDB for mysql注意加额外连接参数tinyInt1isBit=false，如下图：
+![配置连接AnalyticDB for mysql](./adb_for_mysql.png "配置连接AnalyticDB for mysql")
 
 # Metabase
 
