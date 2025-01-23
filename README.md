@@ -5,7 +5,7 @@
 
 ~~打包版本地址：https://github.com/zhoujunhe/metabase/releases~~
 
-经过和阿里云的多沟通，阿里云也在积极的兼容标准mysql语法，目前大部份类型和语法都兼容了，后续不在更新AnalyticDB for mysql 的版本进行编译了，在配置连接AnalyticDB for mysql注意加额外连接参数tinyInt1isBit=false，如下图：
+经过和阿里云的多次沟通，阿里云也在积极的兼容标准mysql语法，目前大部份数据库类型和语法都兼容了，后续不在更新AnalyticDB for mysql 的版本进行编译了，在配置连接AnalyticDB for mysql注意加额外连接参数`tinyInt1isBit=false`，如下图：
 ![配置连接AnalyticDB for mysql](./adb_for_mysql.png "配置连接AnalyticDB for mysql")
 
 # Metabase
