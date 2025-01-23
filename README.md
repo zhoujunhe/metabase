@@ -112,7 +112,7 @@ Unless otherwise noted, all files © 2025 Metabase, Inc.
 
 If you’d like more technical resources to set up your data stack with Metabase, connect with a [Metabase Expert](https://www.metabase.com/partners/?utm_source=readme&utm_medium=metabase-expetrs&utm_campaign=readme).
 
-# 分支说明
-- 对MySQL/MariaDB 驱动时行了修改，主要兼容adb 不支持无符号类型
-- 对发送邮件进行宽屏显示
-- 修改了对adb 不支持的语句
+~~# 分支说明~~
+~~- 对MySQL/MariaDB 驱动时行了修改，主要兼容adb 不支持无符号类型~~
+~~- 对发送邮件进行宽屏显示~~
+~~- 修改了对adb 不支持的语句~~
